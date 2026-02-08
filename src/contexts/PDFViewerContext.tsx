@@ -494,6 +494,19 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     return forwardIndex === -1 ? results.length - 1 : forwardIndex;
   }, []);
 
+  const findNearestSearchIndex = useCallback((results: SearchResult[], referencePage: number) => {
+    if (results.length === 0) return -1;
+    let nearestIndex = 0;
+    let minDistance = Math.abs(results[0].globalPageNumber - referencePage);
+    for (let i = 1; i < results.length; i++) {
+      const distance = Math.abs(results[i].globalPageNumber - referencePage);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestIndex = i;
+      }
+    }
+    return nearestIndex;
+  }, []);
 
   const cancelScheduledHighlightClear = useCallback(() => {
     if (highlightClearTimeoutRef.current) {
