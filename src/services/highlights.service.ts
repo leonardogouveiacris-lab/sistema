@@ -15,6 +15,10 @@ export async function createHighlight(
   lancamentoId?: string
 ): Promise<PDFHighlight | null> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'highlights.service.createHighlight');
+      return null;
+    }
     logger.info('Creating highlight', 'highlights.service.createHighlight', {
       processId: data.processId,
       pageNumber: data.pageNumber,
@@ -76,6 +80,10 @@ export async function createHighlight(
  */
 export async function getHighlights(filter: HighlightFilter = {}): Promise<PDFHighlight[]> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'highlights.service.getHighlights');
+      return [];
+    }
     logger.info('Fetching highlights', 'highlights.service.getHighlights', filter);
 
     let query = supabase
@@ -151,6 +159,10 @@ export async function updateHighlightColor(
   color: string
 ): Promise<boolean> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'highlights.service.updateHighlightColor');
+      return false;
+    }
     logger.info('Updating highlight color', 'highlights.service.updateHighlightColor', { id, color });
 
     const { error } = await supabase
@@ -183,6 +195,10 @@ export async function updateHighlightColor(
  */
 export async function deleteHighlight(id: string): Promise<boolean> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'highlights.service.deleteHighlight');
+      return false;
+    }
     logger.info('Deleting highlight', 'highlights.service.deleteHighlight', { id });
 
     const { data: existing, error: checkError } = await supabase
@@ -248,6 +264,10 @@ export async function deleteHighlight(id: string): Promise<boolean> {
  */
 export async function deleteHighlightsByProcess(processId: string): Promise<boolean> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'highlights.service.deleteHighlightsByProcess');
+      return false;
+    }
     logger.info('Deleting highlights for process', 'highlights.service.deleteHighlightsByProcess', {
       processId
     });
@@ -287,6 +307,10 @@ export async function deleteHighlightsByProcess(processId: string): Promise<bool
  */
 export async function deleteHighlightsByDocument(processDocumentId: string): Promise<boolean> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'highlights.service.deleteHighlightsByDocument');
+      return false;
+    }
     logger.info(
       'Deleting highlights for document',
       'highlights.service.deleteHighlightsByDocument',
@@ -328,6 +352,10 @@ export async function deleteHighlightsByDocument(processDocumentId: string): Pro
  */
 export async function getHighlightByLancamentoId(lancamentoId: string): Promise<PDFHighlight | null> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'highlights.service.getHighlightByLancamentoId');
+      return null;
+    }
     logger.info('Fetching highlight by lancamento ID', 'highlights.service.getHighlightByLancamentoId', {
       lancamentoId
     });

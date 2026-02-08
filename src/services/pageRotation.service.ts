@@ -16,6 +16,10 @@ export interface PageRotationMap {
 
 export async function getPageRotations(processDocumentId: string): Promise<PageRotationMap> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'pageRotation.service.getPageRotations');
+      return {};
+    }
     logger.info('Fetching page rotations', 'pageRotation.service.getPageRotations', {
       processDocumentId
     });
@@ -64,6 +68,10 @@ export async function upsertPageRotation(
   rotationDegrees: number
 ): Promise<boolean> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'pageRotation.service.upsertPageRotation');
+      return false;
+    }
     const normalizedDegrees = ((rotationDegrees % 360) + 360) % 360;
 
     logger.info('Upserting page rotation', 'pageRotation.service.upsertPageRotation', {
@@ -116,6 +124,10 @@ export async function upsertPageRotations(
   rotations: Array<{ pageNumber: number; rotationDegrees: number }>
 ): Promise<boolean> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'pageRotation.service.upsertPageRotations');
+      return false;
+    }
     logger.info('Batch upserting page rotations', 'pageRotation.service.upsertPageRotations', {
       processDocumentId,
       count: rotations.length
@@ -190,6 +202,10 @@ export async function deletePageRotation(
   pageNumber: number
 ): Promise<boolean> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'pageRotation.service.deletePageRotation');
+      return false;
+    }
     logger.info('Deleting page rotation', 'pageRotation.service.deletePageRotation', {
       processDocumentId,
       pageNumber
@@ -223,6 +239,10 @@ export async function deletePageRotation(
 
 export async function deleteAllPageRotations(processDocumentId: string): Promise<boolean> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'pageRotation.service.deleteAllPageRotations');
+      return false;
+    }
     logger.info('Deleting all page rotations', 'pageRotation.service.deleteAllPageRotations', {
       processDocumentId
     });

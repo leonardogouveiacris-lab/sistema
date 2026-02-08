@@ -70,9 +70,16 @@ export const useRealtimeSubscription = <T extends { id: string }>({
   useEffect(() => {
     if (!enabled) {
       if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+        if (supabase) {
+          supabase.removeChannel(channelRef.current);
+        }
         channelRef.current = null;
       }
+      return;
+    }
+
+    if (!supabase) {
+      channelRef.current = null;
       return;
     }
 
@@ -118,7 +125,9 @@ export const useRealtimeSubscription = <T extends { id: string }>({
 
     return () => {
       if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+        if (supabase) {
+          supabase.removeChannel(channelRef.current);
+        }
         channelRef.current = null;
       }
     };
@@ -126,7 +135,9 @@ export const useRealtimeSubscription = <T extends { id: string }>({
 
   const unsubscribe = useCallback(() => {
     if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
+      if (supabase) {
+        supabase.removeChannel(channelRef.current);
+      }
       channelRef.current = null;
     }
   }, []);

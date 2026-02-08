@@ -472,14 +472,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       );
 
       const highlights = await HighlightsService.getHighlights({ processId });
-
-      if (highlights.length > 0) {
-        setHighlights(highlights);
-        logger.success(
-          `Loaded ${highlights.length} highlights`,
-          'FloatingPDFViewer.loadHighlights'
-        );
-      }
+      setHighlights(highlights);
+      logger.success(
+        `Loaded ${highlights.length} highlights`,
+        'FloatingPDFViewer.loadHighlights'
+      );
     };
 
     loadHighlights();
