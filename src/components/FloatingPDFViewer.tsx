@@ -105,7 +105,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     toggleCommentMode,
     setComments,
     setSelectedCommentColor,
-    registerScrollContainer
+    registerScrollContainer,
+    disableSearchNavigationSync
   } = usePDFViewer();
 
   const toast = useToast();
@@ -230,10 +231,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (!state.isInteracting) {
       setIsInteracting(true);
     }
+    disableSearchNavigationSync();
     interactionTimeoutRef.current = setTimeout(() => {
       setIsInteracting(false);
     }, INTERACTION_DEBOUNCE_MS);
-  }, [state.isInteracting, setIsInteracting]);
+  }, [disableSearchNavigationSync, state.isInteracting, setIsInteracting]);
 
   /**
    * Cleanup do timeout de interacao

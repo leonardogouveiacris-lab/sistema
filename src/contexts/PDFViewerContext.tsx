@@ -130,6 +130,7 @@ interface PDFViewerState {
   isSearchOpen: boolean;
   searchQuery: string;
   searchResults: SearchResult[];
+  searchAnchorPage: number | null;
   currentSearchIndex: number;
   isSearching: boolean;
   textExtractionProgress: { current: number; total: number } | null;
@@ -254,11 +255,13 @@ interface PDFViewerContextType {
   closeSearch: () => void;
   toggleSearch: () => void;
   setSearchQuery: (query: string) => void;
+  setSearchAnchorPage: (page: number | null) => void;
   setSearchResults: (results: SearchResult[]) => void;
   setCurrentSearchIndex: (index: number) => void;
   goToNextSearchResult: () => void;
   goToPreviousSearchResult: () => void;
   setIsSearching: (isSearching: boolean) => void;
+  disableSearchNavigationSync: () => void;
   setTextExtractionProgress: (progress: { current: number; total: number } | null) => void;
   clearSearch: () => void;
 
@@ -381,6 +384,7 @@ const DEFAULT_STATE: PDFViewerState = {
   isSearchOpen: false,
   searchQuery: '',
   searchResults: [],
+  searchAnchorPage: null,
   currentSearchIndex: -1,
   isSearching: false,
   textExtractionProgress: null,
@@ -464,6 +468,32 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const highlightClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightClearTokenRef = useRef<number>(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const searchNavigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSearchNavigationActiveRef = useRef(false);
+
+  const markSearchNavigationActive = useCallback((durationMs: number = 800) => {
+    if (searchNavigationTimeoutRef.current) {
+      clearTimeout(searchNavigationTimeoutRef.current);
+    }
+    isSearchNavigationActiveRef.current = true;
+    searchNavigationTimeoutRef.current = setTimeout(() => {
+      isSearchNavigationActiveRef.current = false;
+    }, durationMs);
+  }, []);
+
+  const disableSearchNavigationSync = useCallback(() => {
+    if (searchNavigationTimeoutRef.current) {
+      clearTimeout(searchNavigationTimeoutRef.current);
+      searchNavigationTimeoutRef.current = null;
+    }
+    isSearchNavigationActiveRef.current = false;
+  }, []);
+
+  const findForwardSearchIndex = useCallback((results: SearchResult[], referencePage: number) => {
+    const forwardIndex = results.findIndex(result => result.globalPageNumber >= referencePage);
+    return forwardIndex === -1 ? results.length - 1 : forwardIndex;
+  }, []);
+
 
   const cancelScheduledHighlightClear = useCallback(() => {
     if (highlightClearTimeoutRef.current) {
@@ -502,24 +532,44 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       document.querySelector(`[data-page-number="${pageNumber}"]`) ||
       document.getElementById(`page-${pageNumber}`) ||
       document.getElementById(`pageContainer${pageNumber}`);
+    const scrollContainer = scrollContainerRef.current;
 
     if (!pageElement) {
       return;
     }
 
     if (!rects || rects.length === 0) {
-      pageElement.scrollIntoView({ behavior: 'auto', block: 'center' });
+      pageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
 
     const [rect] = rects;
+    const zoom = state.zoom;
+
+    if (scrollContainer) {
+      const pageOffsetTop = (pageElement as HTMLElement).offsetTop;
+      const targetTop = pageOffsetTop + rect.y * zoom;
+      const desiredTop = Math.max(targetTop - 120, 0);
+      if (Math.abs(scrollContainer.scrollTop - desiredTop) < 8) {
+        return;
+      }
+      scrollContainer.scrollTo({ top: desiredTop, behavior: 'smooth' });
+      return;
+    }
+
     const pageRect = pageElement.getBoundingClientRect();
-    const targetTop = pageRect.top + window.scrollY + rect.y;
-    window.scrollTo({ top: Math.max(targetTop - 120, 0), behavior: 'auto' });
-  }, []);
+    const targetTop = pageRect.top + window.scrollY + rect.y * zoom;
+    const desiredTop = Math.max(targetTop - 120, 0);
+    if (Math.abs(window.scrollY - desiredTop) < 8) {
+      return;
+    }
+    window.scrollTo({ top: desiredTop, behavior: 'smooth' });
+  }, [state.zoom]);
 
   const navigateToSearchResultIndex = useCallback((targetIndex: number) => {
     let targetResult: SearchResult | null = null;
+    let resolvedIndex = -1;
+    let resolvedPage = 0;
     cancelScheduledHighlightClear();
     highlightClearTokenRef.current++;
 
@@ -530,9 +580,11 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       const safeIndex = Math.max(0, Math.min(targetIndex, total - 1));
       const result = prev.searchResults[safeIndex];
       targetResult = result || null;
+      resolvedIndex = safeIndex;
       if (!result) return { ...prev, currentSearchIndex: safeIndex };
 
       const validPage = Math.max(1, Math.min(result.globalPageNumber, prev.totalPages));
+      resolvedPage = validPage;
 
       return {
         ...prev,
@@ -542,14 +594,15 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       };
     });
 
-    if (targetResult) {
+    if (targetResult && resolvedIndex >= 0 && resolvedPage > 0) {
+      markSearchNavigationActive();
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           scrollToSearchResult(targetResult as SearchResult);
         });
       });
     }
-  }, [cancelScheduledHighlightClear, scrollToSearchResult]);
+  }, [cancelScheduledHighlightClear, markSearchNavigationActive, scrollToSearchResult]);
 
   /**
    * Abre o visualizador com um ou múltiplos documentos
@@ -577,6 +630,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       isSearchOpen: false,
       searchQuery: '',
       searchResults: [],
+      searchAnchorPage: null,
       currentSearchIndex: -1,
       isSearching: false,
       textExtractionProgress: null
@@ -608,6 +662,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       isSearchOpen: false,
       searchQuery: '',
       searchResults: [],
+      searchAnchorPage: null,
       currentSearchIndex: -1,
       isSearching: false,
       textExtractionProgress: null,
@@ -1634,6 +1689,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       isSearchOpen: false,
       searchQuery: '',
       searchResults: [],
+      searchAnchorPage: null,
       currentSearchIndex: -1,
       isSearching: false,
       highlightedPage: null
@@ -1653,6 +1709,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
           isSearchOpen: false,
           searchQuery: '',
           searchResults: [],
+          searchAnchorPage: null,
           currentSearchIndex: -1,
           isSearching: false,
           highlightedPage: null
@@ -1664,6 +1721,10 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
   const setSearchQuery = useCallback((query: string) => {
     setState(prev => ({ ...prev, searchQuery: query }));
+  }, []);
+
+  const setSearchAnchorPage = useCallback((page: number | null) => {
+    setState(prev => ({ ...prev, searchAnchorPage: page }));
   }, []);
 
   /**
@@ -1682,16 +1743,19 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
           return {
             ...prev,
             searchResults: [],
+            searchAnchorPage: null,
             currentSearchIndex: -1,
             isSearching: false,
             highlightedPage: null
           };
         }
 
-        const referencePage = visiblePage ?? prev.currentPage;
-        const nextIndex = results.findIndex(result => result.globalPageNumber >= referencePage);
-        const safeIndex = nextIndex === -1 ? results.length - 1 : nextIndex;
-        const hasMatchOnCurrentPage = results.some(result => result.globalPageNumber === referencePage);
+        const referencePage = prev.searchAnchorPage ?? visiblePage ?? prev.currentPage;
+        const exactMatchIndex = results.findIndex(result => result.globalPageNumber === referencePage);
+        const safeIndex = exactMatchIndex !== -1
+          ? exactMatchIndex
+          : findForwardSearchIndex(results, referencePage);
+        const hasMatchOnCurrentPage = exactMatchIndex !== -1;
         const nextHighlightedPage = hasMatchOnCurrentPage
           ? referencePage
           : results[safeIndex]?.globalPageNumber ?? prev.highlightedPage;
@@ -1699,6 +1763,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
         return {
           ...prev,
           searchResults: results,
+          searchAnchorPage: null,
           currentSearchIndex: safeIndex,
           isSearching: false,
           highlightedPage: nextHighlightedPage
@@ -1706,7 +1771,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
       });
     },
-    [cancelScheduledHighlightClear, getVisiblePageFromScroll]
+    [cancelScheduledHighlightClear, findForwardSearchIndex, getVisiblePageFromScroll]
   );
 
   const setCurrentSearchIndex = useCallback(
@@ -1751,6 +1816,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       ...prev,
       searchQuery: '',
       searchResults: [],
+      searchAnchorPage: null,
       currentSearchIndex: -1,
       isSearching: false,
       highlightedPage: null
@@ -1822,6 +1888,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   useEffect(() => {
     return () => {
       // cleanup de timeouts
+      if (searchNavigationTimeoutRef.current) clearTimeout(searchNavigationTimeoutRef.current);
       if (rotationSaveTimeoutRef.current) clearTimeout(rotationSaveTimeoutRef.current);
       if (rotationBlockTimeoutRef.current) clearTimeout(rotationBlockTimeoutRef.current);
       if (highlightClearTimeoutRef.current) clearTimeout(highlightClearTimeoutRef.current);
@@ -2083,11 +2150,13 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     closeSearch,
     toggleSearch,
     setSearchQuery,
+    setSearchAnchorPage,
     setSearchResults,
     setCurrentSearchIndex,
     goToNextSearchResult,
     goToPreviousSearchResult,
     setIsSearching,
+    disableSearchNavigationSync,
     setTextExtractionProgress,
     clearSearch,
     getPageRotation,
