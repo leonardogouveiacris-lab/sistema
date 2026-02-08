@@ -28,7 +28,25 @@ export interface DocumentTextCache {
   pages: Map<number, PageTextContent>;
 }
 
+export interface SearchResult {
+  documentId: string;
+  documentIndex: number;
+  globalPageNumber: number;
+  localPageNumber: number;
+  matchIndex: number;
+  matchStart: number;
+  matchEnd: number;
+  contextBefore: string;
+  matchText: string;
+  contextAfter: string;
+  rects?: Array<{ x: number; y: number; width: number; height: number }>;
+}
+
 const textCache = new Map<string, DocumentTextCache>();
+
+export function getDocumentTextCache(documentId: string): DocumentTextCache | null {
+  return textCache.get(documentId) ?? null;
+}
 
 async function extractPageText(
   pdfDocument: pdfjs.PDFDocumentProxy,
