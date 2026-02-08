@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { DocumentoLancamento, DocumentoLancamentoCreateInput, DocumentoLancamentoUpdateInput } from '../types';
+import { ErrorType, SystemError } from '../utils/errorHandler';
 import logger from '../utils/logger';
 
 class DocumentoLancamentoService {
@@ -7,6 +8,10 @@ class DocumentoLancamentoService {
 
   async getByProcessId(processId: string): Promise<DocumentoLancamento[]> {
     try {
+      if (!supabase) {
+        logger.warn('Supabase client unavailable', 'DocumentoLancamentoService.getByProcessId');
+        return [];
+      }
       logger.info(`Fetching document launches for process: ${processId}`, 'DocumentoLancamentoService.getByProcessId');
 
       const { data, error } = await supabase
@@ -32,6 +37,15 @@ class DocumentoLancamentoService {
 
   async create(input: DocumentoLancamentoCreateInput): Promise<DocumentoLancamento> {
     try {
+      if (!supabase) {
+        throw new SystemError(
+          'Supabase não configurado',
+          ErrorType.SYSTEM,
+          'SUPABASE_UNAVAILABLE',
+          undefined,
+          'DocumentoLancamentoService.create'
+        );
+      }
       logger.info(`Creating document launch for process: ${input.processId}`, 'DocumentoLancamentoService.create');
 
       const { data, error } = await supabase
@@ -62,6 +76,15 @@ class DocumentoLancamentoService {
 
   async update(id: string, input: DocumentoLancamentoUpdateInput): Promise<DocumentoLancamento> {
     try {
+      if (!supabase) {
+        throw new SystemError(
+          'Supabase não configurado',
+          ErrorType.SYSTEM,
+          'SUPABASE_UNAVAILABLE',
+          undefined,
+          'DocumentoLancamentoService.update'
+        );
+      }
       logger.info(`Updating document launch: ${id}`, 'DocumentoLancamentoService.update');
 
       const updateData: Record<string, unknown> = {};
@@ -95,6 +118,15 @@ class DocumentoLancamentoService {
 
   async delete(id: string): Promise<void> {
     try {
+      if (!supabase) {
+        throw new SystemError(
+          'Supabase não configurado',
+          ErrorType.SYSTEM,
+          'SUPABASE_UNAVAILABLE',
+          undefined,
+          'DocumentoLancamentoService.delete'
+        );
+      }
       logger.info(`Deleting document launch: ${id}`, 'DocumentoLancamentoService.delete');
 
       const { error } = await supabase

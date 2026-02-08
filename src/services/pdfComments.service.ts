@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { ErrorType, SystemError } from '../utils/errorHandler';
 import {
   PDFComment,
   PDFCommentConnector,
@@ -41,6 +42,9 @@ const mapConnectorFromDB = (row: Record<string, unknown>): PDFCommentConnector =
 });
 
 export async function getCommentsByDocument(processDocumentId: string): Promise<PDFComment[]> {
+  if (!supabase) {
+    return [];
+  }
   const { data, error } = await supabase
     .from('pdf_comments')
     .select('*')
@@ -56,6 +60,9 @@ export async function getCommentsByPage(
   processDocumentId: string,
   pageNumber: number
 ): Promise<PDFComment[]> {
+  if (!supabase) {
+    return [];
+  }
   const { data, error } = await supabase
     .from('pdf_comments')
     .select('*')
@@ -68,6 +75,9 @@ export async function getCommentsByPage(
 }
 
 export async function getCommentWithConnectors(commentId: string): Promise<PDFComment | null> {
+  if (!supabase) {
+    return null;
+  }
   const { data: commentData, error: commentError } = await supabase
     .from('pdf_comments')
     .select('*')
@@ -94,6 +104,9 @@ export async function getCommentWithConnectors(commentId: string): Promise<PDFCo
 export async function getCommentsWithConnectorsByDocument(
   processDocumentId: string
 ): Promise<PDFComment[]> {
+  if (!supabase) {
+    return [];
+  }
   const comments = await getCommentsByDocument(processDocumentId);
 
   if (comments.length === 0) return [];
@@ -123,6 +136,15 @@ export async function getCommentsWithConnectorsByDocument(
 }
 
 export async function createComment(input: CreateCommentInput): Promise<PDFComment> {
+  if (!supabase) {
+    throw new SystemError(
+      'Supabase não configurado',
+      ErrorType.SYSTEM,
+      'SUPABASE_UNAVAILABLE',
+      undefined,
+      'PDFCommentsService.createComment'
+    );
+  }
   const { data, error } = await supabase
     .from('pdf_comments')
     .insert({
@@ -144,6 +166,15 @@ export async function updateComment(
   commentId: string,
   input: UpdateCommentInput
 ): Promise<PDFComment> {
+  if (!supabase) {
+    throw new SystemError(
+      'Supabase não configurado',
+      ErrorType.SYSTEM,
+      'SUPABASE_UNAVAILABLE',
+      undefined,
+      'PDFCommentsService.updateComment'
+    );
+  }
   const updateData: Record<string, unknown> = {};
 
   if (input.content !== undefined) updateData.content = input.content;
@@ -164,6 +195,15 @@ export async function updateComment(
 }
 
 export async function deleteComment(commentId: string): Promise<void> {
+  if (!supabase) {
+    throw new SystemError(
+      'Supabase não configurado',
+      ErrorType.SYSTEM,
+      'SUPABASE_UNAVAILABLE',
+      undefined,
+      'PDFCommentsService.deleteComment'
+    );
+  }
   const { error } = await supabase
     .from('pdf_comments')
     .delete()
@@ -173,6 +213,9 @@ export async function deleteComment(commentId: string): Promise<void> {
 }
 
 export async function getConnectorsByComment(commentId: string): Promise<PDFCommentConnector[]> {
+  if (!supabase) {
+    return [];
+  }
   const { data, error } = await supabase
     .from('pdf_comment_connectors')
     .select('*')
@@ -184,6 +227,15 @@ export async function getConnectorsByComment(commentId: string): Promise<PDFComm
 }
 
 export async function createConnector(input: CreateConnectorInput): Promise<PDFCommentConnector> {
+  if (!supabase) {
+    throw new SystemError(
+      'Supabase não configurado',
+      ErrorType.SYSTEM,
+      'SUPABASE_UNAVAILABLE',
+      undefined,
+      'PDFCommentsService.createConnector'
+    );
+  }
   const { data, error } = await supabase
     .from('pdf_comment_connectors')
     .insert({
@@ -212,6 +264,15 @@ export async function updateConnector(
   connectorId: string,
   input: UpdateConnectorInput
 ): Promise<PDFCommentConnector> {
+  if (!supabase) {
+    throw new SystemError(
+      'Supabase não configurado',
+      ErrorType.SYSTEM,
+      'SUPABASE_UNAVAILABLE',
+      undefined,
+      'PDFCommentsService.updateConnector'
+    );
+  }
   const updateData: Record<string, unknown> = {};
 
   if (input.startX !== undefined) updateData.start_x = input.startX;
@@ -238,6 +299,15 @@ export async function updateConnector(
 }
 
 export async function deleteConnector(connectorId: string): Promise<void> {
+  if (!supabase) {
+    throw new SystemError(
+      'Supabase não configurado',
+      ErrorType.SYSTEM,
+      'SUPABASE_UNAVAILABLE',
+      undefined,
+      'PDFCommentsService.deleteConnector'
+    );
+  }
   const { error } = await supabase
     .from('pdf_comment_connectors')
     .delete()

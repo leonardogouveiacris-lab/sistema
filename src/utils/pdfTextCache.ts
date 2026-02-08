@@ -127,6 +127,10 @@ export async function clearCache(): Promise<void> {
 
 export async function persistToDatabase(cache: DocumentTextCache): Promise<boolean> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'pdfTextCache.persistToDatabase');
+      return false;
+    }
     const { data: existing } = await supabase
       .from('pdf_text_pages')
       .select('id')
@@ -189,6 +193,10 @@ export async function persistToDatabase(cache: DocumentTextCache): Promise<boole
 
 export async function loadFromDatabase(documentId: string): Promise<DocumentTextCache | null> {
   try {
+    if (!supabase) {
+      logger.warn('Supabase client unavailable', 'pdfTextCache.loadFromDatabase');
+      return null;
+    }
     const { data, error } = await supabase
       .from('pdf_text_pages')
       .select('page_number, text_content')
