@@ -32,7 +32,8 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     goToNextSearchResult,
     goToPreviousSearchResult,
     setIsSearching,
-    goToPage
+    goToPage,
+    getVisiblePageFromScroll
   } = usePDFViewer();
 
   const [localQuery, setLocalQuery] = useState(state.searchQuery);
@@ -70,6 +71,11 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
 
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+    }
+
+    const visiblePage = getVisiblePageFromScroll();
+    if (visiblePage && visiblePage !== state.currentPage) {
+      goToPage(visiblePage);
     }
 
     setIsSearching(true);
@@ -137,7 +143,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
         setIsSearching(false);
       }
     }
-  }, [processId, documentOffsets, setSearchResults, setIsSearching, setSearchQuery]);
+  }, [getVisiblePageFromScroll, processId, documentOffsets, setSearchResults, setIsSearching, setSearchQuery, goToPage, state.currentPage]);
 
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 2) {

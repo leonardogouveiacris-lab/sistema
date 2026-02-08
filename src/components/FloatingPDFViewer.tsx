@@ -104,7 +104,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     setSidebarVisible,
     toggleCommentMode,
     setComments,
-    setSelectedCommentColor
+    setSelectedCommentColor,
+    registerScrollContainer
   } = usePDFViewer();
 
   const toast = useToast();
@@ -257,7 +258,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * - Validacao de sanidade: ignora pulos > MAX_PAGE_JUMP paginas
    * - Bloqueio temporal apos zoom (zoomBlockedUntilRef)
    */
-  const calculateVisiblePagesFromScroll = useCallback(() => {
+  const calculateVisiblePagesFromScroll = useCallback((options?: { allowLargeJump?: boolean; previousScrollTop?: number }) => {
     const container = scrollContainerRef.current;
     if (!container || state.viewMode !== 'continuous' || state.totalPages === 0) {
       return;
@@ -271,6 +272,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const scrollTop = container.scrollTop;
     const viewportHeight = container.clientHeight;
     const buffer = viewportHeight * 1.5;
+    const scrollDelta = options?.previousScrollTop !== undefined
+      ? Math.abs(scrollTop - options.previousScrollTop)
+      : 0;
+    const isLargeScrollJump = scrollDelta > viewportHeight * 2;
+    const allowLargeJump = Boolean(options?.allowLargeJump || isLargeScrollJump || state.isSearchOpen);
 
     let accumulatedHeight = 0;
     const visiblePages = new Set<number>();
@@ -351,7 +357,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    if (jumpFromCurrentPage > MAX_PAGE_JUMP) {
+    if (jumpFromCurrentPage > MAX_PAGE_JUMP && !allowLargeJump) {
       logger.warn(
         `Bloqueado pulo de pagina invalido: ${state.currentPage} -> ${centerPage} (${jumpFromCurrentPage} paginas)`,
         'FloatingPDFViewer.calculateVisiblePagesFromScroll'
@@ -364,7 +370,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       lastDetectionTimeRef.current = now;
       goToPage(centerPage);
     }
-  }, [state.viewMode, state.totalPages, state.currentPage, getPageHeight, goToPage]);
+  }, [state.viewMode, state.totalPages, state.currentPage, state.isSearchOpen, getPageHeight, goToPage]);
 
   /**
    * Effect para detectar paginas visiveis durante scroll
@@ -392,9 +398,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
       scrollThrottleRef.current = now;
+      const previousScrollTop = lastScrollTopRef.current;
       lastScrollTopRef.current = container.scrollTop;
 
-      calculateVisiblePagesFromScroll();
+      calculateVisiblePagesFromScroll({ previousScrollTop });
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
@@ -405,6 +412,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       container.removeEventListener('scroll', handleScroll);
     };
   }, [state.viewMode, calculateVisiblePagesFromScroll, markInteractionStart]);
+
+  useEffect(() => {
+    registerScrollContainer(scrollContainerRef.current);
+    return () => {
+      registerScrollContainer(null);
+    };
+  }, [registerScrollContainer]);
+
+  useEffect(() => {
+    if (state.isSearchOpen) {
+      calculateVisiblePagesFromScroll({ allowLargeJump: true });
+    }
+  }, [state.isSearchOpen, calculateVisiblePagesFromScroll]);
 
   /**
    * Effect para resetar Maps locais quando os documentos mudam
