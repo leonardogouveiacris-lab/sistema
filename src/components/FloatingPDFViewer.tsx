@@ -2607,6 +2607,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                 scale={state.zoom}
                                 documentId={doc.id}
                                 localPageNumber={pageInfo.localPage}
+                                searchResults={state.searchResults}
+                                currentSearchIndex={state.currentSearchIndex}
+                                searchQuery={state.searchQuery}
                               />
                               <SelectionOverlay
                                 pageNumber={state.currentPage}
@@ -2680,6 +2683,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                           scale={state.zoom}
                                           documentId={doc.id}
                                           localPageNumber={localPageNum}
+                                          searchResults={state.searchResults}
+                                          currentSearchIndex={state.currentSearchIndex}
+                                          searchQuery={state.searchQuery}
                                         />
                                         <SelectionOverlay
                                           pageNumber={globalPageNum}
