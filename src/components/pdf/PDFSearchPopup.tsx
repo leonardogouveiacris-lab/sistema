@@ -5,6 +5,11 @@ import { useDebounce } from '../../hooks/useDebounce';
 import { supabase } from '../../lib/supabase';
 import logger from '../../utils/logger';
 
+const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
+
+const normalizeQuery = (value: string): string =>
+  value.normalize('NFD').replace(DIACRITICS_REGEX, '');
+
 interface PDFSearchPopupProps {
   processId: string;
   documentOffsets: Map<string, { startPage: number; endPage: number; numPages: number }>;
@@ -32,9 +37,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     setSearchResults,
     goToNextSearchResult,
     goToPreviousSearchResult,
-    setIsSearching,
-    goToPage,
-    getVisiblePageFromScroll
+    setIsSearching
   } = usePDFViewer();
 
   const [localQuery, setLocalQuery] = useState(state.searchQuery);
@@ -74,11 +77,6 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       abortControllerRef.current.abort();
     }
 
-    const visiblePage = getVisiblePageFromScroll();
-    if (visiblePage && visiblePage !== state.currentPage) {
-      goToPage(visiblePage);
-    }
-
     setIsSearching(true);
     setSearchQuery(query);
 
@@ -86,11 +84,15 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       const currentRequestId = ++searchRequestIdRef.current;
       abortControllerRef.current = new AbortController();
 
-      const { data, error } = await supabase.rpc('search_pdf_text', {
-        p_process_id: processId,
-        p_query: query,
-        p_limit: 500
-      });
+      const runSearch = async (term: string) => {
+        return supabase.rpc('search_pdf_text', {
+          p_process_id: processId,
+          p_query: term,
+          p_limit: 500
+        });
+      };
+
+      const { data, error } = await runSearch(query);
 
       if (abortControllerRef.current?.signal.aborted || currentRequestId !== searchRequestIdRef.current) {
         return;
@@ -103,7 +105,16 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
         return;
       }
 
-      const dbResults = (data || []) as DatabaseSearchResult[];
+      let dbResults = (data || []) as DatabaseSearchResult[];
+      const normalizedQuery = normalizeQuery(query);
+      const shouldRetry = dbResults.length === 0 && normalizedQuery !== query;
+
+      if (shouldRetry) {
+        const retry = await runSearch(normalizedQuery);
+        if (!abortControllerRef.current?.signal.aborted && currentRequestId === searchRequestIdRef.current && !retry.error) {
+          dbResults = (retry.data || []) as DatabaseSearchResult[];
+        }
+      }
 
       const results = dbResults.map((row, index) => {
         const docOffset = documentOffsets.get(row.document_id);
@@ -144,7 +155,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
         setIsSearching(false);
       }
     }
-  }, [getVisiblePageFromScroll, processId, documentOffsets, setSearchResults, setIsSearching, setSearchQuery, goToPage, state.currentPage]);
+  }, [processId, documentOffsets, setSearchResults, setIsSearching, setSearchQuery]);
 
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 2) {
@@ -167,29 +178,8 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       return;
     }
 
-    const hasMatchOnCurrentPage = state.searchResults.some(
-      result => result.globalPageNumber === state.currentPage
-    );
-
     lastNavigatedQueryRef.current = state.searchQuery;
-
-    if (hasMatchOnCurrentPage) {
-      return;
-    }
-
-    const targetIndex = state.currentSearchIndex >= 0 ? state.currentSearchIndex : 0;
-    const targetResult = state.searchResults[targetIndex] ?? state.searchResults[0];
-    if (targetResult) {
-      goToPage(targetResult.globalPageNumber);
-    }
-  }, [
-    state.searchResults,
-    state.searchQuery,
-    state.currentSearchIndex,
-    state.currentPage,
-    searchComplete,
-    goToPage
-  ]);
+  }, [state.searchResults, state.searchQuery, searchComplete]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -197,13 +187,15 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       if (e.shiftKey) {
         goToPreviousSearchResult();
       } else {
-        goToNextSearchResult();
+        setSearchComplete(false);
+        lastNavigatedQueryRef.current = '';
+        searchFromDatabase(localQuery);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
       closeSearch();
     }
-  }, [goToNextSearchResult, goToPreviousSearchResult, closeSearch]);
+  }, [closeSearch, goToPreviousSearchResult, localQuery, searchFromDatabase]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
