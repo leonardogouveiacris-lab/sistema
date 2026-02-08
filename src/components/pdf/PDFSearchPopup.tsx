@@ -34,6 +34,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     closeSearch,
     clearSearch,
     setSearchQuery,
+    setSearchAnchorPage,
     setSearchResults,
     goToNextSearchResult,
     goToPreviousSearchResult,
@@ -189,13 +190,14 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       } else {
         setSearchComplete(false);
         lastNavigatedQueryRef.current = '';
+        setSearchAnchorPage(state.currentPage);
         searchFromDatabase(localQuery);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
       closeSearch();
     }
-  }, [closeSearch, goToPreviousSearchResult, localQuery, searchFromDatabase]);
+  }, [closeSearch, goToPreviousSearchResult, localQuery, searchFromDatabase, setSearchAnchorPage, state.currentPage]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
