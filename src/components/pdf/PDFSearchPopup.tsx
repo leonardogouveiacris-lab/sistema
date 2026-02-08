@@ -142,7 +142,11 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       lastNavigatedQueryRef.current !== state.searchQuery
     ) {
       lastNavigatedQueryRef.current = state.searchQuery;
-      goToPage(state.searchResults[0].globalPageNumber);
+      const targetIndex = state.currentSearchIndex >= 0 ? state.currentSearchIndex : 0;
+const targetResult = state.searchResults[targetIndex] ?? state.searchResults[0];
+if (targetResult) {
+  goToPage(targetResult.globalPageNumber);
+}
     }
   }, [state.searchResults, state.searchQuery, goToPage]);
 
