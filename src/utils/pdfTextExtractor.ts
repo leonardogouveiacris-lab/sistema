@@ -15,6 +15,8 @@ export interface TextItem {
   width: number;
   height: number;
   transform: number[];
+  startOffset: number;
+  endOffset: number;
 }
 
 export interface PageTextContent {
@@ -77,7 +79,7 @@ async function extractPageText(
           height: rectHeight,
           transform: textItem.transform || []
         });
-        fullText += textItem.str + ' ';
+        fullText += `${itemText} `;
       }
     }
 
