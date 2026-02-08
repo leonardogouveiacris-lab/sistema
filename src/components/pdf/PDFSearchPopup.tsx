@@ -27,6 +27,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   const {
     state,
     closeSearch,
+    clearSearch,
     setSearchQuery,
     setSearchResults,
     goToNextSearchResult,
@@ -151,19 +152,38 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   }, [debouncedQuery, searchFromDatabase, setSearchResults]);
 
   useEffect(() => {
-    if (
-      state.searchResults.length > 0 &&
-      state.searchQuery &&
-      lastNavigatedQueryRef.current !== state.searchQuery
-    ) {
-      lastNavigatedQueryRef.current = state.searchQuery;
-      const targetIndex = state.currentSearchIndex >= 0 ? state.currentSearchIndex : 0;
-const targetResult = state.searchResults[targetIndex] ?? state.searchResults[0];
-if (targetResult) {
-  goToPage(targetResult.globalPageNumber);
-}
+    const hasResults = state.searchResults.length > 0;
+    if (!hasResults || !state.searchQuery || !searchComplete) {
+      return;
     }
-  }, [state.searchResults, state.searchQuery, goToPage]);
+
+    if (lastNavigatedQueryRef.current === state.searchQuery) {
+      return;
+    }
+
+    const hasMatchOnCurrentPage = state.searchResults.some(
+      result => result.globalPageNumber === state.currentPage
+    );
+
+    lastNavigatedQueryRef.current = state.searchQuery;
+
+    if (hasMatchOnCurrentPage) {
+      return;
+    }
+
+    const targetIndex = state.currentSearchIndex >= 0 ? state.currentSearchIndex : 0;
+    const targetResult = state.searchResults[targetIndex] ?? state.searchResults[0];
+    if (targetResult) {
+      goToPage(targetResult.globalPageNumber);
+    }
+  }, [
+    state.searchResults,
+    state.searchQuery,
+    state.currentSearchIndex,
+    state.currentPage,
+    searchComplete,
+    goToPage
+  ]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -209,7 +229,16 @@ if (targetResult) {
               ref={inputRef}
               type="text"
               value={localQuery}
-              onChange={(e) => setLocalQuery(e.target.value)}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                setLocalQuery(nextValue);
+                if (nextValue === '') {
+                  clearSearch();
+                  setSearchQuery('');
+                  setSearchComplete(true);
+                  lastNavigatedQueryRef.current = '';
+                }
+              }}
               onKeyDown={handleKeyDown}
               placeholder="Pesquisar no PDF..."
               className={`w-56 pl-8 pr-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
