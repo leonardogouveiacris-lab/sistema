@@ -1680,14 +1680,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       const current = prev.currentSearchIndex < 0 ? 0 : prev.currentSearchIndex;
       const nextIndex = (current + 1) % total;
 
+      queueMicrotask(() => navigateToSearchResultIndex(nextIndex));
       return { ...prev, currentSearchIndex: nextIndex };
-    });
-
-    setState(prev => {
-      if (prev.searchResults.length === 0 || prev.currentSearchIndex < 0) return prev;
-      const idx = prev.currentSearchIndex;
-      queueMicrotask(() => navigateToSearchResultIndex(idx));
-      return prev;
     });
   }, [navigateToSearchResultIndex]);
 
@@ -1699,14 +1693,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       const current = prev.currentSearchIndex < 0 ? 0 : prev.currentSearchIndex;
       const prevIndex = current <= 0 ? total - 1 : current - 1;
 
+      queueMicrotask(() => navigateToSearchResultIndex(prevIndex));
       return { ...prev, currentSearchIndex: prevIndex };
-    });
-
-    setState(prev => {
-      if (prev.searchResults.length === 0 || prev.currentSearchIndex < 0) return prev;
-      const idx = prev.currentSearchIndex;
-      queueMicrotask(() => navigateToSearchResultIndex(idx));
-      return prev;
     });
   }, [navigateToSearchResultIndex]);
 
