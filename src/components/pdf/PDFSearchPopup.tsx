@@ -59,6 +59,8 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   const localIndexRef = useRef<Map<string, Map<number, ReturnType<typeof buildPageSearchIndex>>>>(new Map());
   const indexProgressRef = useRef<{ current: number; total: number }>({ current: 0, total: 0 });
   const idleCallbackRef = useRef<number | null>(null);
+  const localQueryRef = useRef<string>(localQuery);
+  const isSearchOpenRef = useRef<boolean>(state.isSearchOpen);
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexProgress, setIndexProgress] = useState<{ current: number; total: number }>({
     current: 0,
