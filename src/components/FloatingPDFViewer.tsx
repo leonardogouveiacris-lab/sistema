@@ -106,7 +106,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     setComments,
     setSelectedCommentColor,
     registerScrollContainer,
-    disableSearchNavigationSync
+    disableSearchNavigationSync,
+    setTextExtractionProgress
   } = usePDFViewer();
 
   const toast = useToast();
@@ -147,6 +148,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
+  const textExtractionProgressRef = useRef<Map<string, { current: number; total: number }>>(new Map());
   const INTERACTION_DEBOUNCE_MS = 200;
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
@@ -1063,12 +1065,41 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return newMap;
     });
 
-    extractAllPagesText(pdf, currentDoc.id).then(() => {
+    const recalcExtractionProgress = () => {
+      if (textExtractionProgressRef.current.size === 0) {
+        setTextExtractionProgress(null);
+        return;
+      }
+      let aggregateCurrent = 0;
+      let aggregateTotal = 0;
+      textExtractionProgressRef.current.forEach(value => {
+        aggregateCurrent += value.current;
+        aggregateTotal += value.total;
+      });
+      setTextExtractionProgress({ current: aggregateCurrent, total: aggregateTotal });
+    };
+
+    const updateExtractionProgress = (documentId: string, current: number, total: number) => {
+      textExtractionProgressRef.current.set(documentId, { current, total });
+      recalcExtractionProgress();
+    };
+
+    updateExtractionProgress(currentDoc.id, 0, numPages);
+
+    extractAllPagesText(
+      pdf,
+      currentDoc.id,
+      (current, total) => updateExtractionProgress(currentDoc.id, current, total)
+    ).then(() => {
+      textExtractionProgressRef.current.delete(currentDoc.id);
+      recalcExtractionProgress();
       logger.success(
         `Text extracted and persisted for document ${currentDoc.id}`,
         'FloatingPDFViewer.onDocumentLoadSuccess'
       );
     }).catch((error) => {
+      textExtractionProgressRef.current.delete(currentDoc.id);
+      recalcExtractionProgress();
       logger.warn(
         `Failed to extract text for document ${currentDoc.id}`,
         error,
@@ -1158,7 +1189,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return newMap;
       });
     }
-  }, [state.documents, documentPages, setTotalPages, setBookmarks, setIsLoadingBookmarks, setBookmarksError]);
+  }, [state.documents, setBookmarks, setIsLoadingBookmarks, setBookmarksError, setTextExtractionProgress]);
 
   /**
    * Calcula o offset de página global para cada documento

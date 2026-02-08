@@ -38,14 +38,17 @@ export interface SearchResult {
   matchIndex: number;
   matchStart: number;
   matchEnd: number;
+  contextBefore: string;
   matchText: string;
-  contextBefore?: string;
-  contextAfter?: string;
+  contextAfter: string;
   rects?: Array<{ x: number; y: number; width: number; height: number }>;
-  source?: 'local' | 'remote';
 }
 
 const textCache = new Map<string, DocumentTextCache>();
+
+export function getDocumentTextCache(documentId: string): DocumentTextCache | null {
+  return textCache.get(documentId) ?? null;
+}
 
 async function extractPageText(
   pdfDocument: pdfjs.PDFDocumentProxy,
