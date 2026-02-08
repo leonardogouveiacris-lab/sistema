@@ -4,6 +4,8 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useDebounce } from '../../hooks/useDebounce';
 import { supabase } from '../../lib/supabase';
 import logger from '../../utils/logger';
+import { findPageSearchMatches } from '../../utils/pdfSearchIndexer';
+import { getCachedDocumentText, SearchResult } from '../../utils/pdfTextExtractor';
 
 const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
 
@@ -49,6 +51,55 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   const searchRequestIdRef = useRef(0);
   const debouncedQuery = useDebounce(localQuery, 300);
 
+  const buildLocalSearchResults = useCallback((query: string) => {
+    let hasIndexedContent = false;
+    const results: SearchResult[] = [];
+    let matchIndex = 0;
+
+    state.documents.forEach((doc, documentIndex) => {
+      const cache = getCachedDocumentText(doc.id);
+      if (!cache) return;
+
+      const pageNumbers = Array.from(cache.pages.keys()).sort((a, b) => a - b);
+      pageNumbers.forEach((pageNumber) => {
+        const pageContent = cache.pages.get(pageNumber);
+        if (!pageContent) return;
+        if (!pageContent.items || pageContent.items.length === 0) return;
+        const hasOffsets = pageContent.items.some((item) =>
+          typeof item.startOffset === 'number' && typeof item.endOffset === 'number'
+        );
+        if (!hasOffsets) return;
+
+        hasIndexedContent = true;
+        const matches = findPageSearchMatches(pageContent, query);
+        if (matches.length === 0) return;
+
+        const docOffset = documentOffsets.get(doc.id);
+        const globalPageNumber = docOffset
+          ? docOffset.startPage + pageNumber - 1
+          : pageNumber;
+
+        matches.forEach((match) => {
+          results.push({
+            documentId: doc.id,
+            documentIndex,
+            globalPageNumber,
+            localPageNumber: pageNumber,
+            matchIndex: matchIndex++,
+            matchStart: match.matchStart,
+            matchEnd: match.matchEnd,
+            contextBefore: match.contextBefore,
+            matchText: match.matchText,
+            contextAfter: match.contextAfter,
+            rects: match.rects
+          });
+        });
+      });
+    });
+
+    return { results, hasIndexedContent };
+  }, [documentOffsets, state.documents]);
+
   useEffect(() => {
     if (state.isSearchOpen && inputRef.current) {
       inputRef.current.focus();
@@ -68,7 +119,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   }, [state.isSearchOpen]);
 
   const searchFromDatabase = useCallback(async (query: string) => {
-    if (!query || query.length < 2 || !processId) {
+    if (!query || query.length < 2) {
       setSearchResults([]);
       setSearchComplete(true);
       return;
@@ -82,6 +133,19 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     setSearchQuery(query);
 
     try {
+      const localSearch = buildLocalSearchResults(query);
+      if (localSearch.hasIndexedContent) {
+        setSearchResults(localSearch.results);
+        setSearchComplete(true);
+        return;
+      }
+
+      if (!processId) {
+        setSearchResults([]);
+        setSearchComplete(true);
+        return;
+      }
+
       const currentRequestId = ++searchRequestIdRef.current;
       abortControllerRef.current = new AbortController();
 
@@ -156,7 +220,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
         setIsSearching(false);
       }
     }
-  }, [processId, documentOffsets, setSearchResults, setIsSearching, setSearchQuery]);
+  }, [processId, documentOffsets, setSearchResults, setIsSearching, setSearchQuery, buildLocalSearchResults]);
 
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 2) {
