@@ -187,13 +187,15 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       if (e.shiftKey) {
         goToPreviousSearchResult();
       } else {
-        goToNextSearchResult();
+        setSearchComplete(false);
+        lastNavigatedQueryRef.current = '';
+        searchFromDatabase(localQuery);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
       closeSearch();
     }
-  }, [goToNextSearchResult, goToPreviousSearchResult, closeSearch]);
+  }, [closeSearch, goToPreviousSearchResult, localQuery, searchFromDatabase]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
