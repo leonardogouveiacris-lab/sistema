@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, ChevronUp, ChevronDown, X, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Search, ChevronUp, ChevronDown, X, Loader2, Check } from 'lucide-react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useDebounce } from '../../hooks/useDebounce';
 import { supabase } from '../../lib/supabase';
+import { getCachedDocumentText } from '../../utils/pdfTextExtractor';
+import type { SearchResult } from '../../utils/pdfTextExtractor';
+import { buildPageSearchIndex, buildSearchResults, SearchOptions } from '../../utils/pdfLocalSearch';
 import logger from '../../utils/logger';
 import { searchLocalPdfText } from '../../services/pdfTextSearch.service';
 import type { SearchResult } from '../../utils/pdfTextExtractor';
@@ -11,6 +14,11 @@ const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
 
 const normalizeQuery = (value: string): string =>
   value.normalize('NFD').replace(DIACRITICS_REGEX, '');
+
+interface IdleDeadline {
+  didTimeout: boolean;
+  timeRemaining: () => number;
+}
 
 interface PDFSearchPopupProps {
   processId: string;
@@ -49,7 +57,41 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastNavigatedQueryRef = useRef<string>('');
   const searchRequestIdRef = useRef(0);
+  const localIndexRef = useRef<Map<string, Map<number, ReturnType<typeof buildPageSearchIndex>>>>(new Map());
+  const indexProgressRef = useRef<{ current: number; total: number }>({ current: 0, total: 0 });
+  const idleCallbackRef = useRef<number | null>(null);
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [indexProgress, setIndexProgress] = useState<{ current: number; total: number }>({
+    current: 0,
+    total: 0
+  });
+  const [matchCase, setMatchCase] = useState(false);
+  const [matchWholeWord, setMatchWholeWord] = useState(false);
+  const [matchDiacritics, setMatchDiacritics] = useState(false);
   const debouncedQuery = useDebounce(localQuery, 300);
+
+  const searchOptions = useMemo<SearchOptions>(() => ({
+    matchCase,
+    matchWholeWord,
+    matchDiacritics
+  }), [matchCase, matchWholeWord, matchDiacritics]);
+
+  const scheduleIdleTask = useCallback((callback: (deadline: IdleDeadline) => void) => {
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      return window.requestIdleCallback(callback as any);
+    }
+    return window.setTimeout(() => {
+      callback({ didTimeout: true, timeRemaining: () => 0 });
+    }, 0);
+  }, []);
+
+  const cancelIdleTask = useCallback((id: number) => {
+    if (typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+      window.cancelIdleCallback(id);
+      return;
+    }
+    window.clearTimeout(id);
+  }, []);
 
   useEffect(() => {
     if (state.isSearchOpen && inputRef.current) {
@@ -58,16 +100,131 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   }, [state.isSearchOpen]);
 
   useEffect(() => {
+    localQueryRef.current = localQuery;
+  }, [localQuery]);
+
+  useEffect(() => {
+    isSearchOpenRef.current = state.isSearchOpen;
+  }, [state.isSearchOpen]);
+
+  const invalidateSearch = useCallback(() => {
+    searchRequestIdRef.current += 1;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsSearching(false);
+  }, [setIsSearching]);
+
+  useEffect(() => {
     if (!state.isSearchOpen) {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
+      if (idleCallbackRef.current) {
+        cancelIdleTask(idleCallbackRef.current);
+        idleCallbackRef.current = null;
+      }
       setSearchComplete(false);
       lastNavigatedQueryRef.current = '';
       setLocalQuery('');
     }
-  }, [state.isSearchOpen]);
+  }, [state.isSearchOpen, cancelIdleTask]);
+
+  const updateIndexProgress = useCallback((current: number, total: number) => {
+    indexProgressRef.current = { current, total };
+    setIndexProgress({ current, total });
+    setIsIndexing(current < total);
+  }, []);
+
+  const buildLocalIndex = useCallback(async () => {
+    if (!state.isSearchOpen) return;
+
+    const documents = state.documents;
+    if (documents.length === 0) return;
+
+    const totalPages = documents.reduce((sum, doc) => {
+      const docOffsets = documentOffsets.get(doc.id);
+      return sum + (docOffsets?.numPages || 0);
+    }, 0);
+
+    const indexedPages = Array.from(localIndexRef.current.values())
+      .reduce((sum, pageMap) => sum + pageMap.size, 0);
+    updateIndexProgress(indexedPages, totalPages);
+
+    for (const doc of documents) {
+      if (!state.isSearchOpen) return;
+      if (localIndexRef.current.has(doc.id)) continue;
+      const cached = await getCachedDocumentText(doc.id);
+      if (!cached) {
+        continue;
+      }
+
+      const pageIndexMap = new Map<number, ReturnType<typeof buildPageSearchIndex>>();
+      localIndexRef.current.set(doc.id, pageIndexMap);
+      const pageNumbers = Array.from(cached.pages.keys()).sort((a, b) => a - b);
+      let cursor = 0;
+
+      const buildChunk = (deadline: IdleDeadline) => {
+        while (cursor < pageNumbers.length && (deadline.timeRemaining() > 8 || deadline.didTimeout)) {
+          const pageNumber = pageNumbers[cursor];
+          const pageContent = cached.pages.get(pageNumber);
+          if (pageContent) {
+            pageIndexMap.set(pageNumber, buildPageSearchIndex(pageContent));
+          }
+          cursor += 1;
+          updateIndexProgress(indexProgressRef.current.current + 1, totalPages);
+        }
+
+        if (cursor < pageNumbers.length && state.isSearchOpen) {
+          idleCallbackRef.current = scheduleIdleTask(buildChunk);
+        }
+      };
+
+      idleCallbackRef.current = scheduleIdleTask(buildChunk);
+    }
+  }, [documentOffsets, scheduleIdleTask, state.documents, state.isSearchOpen, updateIndexProgress]);
+
+  useEffect(() => {
+    if (state.isSearchOpen) {
+      buildLocalIndex();
+    }
+  }, [buildLocalIndex, state.isSearchOpen]);
+
+  const searchLocal = useCallback((query: string): SearchResult[] => {
+    if (!query || query.length < 2) return [];
+    const results: SearchResult[] = [];
+    let matchOffset = 0;
+
+    state.documents.forEach((doc, docIndex) => {
+      const pageIndexMap = localIndexRef.current.get(doc.id);
+      const docOffset = documentOffsets.get(doc.id);
+      if (!pageIndexMap || !docOffset) return;
+
+      const sortedPages = Array.from(pageIndexMap.keys()).sort((a, b) => a - b);
+      sortedPages.forEach((pageNumber) => {
+        const pageIndex = pageIndexMap.get(pageNumber);
+        if (!pageIndex) return;
+        const globalPageNumber = docOffset.startPage + pageNumber - 1;
+        const pageResults = buildSearchResults(
+          doc.id,
+          docIndex,
+          pageIndex,
+          query,
+          searchOptions,
+          matchOffset,
+          globalPageNumber
+        );
+        if (pageResults.length > 0) {
+          results.push(...pageResults);
+          matchOffset += pageResults.length;
+        }
+      });
+    });
+
+    return results;
+  }, [documentOffsets, searchOptions, state.documents]);
 
   const fetchDatabaseResults = useCallback(async (query: string): Promise<SearchResult[]> => {
     if (!query || query.length < 2 || !processId) {
@@ -127,14 +284,25 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       return;
     }
 
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    invalidateSearch();
 
     setIsSearching(true);
     setSearchQuery(query);
 
     try {
+      const localSearch = buildLocalSearchResults(query);
+      if (localSearch.hasIndexedContent) {
+        setSearchResults(localSearch.results);
+        setSearchComplete(true);
+        return;
+      }
+
+      if (!processId) {
+        setSearchResults([]);
+        setSearchComplete(true);
+        return;
+      }
+
       const currentRequestId = ++searchRequestIdRef.current;
       abortControllerRef.current = new AbortController();
 
@@ -144,7 +312,12 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
         documentOffsets
       });
 
-      if (abortControllerRef.current?.signal.aborted || currentRequestId !== searchRequestIdRef.current) {
+      if (
+        abortControllerRef.current?.signal.aborted ||
+        currentRequestId !== searchRequestIdRef.current ||
+        !isSearchOpenRef.current ||
+        localQueryRef.current !== query
+      ) {
         return;
       }
 
@@ -188,6 +361,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
 
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 2) {
+      setIsSearching(false);
       setSearchResults([]);
       lastNavigatedQueryRef.current = '';
       setSearchComplete(true);
@@ -230,6 +404,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      invalidateSearch();
       closeSearch();
     }
   }, [
@@ -246,13 +421,14 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && state.isSearchOpen) {
         e.preventDefault();
+        invalidateSearch();
         closeSearch();
       }
     };
 
     document.addEventListener('keydown', handleGlobalKeyDown);
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [state.isSearchOpen, closeSearch]);
+  }, [state.isSearchOpen, closeSearch, invalidateSearch]);
 
   if (!state.isSearchOpen) return null;
 
@@ -278,6 +454,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
                 const nextValue = e.target.value;
                 setLocalQuery(nextValue);
                 if (nextValue === '') {
+                  invalidateSearch();
                   clearSearch();
                   setSearchQuery('');
                   setSearchComplete(true);
@@ -332,11 +509,47 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
           <div className="w-px h-5 bg-gray-300" />
 
           <button
-            onClick={closeSearch}
+            onClick={() => {
+              invalidateSearch();
+              closeSearch();
+            }}
             className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
             title="Fechar (Esc)"
           >
             <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 px-3 pb-2 text-[11px] text-gray-600">
+          <button
+            type="button"
+            onClick={() => setMatchCase(prev => !prev)}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded border ${
+              matchCase ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200'
+            }`}
+          >
+            {matchCase && <Check size={12} />}
+            Match case
+          </button>
+          <button
+            type="button"
+            onClick={() => setMatchWholeWord(prev => !prev)}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded border ${
+              matchWholeWord ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200'
+            }`}
+          >
+            {matchWholeWord && <Check size={12} />}
+            Palavra inteira
+          </button>
+          <button
+            type="button"
+            onClick={() => setMatchDiacritics(prev => !prev)}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded border ${
+              matchDiacritics ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200'
+            }`}
+          >
+            {matchDiacritics && <Check size={12} />}
+            Diacríticos
           </button>
         </div>
 

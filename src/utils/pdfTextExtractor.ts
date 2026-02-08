@@ -15,6 +15,8 @@ export interface TextItem {
   width: number;
   height: number;
   transform: number[];
+  startOffset: number;
+  endOffset: number;
 }
 
 export interface PageTextContent {
@@ -55,6 +57,7 @@ async function extractPageText(
   try {
     const page = await pdfDocument.getPage(pageNumber);
     const textContent = await page.getTextContent();
+    const viewport = page.getViewport({ scale: 1, rotation: page.rotate || 0 });
 
     const items: TextItem[] = [];
     let fullText = '';
@@ -62,15 +65,24 @@ async function extractPageText(
     for (const item of textContent.items) {
       if ('str' in item && item.str) {
         const textItem = item as any;
+        const x = textItem.transform?.[4] || 0;
+        const y = textItem.transform?.[5] || 0;
+        const width = textItem.width || 0;
+        const height = textItem.height || 0;
+        const [x1, y1, x2, y2] = viewport.convertToViewportRectangle([x, y, x + width, y + height]);
+        const rectX = Math.min(x1, x2);
+        const rectY = Math.min(y1, y2);
+        const rectWidth = Math.abs(x2 - x1);
+        const rectHeight = Math.abs(y2 - y1);
         items.push({
           text: textItem.str,
-          x: textItem.transform?.[4] || 0,
-          y: textItem.transform?.[5] || 0,
-          width: textItem.width || 0,
-          height: textItem.height || 0,
+          x: rectX,
+          y: rectY,
+          width: rectWidth,
+          height: rectHeight,
           transform: textItem.transform || []
         });
-        fullText += textItem.str + ' ';
+        fullText += `${itemText} `;
       }
     }
 
@@ -175,4 +187,25 @@ export async function extractAllPagesText(
   );
 
   return cache;
+}
+
+export async function getCachedDocumentText(documentId: string): Promise<DocumentTextCache | null> {
+  const memoryCache = textCache.get(documentId);
+  if (memoryCache) {
+    return memoryCache;
+  }
+
+  const persistedCache = await getCachedDocument(documentId);
+  if (persistedCache) {
+    textCache.set(documentId, persistedCache);
+    return persistedCache;
+  }
+
+  const dbCache = await loadFromDatabase(documentId);
+  if (dbCache) {
+    textCache.set(documentId, dbCache);
+    return dbCache;
+  }
+
+  return null;
 }
