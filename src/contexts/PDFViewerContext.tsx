@@ -1718,30 +1718,22 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   );
 
   const goToNextSearchResult = useCallback(() => {
-    setState(prev => {
-      const total = prev.searchResults.length;
-      if (total === 0) return prev;
+    const total = state.searchResults.length;
+    if (total === 0) return;
 
-      const current = prev.currentSearchIndex < 0 ? 0 : prev.currentSearchIndex;
-      const nextIndex = (current + 1) % total;
-
-      queueMicrotask(() => navigateToSearchResultIndex(nextIndex));
-      return { ...prev, currentSearchIndex: nextIndex };
-    });
-  }, [navigateToSearchResultIndex]);
+    const current = state.currentSearchIndex < 0 ? 0 : state.currentSearchIndex;
+    const nextIndex = (current + 1) % total;
+    navigateToSearchResultIndex(nextIndex);
+  }, [state.searchResults.length, state.currentSearchIndex, navigateToSearchResultIndex]);
 
   const goToPreviousSearchResult = useCallback(() => {
-    setState(prev => {
-      const total = prev.searchResults.length;
-      if (total === 0) return prev;
+    const total = state.searchResults.length;
+    if (total === 0) return;
 
-      const current = prev.currentSearchIndex < 0 ? 0 : prev.currentSearchIndex;
-      const prevIndex = current <= 0 ? total - 1 : current - 1;
-
-      queueMicrotask(() => navigateToSearchResultIndex(prevIndex));
-      return { ...prev, currentSearchIndex: prevIndex };
-    });
-  }, [navigateToSearchResultIndex]);
+    const current = state.currentSearchIndex < 0 ? 0 : state.currentSearchIndex;
+    const prevIndex = current <= 0 ? total - 1 : current - 1;
+    navigateToSearchResultIndex(prevIndex);
+  }, [state.searchResults.length, state.currentSearchIndex, navigateToSearchResultIndex]);
 
   const setIsSearching = useCallback((isSearching: boolean) => {
     setState(prev => ({ ...prev, isSearching }));
