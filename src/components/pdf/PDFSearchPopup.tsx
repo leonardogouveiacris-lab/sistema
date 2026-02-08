@@ -40,6 +40,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastNavigatedQueryRef = useRef<string>('');
+  const searchRequestIdRef = useRef(0);
   const debouncedQuery = useDebounce(localQuery, 300);
 
   useEffect(() => {
@@ -67,10 +68,15 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       return;
     }
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     setIsSearching(true);
     setSearchQuery(query);
 
     try {
+      const currentRequestId = ++searchRequestIdRef.current;
       abortControllerRef.current = new AbortController();
 
       const { data, error } = await supabase.rpc('search_pdf_text', {
@@ -78,6 +84,10 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
         p_query: query,
         p_limit: 500
       });
+
+      if (abortControllerRef.current?.signal.aborted || currentRequestId !== searchRequestIdRef.current) {
+        return;
+      }
 
       if (error) {
         logger.error('Database search error', 'PDFSearchPopup.searchFromDatabase', error);
@@ -116,11 +126,16 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
         'PDFSearchPopup.searchFromDatabase'
       );
     } catch (error) {
+      if (abortControllerRef.current?.signal.aborted) {
+        return;
+      }
       logger.error('Search error', 'PDFSearchPopup.searchFromDatabase', error);
       setSearchResults([]);
       setSearchComplete(true);
     } finally {
-      setIsSearching(false);
+      if (!abortControllerRef.current?.signal.aborted) {
+        setIsSearching(false);
+      }
     }
   }, [processId, documentOffsets, setSearchResults, setIsSearching, setSearchQuery]);
 
