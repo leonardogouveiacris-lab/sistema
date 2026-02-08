@@ -527,7 +527,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    * - agenda limpeza com token (sem corrida)
    */
   const scrollToSearchResult = useCallback((result: SearchResult) => {
-    const rects = (result as SearchResult & { rects?: Array<{ x: number; y: number; width: number; height: number }> }).rects;
+    const rects = result.rects;
     const pageNumber = result.globalPageNumber;
     const pageElement =
       document.querySelector(`[data-page-number="${pageNumber}"]`) ||

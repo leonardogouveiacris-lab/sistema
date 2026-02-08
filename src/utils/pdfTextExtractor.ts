@@ -15,6 +15,8 @@ export interface TextItem {
   width: number;
   height: number;
   transform: number[];
+  startOffset: number;
+  endOffset: number;
 }
 
 export interface PageTextContent {
@@ -26,6 +28,27 @@ export interface PageTextContent {
 export interface DocumentTextCache {
   documentId: string;
   pages: Map<number, PageTextContent>;
+}
+
+export interface SearchRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface SearchResult {
+  documentId: string;
+  documentIndex: number;
+  globalPageNumber: number;
+  localPageNumber: number;
+  matchIndex: number;
+  matchStart: number;
+  matchEnd: number;
+  contextBefore: string;
+  matchText: string;
+  contextAfter: string;
+  rects?: SearchRect[];
 }
 
 const textCache = new Map<string, DocumentTextCache>();
@@ -44,15 +67,20 @@ async function extractPageText(
     for (const item of textContent.items) {
       if ('str' in item && item.str) {
         const textItem = item as any;
+        const startOffset = fullText.length;
+        const itemText = textItem.str;
+        const endOffset = startOffset + itemText.length;
         items.push({
-          text: textItem.str,
+          text: itemText,
           x: textItem.transform?.[4] || 0,
           y: textItem.transform?.[5] || 0,
           width: textItem.width || 0,
           height: textItem.height || 0,
-          transform: textItem.transform || []
+          transform: textItem.transform || [],
+          startOffset,
+          endOffset
         });
-        fullText += textItem.str + ' ';
+        fullText += `${itemText} `;
       }
     }
 
@@ -157,4 +185,8 @@ export async function extractAllPagesText(
   );
 
   return cache;
+}
+
+export function getCachedDocumentText(documentId: string): DocumentTextCache | null {
+  return textCache.get(documentId) || null;
 }
