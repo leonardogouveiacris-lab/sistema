@@ -6,16 +6,22 @@ const DB_NAME = 'pdfTextCacheDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'documents';
 
-let dbPromise: Promise<IDBDatabase> | null = null;
+let dbPromise: Promise<IDBDatabase | null> | null = null;
 
-function openDB(): Promise<IDBDatabase> {
+function openDB(): Promise<IDBDatabase | null> {
   if (dbPromise) return dbPromise;
+
+  if (!('indexedDB' in window)) {
+    logger.warn('IndexedDB is not available in this environment', 'pdfTextCache.openDB');
+    return Promise.resolve(null);
+  }
 
   dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => {
       logger.error('Failed to open IndexedDB', 'pdfTextCache.openDB', request.error);
+      dbPromise = null;
       reject(request.error);
     };
 
@@ -43,6 +49,9 @@ interface CachedDocumentData {
 export async function getCachedDocument(documentId: string): Promise<DocumentTextCache | null> {
   try {
     const db = await openDB();
+    if (!db) {
+      return null;
+    }
     return new Promise((resolve) => {
       const transaction = db.transaction(STORE_NAME, 'readonly');
       const store = transaction.objectStore(STORE_NAME);
@@ -76,6 +85,10 @@ export async function getCachedDocument(documentId: string): Promise<DocumentTex
 export async function cacheDocument(cache: DocumentTextCache): Promise<void> {
   try {
     const db = await openDB();
+    if (!db) {
+      logger.warn('IndexedDB is not available; skipping cache write', 'pdfTextCache.cacheDocument');
+      return;
+    }
     const pages: Array<{ pageNumber: number; content: PageTextContent }> = [];
 
     cache.pages.forEach((content, pageNumber) => {
@@ -111,6 +124,10 @@ export async function cacheDocument(cache: DocumentTextCache): Promise<void> {
 export async function clearCache(): Promise<void> {
   try {
     const db = await openDB();
+    if (!db) {
+      logger.warn('IndexedDB is not available; skipping cache clear', 'pdfTextCache.clearCache');
+      return;
+    }
     return new Promise((resolve) => {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
