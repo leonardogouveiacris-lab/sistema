@@ -1301,6 +1301,38 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     scrollContainerRef.current = container;
   }, []);
 
+  const getPageHeight = useCallback(
+    (pageNumber: number): number => {
+      const dimensions = state.pageDimensions.get(pageNumber);
+      const rotation = state.pageRotations[pageNumber] || 0;
+      const isRotated90or270 = rotation === 90 || rotation === 270;
+
+      if (dimensions) {
+        const effectiveHeight = isRotated90or270 ? dimensions.width : dimensions.height;
+        return effectiveHeight * state.zoom;
+      }
+      const fallbackHeight = isRotated90or270 ? 595 : 842;
+      return fallbackHeight * state.zoom;
+    },
+    [state.pageDimensions, state.zoom, state.pageRotations]
+  );
+
+  const getPageWidth = useCallback(
+    (pageNumber: number): number => {
+      const dimensions = state.pageDimensions.get(pageNumber);
+      const rotation = state.pageRotations[pageNumber] || 0;
+      const isRotated90or270 = rotation === 90 || rotation === 270;
+
+      if (dimensions) {
+        const effectiveWidth = isRotated90or270 ? dimensions.height : dimensions.width;
+        return effectiveWidth * state.zoom;
+      }
+      const fallbackWidth = isRotated90or270 ? 842 : 595;
+      return fallbackWidth * state.zoom;
+    },
+    [state.pageDimensions, state.zoom, state.pageRotations]
+  );
+
   const getVisiblePageFromScroll = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container || state.viewMode !== 'continuous' || state.totalPages === 0) {
@@ -1341,43 +1373,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
     return centerPage;
   }, [getPageHeight, state.totalPages, state.viewMode]);
-
-  /**
-   * Retorna a altura calculada de uma página com base no zoom e rotação
-   * Quando a página está rotacionada 90 ou 270 graus, a altura efetiva
-   * é a largura original (e vice-versa)
-   */
-  const getPageHeight = useCallback(
-    (pageNumber: number): number => {
-      const dimensions = state.pageDimensions.get(pageNumber);
-      const rotation = state.pageRotations[pageNumber] || 0;
-      const isRotated90or270 = rotation === 90 || rotation === 270;
-
-      if (dimensions) {
-        const effectiveHeight = isRotated90or270 ? dimensions.width : dimensions.height;
-        return effectiveHeight * state.zoom;
-      }
-      const fallbackHeight = isRotated90or270 ? 595 : 842;
-      return fallbackHeight * state.zoom;
-    },
-    [state.pageDimensions, state.zoom, state.pageRotations]
-  );
-
-  const getPageWidth = useCallback(
-    (pageNumber: number): number => {
-      const dimensions = state.pageDimensions.get(pageNumber);
-      const rotation = state.pageRotations[pageNumber] || 0;
-      const isRotated90or270 = rotation === 90 || rotation === 270;
-
-      if (dimensions) {
-        const effectiveWidth = isRotated90or270 ? dimensions.height : dimensions.width;
-        return effectiveWidth * state.zoom;
-      }
-      const fallbackWidth = isRotated90or270 ? 842 : 595;
-      return fallbackWidth * state.zoom;
-    },
-    [state.pageDimensions, state.zoom, state.pageRotations]
-  );
 
   /**
    * Define o range de páginas a serem renderizadas
