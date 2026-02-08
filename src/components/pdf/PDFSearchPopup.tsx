@@ -47,6 +47,9 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastNavigatedQueryRef = useRef<string>('');
   const searchRequestIdRef = useRef(0);
+  const localQueryRef = useRef(localQuery);
+  const isSearchOpenRef = useRef(state.isSearchOpen);
+  const rpcSupportsSignalRef = useRef<boolean | null>(null);
   const debouncedQuery = useDebounce(localQuery, 300);
 
   useEffect(() => {
@@ -56,16 +59,30 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   }, [state.isSearchOpen]);
 
   useEffect(() => {
+    localQueryRef.current = localQuery;
+  }, [localQuery]);
+
+  useEffect(() => {
+    isSearchOpenRef.current = state.isSearchOpen;
+  }, [state.isSearchOpen]);
+
+  const invalidateSearch = useCallback(() => {
+    searchRequestIdRef.current += 1;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsSearching(false);
+  }, [setIsSearching]);
+
+  useEffect(() => {
     if (!state.isSearchOpen) {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
+      invalidateSearch();
       setSearchComplete(false);
       lastNavigatedQueryRef.current = '';
       setLocalQuery('');
     }
-  }, [state.isSearchOpen]);
+  }, [invalidateSearch, state.isSearchOpen]);
 
   const searchFromDatabase = useCallback(async (query: string) => {
     if (!query || query.length < 2 || !processId) {
@@ -74,9 +91,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       return;
     }
 
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    invalidateSearch();
 
     setIsSearching(true);
     setSearchQuery(query);
@@ -85,17 +100,38 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       const currentRequestId = ++searchRequestIdRef.current;
       abortControllerRef.current = new AbortController();
 
-      const runSearch = async (term: string) => {
-        return supabase.rpc('search_pdf_text', {
+      const runSearch = async (term: string, signal: AbortSignal) => {
+        const params = {
           p_process_id: processId,
           p_query: term,
           p_limit: 500
-        });
+        };
+
+        if (rpcSupportsSignalRef.current === false) {
+          return supabase.rpc('search_pdf_text', params);
+        }
+
+        try {
+          const result = await supabase.rpc('search_pdf_text', params, { signal });
+          rpcSupportsSignalRef.current = true;
+          return result;
+        } catch (error) {
+          if (rpcSupportsSignalRef.current === null && error instanceof TypeError) {
+            rpcSupportsSignalRef.current = false;
+            return supabase.rpc('search_pdf_text', params);
+          }
+          throw error;
+        }
       };
 
-      const { data, error } = await runSearch(query);
+      const { data, error } = await runSearch(query, abortControllerRef.current.signal);
 
-      if (abortControllerRef.current?.signal.aborted || currentRequestId !== searchRequestIdRef.current) {
+      if (
+        abortControllerRef.current?.signal.aborted ||
+        currentRequestId !== searchRequestIdRef.current ||
+        !isSearchOpenRef.current ||
+        localQueryRef.current !== query
+      ) {
         return;
       }
 
@@ -111,8 +147,14 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       const shouldRetry = dbResults.length === 0 && normalizedQuery !== query;
 
       if (shouldRetry) {
-        const retry = await runSearch(normalizedQuery);
-        if (!abortControllerRef.current?.signal.aborted && currentRequestId === searchRequestIdRef.current && !retry.error) {
+        const retry = await runSearch(normalizedQuery, abortControllerRef.current.signal);
+        if (
+          !abortControllerRef.current?.signal.aborted &&
+          currentRequestId === searchRequestIdRef.current &&
+          !retry.error &&
+          isSearchOpenRef.current &&
+          localQueryRef.current === query
+        ) {
           dbResults = (retry.data || []) as DatabaseSearchResult[];
         }
       }
@@ -137,8 +179,10 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
         };
       });
 
-      setSearchResults(results);
-      setSearchComplete(true);
+      if (isSearchOpenRef.current && localQueryRef.current === query) {
+        setSearchResults(results);
+        setSearchComplete(true);
+      }
 
       logger.info(
         `Database search: "${query}" - ${results.length} results`,
@@ -160,6 +204,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
 
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 2) {
+      setIsSearching(false);
       setSearchResults([]);
       lastNavigatedQueryRef.current = '';
       setSearchComplete(true);
@@ -195,21 +240,23 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      invalidateSearch();
       closeSearch();
     }
-  }, [closeSearch, goToPreviousSearchResult, localQuery, searchFromDatabase, setSearchAnchorPage, state.currentPage]);
+  }, [closeSearch, goToPreviousSearchResult, invalidateSearch, localQuery, searchFromDatabase, setSearchAnchorPage, state.currentPage]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && state.isSearchOpen) {
         e.preventDefault();
+        invalidateSearch();
         closeSearch();
       }
     };
 
     document.addEventListener('keydown', handleGlobalKeyDown);
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [state.isSearchOpen, closeSearch]);
+  }, [state.isSearchOpen, closeSearch, invalidateSearch]);
 
   if (!state.isSearchOpen) return null;
 
@@ -233,6 +280,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
                 const nextValue = e.target.value;
                 setLocalQuery(nextValue);
                 if (nextValue === '') {
+                  invalidateSearch();
                   clearSearch();
                   setSearchQuery('');
                   setSearchComplete(true);
@@ -281,7 +329,10 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
           <div className="w-px h-5 bg-gray-300" />
 
           <button
-            onClick={closeSearch}
+            onClick={() => {
+              invalidateSearch();
+              closeSearch();
+            }}
             className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
             title="Fechar (Esc)"
           >
