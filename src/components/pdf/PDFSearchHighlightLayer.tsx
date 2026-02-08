@@ -295,7 +295,7 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
     if (currentResultOnPage && currentResultRef.current) {
       const timeoutId = setTimeout(() => {
         currentResultRef.current?.scrollIntoView({
-          behavior: 'instant',
+          behavior: 'smooth',
           block: 'center'
         });
       }, 150);
