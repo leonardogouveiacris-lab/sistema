@@ -1774,6 +1774,68 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     [cancelScheduledHighlightClear, findForwardSearchIndex, getVisiblePageFromScroll]
   );
 
+  useEffect(() => {
+    if (!state.isSearchOpen || state.searchResults.length === 0) {
+      return;
+    }
+
+    if (!isSearchNavigationActiveRef.current) {
+      return;
+    }
+
+    const recentNavigation = lastSearchNavigationRef.current;
+    if (
+      recentNavigation &&
+      recentNavigation.page === state.currentPage &&
+      Date.now() - recentNavigation.timestamp < 500
+    ) {
+      return;
+    }
+
+    const currentResult = state.searchResults[state.currentSearchIndex];
+    if (currentResult && currentResult.globalPageNumber === state.currentPage) {
+      return;
+    }
+
+    const forwardMatchIndex = findForwardSearchIndex(state.searchResults, state.currentPage);
+    const forwardMatchResult = state.searchResults[forwardMatchIndex];
+    const nearestMatchIndex = findNearestSearchIndex(state.searchResults, state.currentPage);
+    const nearestMatchResult = state.searchResults[nearestMatchIndex];
+
+    const forwardDistance = forwardMatchResult
+      ? Math.abs(forwardMatchResult.globalPageNumber - state.currentPage)
+      : Infinity;
+    const nearestDistance = nearestMatchResult
+      ? Math.abs(nearestMatchResult.globalPageNumber - state.currentPage)
+      : Infinity;
+
+    const pageMatchIndex = forwardDistance <= MAX_SEARCH_SYNC_DISTANCE
+      ? forwardMatchIndex
+      : nearestMatchIndex;
+    const pageMatchResult = state.searchResults[pageMatchIndex];
+    if (!pageMatchResult) {
+      return;
+    }
+
+    const distanceToMatch = Math.abs(pageMatchResult.globalPageNumber - state.currentPage);
+    if (distanceToMatch > MAX_SEARCH_SYNC_DISTANCE) {
+      return;
+    }
+
+    if (pageMatchIndex === state.currentSearchIndex) {
+      return;
+    }
+
+    setState(prev => ({ ...prev, currentSearchIndex: pageMatchIndex }));
+  }, [
+    findForwardSearchIndex,
+    findNearestSearchIndex,
+    state.currentPage,
+    state.currentSearchIndex,
+    state.isSearchOpen,
+    state.searchResults
+  ]);
+
   const setCurrentSearchIndex = useCallback(
     (index: number) => {
       // Em vez de só setar index, navega de forma estável
