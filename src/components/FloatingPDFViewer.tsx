@@ -1409,7 +1409,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       if (!pageWrapper) {
-        logger.warn('Não foi possível encontrar container da página', undefined, 'FloatingPDFViewer.handleTextSelection');
+        logger.warn(
+          'Não foi possível encontrar container da página',
+          'FloatingPDFViewer.handleTextSelection'
+        );
         const rect = range.getBoundingClientRect();
         setSelectedText(selectedText, {
           x: rect.left,
@@ -1497,7 +1500,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       startedInsidePdfRef.current = false;
     } catch (error) {
-      logger.error('Erro ao capturar posição da seleção', 'FloatingPDFViewer.handleTextSelection', error);
+      logger.error(
+        'Erro ao capturar posição da seleção',
+        'FloatingPDFViewer.handleTextSelection',
+        undefined,
+        error
+      );
       setSelectedText(selectedText);
       startedInsidePdfRef.current = false;
     }
@@ -1520,7 +1528,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    */
   const handleInsertInField = useCallback(async (field: InsertionField) => {
     if (!state.selectedText) {
-      logger.warn('Nenhum texto selecionado para inserir', undefined, 'FloatingPDFViewer');
+      logger.warn('Nenhum texto selecionado para inserir', 'FloatingPDFViewer');
       return;
     }
 
@@ -1566,7 +1574,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         } else {
           logger.warn(
             'Falha ao criar highlight automático, continuando sem vínculo',
-            undefined,
             'FloatingPDFViewer.handleInsertInField'
           );
         }
@@ -1638,14 +1645,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    */
   const handleCreateHighlight = useCallback(async () => {
     if (!state.selectedText || !state.selectionPosition || !processId) {
-      logger.warn('Missing data for highlight creation', undefined, 'FloatingPDFViewer.handleCreateHighlight');
+      logger.warn('Missing data for highlight creation', 'FloatingPDFViewer.handleCreateHighlight');
       return;
     }
 
     const targetPageNumber = state.selectionPosition.pageNumber || state.currentPage;
     const targetDoc = getDocumentByGlobalPage(targetPageNumber);
     if (!targetDoc) {
-      logger.warn('No document found for page', undefined, 'FloatingPDFViewer.handleCreateHighlight');
+      logger.warn('No document found for page', 'FloatingPDFViewer.handleCreateHighlight');
       return;
     }
 

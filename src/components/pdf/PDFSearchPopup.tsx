@@ -100,7 +100,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       }
 
       if (error) {
-        logger.error('Database search error', 'PDFSearchPopup.searchFromDatabase', error);
+        logger.error('Database search error', 'PDFSearchPopup.searchFromDatabase', undefined, error);
         setSearchResults([]);
         setSearchComplete(true);
         return;
@@ -148,7 +148,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       if (abortControllerRef.current?.signal.aborted) {
         return;
       }
-      logger.error('Search error', 'PDFSearchPopup.searchFromDatabase', error);
+      logger.error('Search error', 'PDFSearchPopup.searchFromDatabase', undefined, error);
       setSearchResults([]);
       setSearchComplete(true);
     } finally {

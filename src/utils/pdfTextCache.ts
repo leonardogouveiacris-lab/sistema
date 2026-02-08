@@ -20,8 +20,7 @@ function openDB(): Promise<IDBDatabase | null> {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => {
-      logger.error('Failed to open IndexedDB', 'pdfTextCache.openDB', request.error);
-      dbPromise = null;
+      logger.error('Failed to open IndexedDB', 'pdfTextCache.openDB', undefined, request.error);
       reject(request.error);
     };
 
@@ -73,7 +72,12 @@ export async function getCachedDocument(documentId: string): Promise<DocumentTex
       };
 
       request.onerror = () => {
-        logger.error('Failed to get cached document', 'pdfTextCache.getCachedDocument', request.error);
+        logger.error(
+          'Failed to get cached document',
+          'pdfTextCache.getCachedDocument',
+          undefined,
+          request.error
+        );
         resolve(null);
       };
     });
@@ -112,12 +116,12 @@ export async function cacheDocument(cache: DocumentTextCache): Promise<void> {
       };
 
       request.onerror = () => {
-        logger.error('Failed to cache document', 'pdfTextCache.cacheDocument', request.error);
+        logger.error('Failed to cache document', 'pdfTextCache.cacheDocument', undefined, request.error);
         reject(request.error);
       };
     });
   } catch (error) {
-    logger.error('Failed to cache document', 'pdfTextCache.cacheDocument', error);
+    logger.error('Failed to cache document', 'pdfTextCache.cacheDocument', undefined, error);
   }
 }
 
@@ -191,6 +195,7 @@ export async function persistToDatabase(cache: DocumentTextCache): Promise<boole
         logger.error(
           `Failed to persist pages ${i + 1}-${i + batch.length} to database`,
           'pdfTextCache.persistToDatabase',
+          undefined,
           error
         );
         return false;
@@ -203,7 +208,7 @@ export async function persistToDatabase(cache: DocumentTextCache): Promise<boole
     );
     return true;
   } catch (error) {
-    logger.error('Failed to persist to database', 'pdfTextCache.persistToDatabase', error);
+    logger.error('Failed to persist to database', 'pdfTextCache.persistToDatabase', undefined, error);
     return false;
   }
 }
@@ -240,7 +245,7 @@ export async function loadFromDatabase(documentId: string): Promise<DocumentText
 
     return { documentId, pages };
   } catch (error) {
-    logger.error('Failed to load from database', 'pdfTextCache.loadFromDatabase', error);
+    logger.error('Failed to load from database', 'pdfTextCache.loadFromDatabase', undefined, error);
     return null;
   }
 }

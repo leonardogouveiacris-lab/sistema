@@ -1107,7 +1107,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       const editorRef = editorRefs.get(field);
 
       if (!editorRef) {
-        logger.warn(`Editor não encontrado para o campo: ${field}`, undefined, 'PDFViewerContext.insertTextInField');
+        logger.warn(`Editor não encontrado para o campo: ${field}`, 'PDFViewerContext.insertTextInField');
         return false;
       }
 
@@ -1147,7 +1147,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const setBookmarksError = useCallback((error: string | null) => {
     setState(prev => ({ ...prev, bookmarksError: error }));
     if (error) {
-      logger.warn(`Erro ao carregar bookmarks: ${error}`, undefined, 'PDFViewerContext');
+      logger.warn(`Erro ao carregar bookmarks: ${error}`, 'PDFViewerContext');
     }
   }, []);
 
@@ -1574,7 +1574,10 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const scrollToMultipleHighlights = useCallback(
     (highlightIds: string[], pageNumber?: number) => {
       if (highlightIds.length === 0) {
-        logger.warn('Nenhum highlight ID fornecido para navegação', undefined, 'PDFViewerContext.scrollToMultipleHighlights');
+        logger.warn(
+          'Nenhum highlight ID fornecido para navegação',
+          'PDFViewerContext.scrollToMultipleHighlights'
+        );
         if (pageNumber) {
           logger.info(`Fallback: navegando diretamente para página ${pageNumber}`, 'PDFViewerContext.scrollToMultipleHighlights');
           setState(prev => ({
@@ -1590,7 +1593,10 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       const relevantHighlights = state.highlights.filter(h => highlightIds.includes(h.id));
 
       if (relevantHighlights.length === 0) {
-        logger.warn('Nenhum highlight encontrado para os IDs fornecidos', undefined, 'PDFViewerContext.scrollToMultipleHighlights');
+        logger.warn(
+          'Nenhum highlight encontrado para os IDs fornecidos',
+          'PDFViewerContext.scrollToMultipleHighlights'
+        );
         if (pageNumber) {
           logger.info(`Fallback: navegando diretamente para página ${pageNumber}`, 'PDFViewerContext.scrollToMultipleHighlights');
           setState(prev => ({

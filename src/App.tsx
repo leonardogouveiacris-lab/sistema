@@ -203,7 +203,7 @@ function AppContent() {
       };
       reader.onerror = () => {
         setGlobalError('Erro ao ler o arquivo de backup');
-        logger.error('Erro ao ler arquivo', undefined, 'App - handleImportBackup');
+        logger.error('Erro ao ler arquivo', 'App - handleImportBackup');
       };
       reader.readAsText(file);
     };

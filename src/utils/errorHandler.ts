@@ -85,13 +85,13 @@ export const handleError = (
     
     logger.error(
       `SystemError in ${context}: ${error.message}`,
-      error,
       context,
       {
         type: error.type,
         code: error.code,
         details: error.details
-      }
+      },
+      error
     );
   } else if (error instanceof Error) {
     errorMessage = error.message;
