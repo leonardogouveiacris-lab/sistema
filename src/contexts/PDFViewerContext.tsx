@@ -465,7 +465,19 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const highlightClearTokenRef = useRef<number>(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const lastSearchNavigationRef = useRef<{ index: number; page: number; timestamp: number } | null>(null);
+  const searchNavigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSearchNavigationActiveRef = useRef(false);
   const MAX_SEARCH_SYNC_DISTANCE = 2;
+
+  const markSearchNavigationActive = useCallback((durationMs: number = 800) => {
+    if (searchNavigationTimeoutRef.current) {
+      clearTimeout(searchNavigationTimeoutRef.current);
+    }
+    isSearchNavigationActiveRef.current = true;
+    searchNavigationTimeoutRef.current = setTimeout(() => {
+      isSearchNavigationActiveRef.current = false;
+    }, durationMs);
+  }, []);
 
   const findForwardSearchIndex = useCallback((results: SearchResult[], referencePage: number) => {
     const forwardIndex = results.findIndex(result => result.globalPageNumber >= referencePage);
@@ -587,6 +599,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     });
 
     if (targetResult && resolvedIndex >= 0 && resolvedPage > 0) {
+      markSearchNavigationActive();
       lastSearchNavigationRef.current = {
         index: resolvedIndex,
         page: resolvedPage,
@@ -598,7 +611,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
         });
       });
     }
-  }, [cancelScheduledHighlightClear, scrollToSearchResult]);
+  }, [cancelScheduledHighlightClear, markSearchNavigationActive, scrollToSearchResult]);
 
   /**
    * Abre o visualizador com um ou múltiplos documentos
@@ -1738,8 +1751,11 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
         }
 
         const referencePage = visiblePage ?? prev.currentPage;
-        const safeIndex = findForwardSearchIndex(results, referencePage);
-        const hasMatchOnCurrentPage = results.some(result => result.globalPageNumber === referencePage);
+        const exactMatchIndex = results.findIndex(result => result.globalPageNumber === referencePage);
+        const safeIndex = exactMatchIndex !== -1
+          ? exactMatchIndex
+          : findForwardSearchIndex(results, referencePage);
+        const hasMatchOnCurrentPage = exactMatchIndex !== -1;
         const nextHighlightedPage = hasMatchOnCurrentPage
           ? referencePage
           : results[safeIndex]?.globalPageNumber ?? prev.highlightedPage;
@@ -1759,6 +1775,10 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
   useEffect(() => {
     if (!state.isSearchOpen || state.searchResults.length === 0) {
+      return;
+    }
+
+    if (!isSearchNavigationActiveRef.current) {
       return;
     }
 
@@ -1928,6 +1948,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   useEffect(() => {
     return () => {
       // cleanup de timeouts
+      if (searchNavigationTimeoutRef.current) clearTimeout(searchNavigationTimeoutRef.current);
       if (rotationSaveTimeoutRef.current) clearTimeout(rotationSaveTimeoutRef.current);
       if (rotationBlockTimeoutRef.current) clearTimeout(rotationBlockTimeoutRef.current);
       if (highlightClearTimeoutRef.current) clearTimeout(highlightClearTimeoutRef.current);
