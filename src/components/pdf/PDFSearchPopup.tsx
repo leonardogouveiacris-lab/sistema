@@ -8,7 +8,6 @@ import type { SearchResult } from '../../utils/pdfTextExtractor';
 import { buildPageSearchIndex, buildSearchResults, SearchOptions } from '../../utils/pdfLocalSearch';
 import logger from '../../utils/logger';
 import { searchLocalPdfText } from '../../services/pdfTextSearch.service';
-import type { SearchResult } from '../../utils/pdfTextExtractor';
 
 const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
 
@@ -383,10 +382,6 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
 
     lastNavigatedQueryRef.current = state.searchQuery;
   }, [state.searchResults, state.searchQuery, searchComplete]);
-
-  const isIndexing = Boolean(
-    state.textExtractionProgress && state.textExtractionProgress.current < state.textExtractionProgress.total
-  );
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {

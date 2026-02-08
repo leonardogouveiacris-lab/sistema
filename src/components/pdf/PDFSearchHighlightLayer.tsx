@@ -14,7 +14,7 @@ interface PDFSearchHighlightLayerProps {
   scale: number;
   documentId: string;
   localPageNumber: number;
-  searchResults: SearchResult[];
+  searchResults: SearchResultItem[];
   currentSearchIndex: number;
   searchQuery: string;
 }
