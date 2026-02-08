@@ -1,6 +1,13 @@
 import React, { useMemo, useEffect, useRef, useState, memo } from 'react';
 import logger from '../../utils/logger';
-import type { SearchResult } from '../../utils/pdfTextExtractor';
+
+interface SearchResultItem {
+  globalPageNumber: number;
+  matchIndex: number;
+  matchStart: number;
+  matchText?: string;
+  rects?: Array<{ x: number; y: number; width: number; height: number }>;
+}
 
 interface PDFSearchHighlightLayerProps {
   pageNumber: number;
@@ -121,15 +128,12 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
       return;
     }
 
-    const hasRectData = pageResults.some(result => (result.rects && result.rects.length > 0));
-    if (hasRectData) {
+    const hasLocalRects = pageResults.every(result => result.rects && result.rects.length > 0);
+    if (hasLocalRects) {
       const newRects = new Map<number, HighlightRect[]>();
       pageResults.forEach((result) => {
-        if (result.rects && result.rects.length > 0) {
-          newRects.set(result.matchIndex, result.rects);
-        }
+        newRects.set(result.matchIndex, result.rects || []);
       });
-
       if (!rectsMapAreEqual(newRects, lastRectsRef.current)) {
         lastRectsRef.current = newRects;
         setHighlightRects(newRects);
