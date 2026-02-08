@@ -467,6 +467,11 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const lastSearchNavigationRef = useRef<{ index: number; page: number; timestamp: number } | null>(null);
   const MAX_SEARCH_SYNC_DISTANCE = 2;
 
+  const findForwardSearchIndex = useCallback((results: SearchResult[], referencePage: number) => {
+    const forwardIndex = results.findIndex(result => result.globalPageNumber >= referencePage);
+    return forwardIndex === -1 ? results.length - 1 : forwardIndex;
+  }, []);
+
   const findNearestSearchIndex = useCallback((results: SearchResult[], referencePage: number) => {
     return results.reduce((closestIndex, result, index) => {
       const closestResult = results[closestIndex];
@@ -536,13 +541,21 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     if (scrollContainer) {
       const pageOffsetTop = (pageElement as HTMLElement).offsetTop;
       const targetTop = pageOffsetTop + rect.y * zoom;
-      scrollContainer.scrollTo({ top: Math.max(targetTop - 120, 0), behavior: 'smooth' });
+      const desiredTop = Math.max(targetTop - 120, 0);
+      if (Math.abs(scrollContainer.scrollTop - desiredTop) < 8) {
+        return;
+      }
+      scrollContainer.scrollTo({ top: desiredTop, behavior: 'smooth' });
       return;
     }
 
     const pageRect = pageElement.getBoundingClientRect();
     const targetTop = pageRect.top + window.scrollY + rect.y * zoom;
-    window.scrollTo({ top: Math.max(targetTop - 120, 0), behavior: 'smooth' });
+    const desiredTop = Math.max(targetTop - 120, 0);
+    if (Math.abs(window.scrollY - desiredTop) < 8) {
+      return;
+    }
+    window.scrollTo({ top: desiredTop, behavior: 'smooth' });
   }, [state.zoom]);
 
   const navigateToSearchResultIndex = useCallback((targetIndex: number) => {
@@ -1725,7 +1738,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
         }
 
         const referencePage = visiblePage ?? prev.currentPage;
-        const safeIndex = findNearestSearchIndex(results, referencePage);
+        const safeIndex = findForwardSearchIndex(results, referencePage);
         const hasMatchOnCurrentPage = results.some(result => result.globalPageNumber === referencePage);
         const nextHighlightedPage = hasMatchOnCurrentPage
           ? referencePage
@@ -1741,7 +1754,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
       });
     },
-    [cancelScheduledHighlightClear, findNearestSearchIndex, getVisiblePageFromScroll]
+    [cancelScheduledHighlightClear, findForwardSearchIndex, getVisiblePageFromScroll]
   );
 
   useEffect(() => {
@@ -1763,7 +1776,21 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       return;
     }
 
-    const pageMatchIndex = findNearestSearchIndex(state.searchResults, state.currentPage);
+    const forwardMatchIndex = findForwardSearchIndex(state.searchResults, state.currentPage);
+    const forwardMatchResult = state.searchResults[forwardMatchIndex];
+    const nearestMatchIndex = findNearestSearchIndex(state.searchResults, state.currentPage);
+    const nearestMatchResult = state.searchResults[nearestMatchIndex];
+
+    const forwardDistance = forwardMatchResult
+      ? Math.abs(forwardMatchResult.globalPageNumber - state.currentPage)
+      : Infinity;
+    const nearestDistance = nearestMatchResult
+      ? Math.abs(nearestMatchResult.globalPageNumber - state.currentPage)
+      : Infinity;
+
+    const pageMatchIndex = forwardDistance <= MAX_SEARCH_SYNC_DISTANCE
+      ? forwardMatchIndex
+      : nearestMatchIndex;
     const pageMatchResult = state.searchResults[pageMatchIndex];
     if (!pageMatchResult) {
       return;
@@ -1779,7 +1806,14 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     }
 
     setState(prev => ({ ...prev, currentSearchIndex: pageMatchIndex }));
-  }, [findNearestSearchIndex, state.currentPage, state.currentSearchIndex, state.isSearchOpen, state.searchResults]);
+  }, [
+    findForwardSearchIndex,
+    findNearestSearchIndex,
+    state.currentPage,
+    state.currentSearchIndex,
+    state.isSearchOpen,
+    state.searchResults
+  ]);
 
   const setCurrentSearchIndex = useCallback(
     (index: number) => {
