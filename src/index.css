@@ -1,0 +1,107 @@
+@import './styles/print.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out;
+}
+
+.react-pdf__Page {
+  isolation: isolate;
+  position: relative;
+}
+
+.textLayer {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+  pointer-events: none;
+  background: transparent;
+}
+
+.textLayer > span,
+.textLayer span[role="presentation"] {
+  user-select: text;
+  -webkit-user-select: text;
+  pointer-events: auto !important;
+  cursor: text !important;
+  mix-blend-mode: darken;
+  outline: none;
+  caret-color: #000;
+}
+
+.textLayer > span[contenteditable="true"],
+.textLayer span[role="presentation"][contenteditable="true"] {
+  caret-color: #000;
+  outline: none;
+}
+
+.textLayer > span[contenteditable="true"]:focus,
+.textLayer span[role="presentation"][contenteditable="true"]:focus {
+  caret-color: #000;
+  outline: none;
+}
+
+.textLayer br {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.react-pdf__Page__textContent {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  pointer-events: none;
+  background: transparent;
+}
+
+.react-pdf__Page__textContent > span {
+  pointer-events: auto !important;
+  cursor: text !important;
+}
+
+.textLayer .endOfContent,
+.textLayer .endOfContent.active,
+.textLayer.selecting .endOfContent {
+  display: none !important;
+}
+
+.textLayer ::selection,
+.textLayer span::selection,
+.react-pdf__Page__textContent ::selection,
+.react-pdf__Page__textContent span::selection {
+  background: transparent !important;
+  color: transparent !important;
+}
+
+.textLayer ::-moz-selection,
+.textLayer span::-moz-selection,
+.react-pdf__Page__textContent ::-moz-selection,
+.react-pdf__Page__textContent span::-moz-selection {
+  background: transparent !important;
+  color: transparent !important;
+}
+
+.textLayer .highlight,
+.textLayer .highlight.appended,
+.textLayer .highlight.begin,
+.textLayer .highlight.end,
+.textLayer .highlight.middle,
+.textLayer .highlight.selected {
+  margin: 0 !important;
+  padding: 0 !important;
+  background-color: transparent !important;
+  border-radius: 0 !important;
+}
