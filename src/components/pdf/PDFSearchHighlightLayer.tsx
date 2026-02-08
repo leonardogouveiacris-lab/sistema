@@ -6,6 +6,7 @@ interface SearchResultItem {
   matchIndex: number;
   matchStart: number;
   matchText?: string;
+  rects?: Array<{ x: number; y: number; width: number; height: number }>;
 }
 
 interface PDFSearchHighlightLayerProps {
@@ -123,6 +124,19 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
       if (lastRectsRef.current.size > 0) {
         lastRectsRef.current = new Map();
         setHighlightRects(new Map());
+      }
+      return;
+    }
+
+    const hasLocalRects = pageResults.every(result => result.rects && result.rects.length > 0);
+    if (hasLocalRects) {
+      const newRects = new Map<number, HighlightRect[]>();
+      pageResults.forEach((result) => {
+        newRects.set(result.matchIndex, result.rects || []);
+      });
+      if (!rectsMapAreEqual(newRects, lastRectsRef.current)) {
+        lastRectsRef.current = newRects;
+        setHighlightRects(newRects);
       }
       return;
     }
