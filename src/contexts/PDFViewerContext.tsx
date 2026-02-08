@@ -262,6 +262,7 @@ interface PDFViewerContextType {
   goToPreviousSearchResult: () => void;
   setIsSearching: (isSearching: boolean) => void;
   disableSearchNavigationSync: () => void;
+  markUserScrolling: () => void;
   setTextExtractionProgress: (progress: { current: number; total: number } | null) => void;
   clearSearch: () => void;
 
@@ -470,6 +471,9 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const searchNavigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSearchNavigationActiveRef = useRef(false);
+  const isUserScrollingRef = useRef(false);
+  const userScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSearchNavigationRef = useRef<{ page: number; timestamp: number } | null>(null);
 
   const markSearchNavigationActive = useCallback((durationMs: number = 800) => {
     if (searchNavigationTimeoutRef.current) {
@@ -487,6 +491,16 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       searchNavigationTimeoutRef.current = null;
     }
     isSearchNavigationActiveRef.current = false;
+  }, []);
+
+  const markUserScrolling = useCallback(() => {
+    isUserScrollingRef.current = true;
+    if (userScrollTimeoutRef.current) {
+      clearTimeout(userScrollTimeoutRef.current);
+    }
+    userScrollTimeoutRef.current = setTimeout(() => {
+      isUserScrollingRef.current = false;
+    }, 300);
   }, []);
 
   const findForwardSearchIndex = useCallback((results: SearchResult[], referencePage: number) => {
@@ -1796,6 +1810,10 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       return;
     }
 
+    if (isUserScrollingRef.current) {
+      return;
+    }
+
     const recentNavigation = lastSearchNavigationRef.current;
     if (
       recentNavigation &&
@@ -2232,6 +2250,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     goToPreviousSearchResult,
     setIsSearching,
     disableSearchNavigationSync,
+    markUserScrolling,
     setTextExtractionProgress,
     clearSearch,
     getPageRotation,

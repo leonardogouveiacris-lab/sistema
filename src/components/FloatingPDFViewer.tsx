@@ -106,7 +106,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     setComments,
     setSelectedCommentColor,
     registerScrollContainer,
-    disableSearchNavigationSync
+    disableSearchNavigationSync,
+    markUserScrolling
   } = usePDFViewer();
 
   const toast = useToast();
@@ -388,6 +389,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
+      markUserScrolling();
       markInteractionStart();
 
       const scrollHeight = container.scrollHeight;
@@ -413,7 +415,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return () => {
       container.removeEventListener('scroll', handleScroll);
     };
-  }, [state.viewMode, calculateVisiblePagesFromScroll, markInteractionStart]);
+  }, [state.viewMode, calculateVisiblePagesFromScroll, markInteractionStart, markUserScrolling]);
 
   useEffect(() => {
     registerScrollContainer(scrollContainerRef.current);
