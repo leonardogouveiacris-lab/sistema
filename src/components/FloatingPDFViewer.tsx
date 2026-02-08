@@ -146,7 +146,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
-  const INTERACTION_DEBOUNCE_MS = 50;
+  const INTERACTION_DEBOUNCE_MS = 200;
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
 
@@ -2590,7 +2590,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                 className="shadow-lg"
                                 renderTextLayer={true}
                                 renderAnnotationLayer={!state.performanceMode.disableAnnotations}
-                                isInteracting={state.isInteracting}
+                                isInteracting={state.isInteracting && !state.isSearchOpen}
                               />
                               <HighlightLayer pageNumber={state.currentPage} scale={state.zoom} />
                               <CommentLayer
@@ -2663,7 +2663,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                             className="shadow-lg"
                                             renderTextLayer={true}
                                             renderAnnotationLayer={!state.performanceMode.disableAnnotations}
-                                            isInteracting={state.isInteracting}
+                                            isInteracting={state.isInteracting && !state.isSearchOpen}
                                           />
                                         <HighlightLayer pageNumber={globalPageNum} scale={state.zoom} />
                                         <CommentLayer
