@@ -9,6 +9,7 @@
  */
 import React, { useMemo, useEffect, useRef, useState, memo } from 'react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
+import logger from '../../utils/logger';
 
 interface PDFSearchHighlightLayerProps {
   pageNumber: number;
@@ -25,6 +26,54 @@ interface HighlightRect {
 }
 
 const MAX_RETRY_ATTEMPTS = 20;
+const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
+
+const normalizeString = (text: string): string => {
+  let normalized = '';
+  let previousWasSpace = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (/\s/u.test(char)) {
+      if (previousWasSpace) continue;
+      normalized += ' ';
+      previousWasSpace = true;
+      continue;
+    }
+
+    previousWasSpace = false;
+    const cleaned = char.normalize('NFD').replace(DIACRITICS_REGEX, '').toLowerCase();
+    normalized += cleaned;
+  }
+
+  return normalized.trim();
+};
+
+const normalizeWithMap = (text: string): { normalized: string; indexMap: number[] } => {
+  let normalized = '';
+  const indexMap: number[] = [];
+  let previousWasSpace = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (/\s/u.test(char)) {
+      if (previousWasSpace) continue;
+      normalized += ' ';
+      indexMap.push(i);
+      previousWasSpace = true;
+      continue;
+    }
+
+    previousWasSpace = false;
+    const cleaned = char.normalize('NFD').replace(DIACRITICS_REGEX, '').toLowerCase();
+    for (let j = 0; j < cleaned.length; j += 1) {
+      normalized += cleaned[j];
+      indexMap.push(i);
+    }
+  }
+
+  return { normalized, indexMap };
+};
 
 function rectsMapAreEqual(
   map1: Map<number, HighlightRect[]>,
@@ -110,7 +159,10 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
 
       const newRects = new Map<number, HighlightRect[]>();
       const parentRect = textLayer.getBoundingClientRect();
-      const searchTerm = state.searchQuery.toLowerCase();
+      const searchTerm = normalizeString(state.searchQuery);
+      if (!searchTerm) {
+        return;
+      }
 
       const getTextNodeRect = (span: Element, startIdx: number, endIdx: number): DOMRect | null => {
         const textNode = span.firstChild;
@@ -131,6 +183,7 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
         startIdx: number;
         endIdx: number;
         rect: DOMRect;
+        normalizedText: string;
       }
 
       const allMatches: MatchInfo[] = [];
@@ -139,46 +192,89 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
         const text = span.textContent || '';
         if (!text.trim()) return;
 
-        const lowerText = text.toLowerCase();
+        const { normalized: normalizedText, indexMap } = normalizeWithMap(text);
+        if (!normalizedText) return;
         let searchStart = 0;
-        let matchIdx = lowerText.indexOf(searchTerm, searchStart);
+        let matchIdx = normalizedText.indexOf(searchTerm, searchStart);
 
         while (matchIdx !== -1) {
           const endIdx = matchIdx + searchTerm.length;
-          const rect = getTextNodeRect(span, matchIdx, endIdx);
+          const originalStart = indexMap[matchIdx];
+          const originalEnd = indexMap[endIdx - 1];
 
-          if (rect && rect.width > 0) {
-            allMatches.push({
-              span,
-              startIdx: matchIdx,
-              endIdx,
-              rect
-            });
+          if (originalStart !== undefined && originalEnd !== undefined) {
+            const rect = getTextNodeRect(span, originalStart, originalEnd + 1);
+            if (rect && rect.width > 0) {
+              allMatches.push({
+                span,
+                startIdx: originalStart,
+                endIdx: originalEnd + 1,
+                rect,
+                normalizedText: normalizeString(text.slice(originalStart, originalEnd + 1))
+              });
+            }
           }
 
           searchStart = matchIdx + 1;
-          matchIdx = lowerText.indexOf(searchTerm, searchStart);
+          matchIdx = normalizedText.indexOf(searchTerm, searchStart);
         }
       });
 
-      pageResults.forEach((result, resultIdx) => {
+      if (pageResults.length > allMatches.length) {
+        logger.warn(
+          'Search results exceed text layer matches',
+          'PDFSearchHighlightLayer.computeHighlights',
+          {
+            pageNumber,
+            results: pageResults.length,
+            matches: allMatches.length
+          }
+        );
+      }
+
+      const usedMatches = new Set<number>();
+      let missingMatches = 0;
+
+      pageResults.forEach((result) => {
         const rects: HighlightRect[] = [];
 
-        if (allMatches.length > 0) {
-          const matchInfo = allMatches[resultIdx % allMatches.length];
+        let matchIndex = -1;
 
-          if (matchInfo) {
-            rects.push({
-              x: (matchInfo.rect.left - parentRect.left) / scale,
-              y: (matchInfo.rect.top - parentRect.top) / scale,
-              width: matchInfo.rect.width / scale,
-              height: matchInfo.rect.height / scale
-            });
+        if (result.matchText) {
+          const normalizedMatchText = normalizeString(result.matchText);
+          if (normalizedMatchText) {
+            matchIndex = allMatches.findIndex(
+              (match, index) => !usedMatches.has(index) && match.normalizedText === normalizedMatchText
+            );
           }
         }
 
-        newRects.set(result.matchIndex, rects);
+        if (matchIndex === -1) {
+          matchIndex = allMatches.findIndex((_, index) => !usedMatches.has(index));
+        }
+
+        if (matchIndex !== -1) {
+          const matchInfo = allMatches[matchIndex];
+          usedMatches.add(matchIndex);
+          rects.push({
+            x: (matchInfo.rect.left - parentRect.left) / scale,
+            y: (matchInfo.rect.top - parentRect.top) / scale,
+            width: matchInfo.rect.width / scale,
+            height: matchInfo.rect.height / scale
+          });
+          newRects.set(result.matchIndex, rects);
+        } else {
+          missingMatches += 1;
+        }
       });
+
+      if (missingMatches > 0) {
+        logger.warn(
+          'Search results without matching text layer rects',
+          'PDFSearchHighlightLayer.computeHighlights',
+          { pageNumber, missingMatches }
+        );
+      }
 
       if (!rectsMapAreEqual(newRects, lastRectsRef.current)) {
         lastRectsRef.current = newRects;
