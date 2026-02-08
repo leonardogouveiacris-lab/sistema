@@ -464,6 +464,28 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const highlightClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightClearTokenRef = useRef<number>(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastSearchNavigationRef = useRef<{ index: number; page: number; timestamp: number } | null>(null);
+  const MAX_SEARCH_SYNC_DISTANCE = 2;
+
+  const findForwardSearchIndex = useCallback((results: SearchResult[], referencePage: number) => {
+    const forwardIndex = results.findIndex(result => result.globalPageNumber >= referencePage);
+    return forwardIndex === -1 ? results.length - 1 : forwardIndex;
+  }, []);
+
+  const findNearestSearchIndex = useCallback((results: SearchResult[], referencePage: number) => {
+    return results.reduce((closestIndex, result, index) => {
+      const closestResult = results[closestIndex];
+      if (!closestResult) return index;
+
+      const currentDistance = Math.abs(result.globalPageNumber - referencePage);
+      const closestDistance = Math.abs(closestResult.globalPageNumber - referencePage);
+
+      if (currentDistance < closestDistance) return index;
+      if (currentDistance > closestDistance) return closestIndex;
+
+      return index < closestIndex ? index : closestIndex;
+    }, 0);
+  }, []);
 
   const cancelScheduledHighlightClear = useCallback(() => {
     if (highlightClearTimeoutRef.current) {
@@ -502,24 +524,44 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       document.querySelector(`[data-page-number="${pageNumber}"]`) ||
       document.getElementById(`page-${pageNumber}`) ||
       document.getElementById(`pageContainer${pageNumber}`);
+    const scrollContainer = scrollContainerRef.current;
 
     if (!pageElement) {
       return;
     }
 
     if (!rects || rects.length === 0) {
-      pageElement.scrollIntoView({ behavior: 'auto', block: 'center' });
+      pageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
 
     const [rect] = rects;
+    const zoom = state.zoom;
+
+    if (scrollContainer) {
+      const pageOffsetTop = (pageElement as HTMLElement).offsetTop;
+      const targetTop = pageOffsetTop + rect.y * zoom;
+      const desiredTop = Math.max(targetTop - 120, 0);
+      if (Math.abs(scrollContainer.scrollTop - desiredTop) < 8) {
+        return;
+      }
+      scrollContainer.scrollTo({ top: desiredTop, behavior: 'smooth' });
+      return;
+    }
+
     const pageRect = pageElement.getBoundingClientRect();
-    const targetTop = pageRect.top + window.scrollY + rect.y;
-    window.scrollTo({ top: Math.max(targetTop - 120, 0), behavior: 'auto' });
-  }, []);
+    const targetTop = pageRect.top + window.scrollY + rect.y * zoom;
+    const desiredTop = Math.max(targetTop - 120, 0);
+    if (Math.abs(window.scrollY - desiredTop) < 8) {
+      return;
+    }
+    window.scrollTo({ top: desiredTop, behavior: 'smooth' });
+  }, [state.zoom]);
 
   const navigateToSearchResultIndex = useCallback((targetIndex: number) => {
     let targetResult: SearchResult | null = null;
+    let resolvedIndex = -1;
+    let resolvedPage = 0;
     cancelScheduledHighlightClear();
     highlightClearTokenRef.current++;
 
@@ -530,9 +572,11 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       const safeIndex = Math.max(0, Math.min(targetIndex, total - 1));
       const result = prev.searchResults[safeIndex];
       targetResult = result || null;
+      resolvedIndex = safeIndex;
       if (!result) return { ...prev, currentSearchIndex: safeIndex };
 
       const validPage = Math.max(1, Math.min(result.globalPageNumber, prev.totalPages));
+      resolvedPage = validPage;
 
       return {
         ...prev,
@@ -542,7 +586,12 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       };
     });
 
-    if (targetResult) {
+    if (targetResult && resolvedIndex >= 0 && resolvedPage > 0) {
+      lastSearchNavigationRef.current = {
+        index: resolvedIndex,
+        page: resolvedPage,
+        timestamp: Date.now()
+      };
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           scrollToSearchResult(targetResult as SearchResult);
@@ -1689,8 +1738,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
         }
 
         const referencePage = visiblePage ?? prev.currentPage;
-        const nextIndex = results.findIndex(result => result.globalPageNumber >= referencePage);
-        const safeIndex = nextIndex === -1 ? results.length - 1 : nextIndex;
+        const safeIndex = findForwardSearchIndex(results, referencePage);
         const hasMatchOnCurrentPage = results.some(result => result.globalPageNumber === referencePage);
         const nextHighlightedPage = hasMatchOnCurrentPage
           ? referencePage
@@ -1706,8 +1754,66 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
       });
     },
-    [cancelScheduledHighlightClear, getVisiblePageFromScroll]
+    [cancelScheduledHighlightClear, findForwardSearchIndex, getVisiblePageFromScroll]
   );
+
+  useEffect(() => {
+    if (!state.isSearchOpen || state.searchResults.length === 0) {
+      return;
+    }
+
+    const recentNavigation = lastSearchNavigationRef.current;
+    if (
+      recentNavigation &&
+      recentNavigation.page === state.currentPage &&
+      Date.now() - recentNavigation.timestamp < 500
+    ) {
+      return;
+    }
+
+    const currentResult = state.searchResults[state.currentSearchIndex];
+    if (currentResult && currentResult.globalPageNumber === state.currentPage) {
+      return;
+    }
+
+    const forwardMatchIndex = findForwardSearchIndex(state.searchResults, state.currentPage);
+    const forwardMatchResult = state.searchResults[forwardMatchIndex];
+    const nearestMatchIndex = findNearestSearchIndex(state.searchResults, state.currentPage);
+    const nearestMatchResult = state.searchResults[nearestMatchIndex];
+
+    const forwardDistance = forwardMatchResult
+      ? Math.abs(forwardMatchResult.globalPageNumber - state.currentPage)
+      : Infinity;
+    const nearestDistance = nearestMatchResult
+      ? Math.abs(nearestMatchResult.globalPageNumber - state.currentPage)
+      : Infinity;
+
+    const pageMatchIndex = forwardDistance <= MAX_SEARCH_SYNC_DISTANCE
+      ? forwardMatchIndex
+      : nearestMatchIndex;
+    const pageMatchResult = state.searchResults[pageMatchIndex];
+    if (!pageMatchResult) {
+      return;
+    }
+
+    const distanceToMatch = Math.abs(pageMatchResult.globalPageNumber - state.currentPage);
+    if (distanceToMatch > MAX_SEARCH_SYNC_DISTANCE) {
+      return;
+    }
+
+    if (pageMatchIndex === state.currentSearchIndex) {
+      return;
+    }
+
+    setState(prev => ({ ...prev, currentSearchIndex: pageMatchIndex }));
+  }, [
+    findForwardSearchIndex,
+    findNearestSearchIndex,
+    state.currentPage,
+    state.currentSearchIndex,
+    state.isSearchOpen,
+    state.searchResults
+  ]);
 
   const setCurrentSearchIndex = useCallback(
     (index: number) => {
