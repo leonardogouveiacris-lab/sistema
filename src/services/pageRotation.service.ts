@@ -26,7 +26,7 @@ export async function getPageRotations(processDocumentId: string): Promise<PageR
       .eq('process_document_id', processDocumentId);
 
     if (error) {
-      logger.error('Error fetching page rotations', 'pageRotation.service.getPageRotations', error);
+      logger.error('Error fetching page rotations', 'pageRotation.service.getPageRotations', undefined, error);
       return {};
     }
 
@@ -91,7 +91,7 @@ export async function upsertPageRotation(
       );
 
     if (error) {
-      logger.error('Error upserting page rotation', 'pageRotation.service.upsertPageRotation', error);
+      logger.error('Error upserting page rotation', 'pageRotation.service.upsertPageRotation', undefined, error);
       return false;
     }
 
@@ -151,7 +151,12 @@ export async function upsertPageRotations(
         .in('page_number', toDelete);
 
       if (deleteError) {
-        logger.error('Error deleting zero rotations', 'pageRotation.service.upsertPageRotations', deleteError);
+        logger.error(
+          'Error deleting zero rotations',
+          'pageRotation.service.upsertPageRotations',
+          undefined,
+          deleteError
+        );
         return false;
       }
     }
@@ -164,7 +169,12 @@ export async function upsertPageRotations(
         });
 
       if (upsertError) {
-        logger.error('Error upserting rotations', 'pageRotation.service.upsertPageRotations', upsertError);
+        logger.error(
+          'Error upserting rotations',
+          'pageRotation.service.upsertPageRotations',
+          undefined,
+          upsertError
+        );
         return false;
       }
     }
@@ -202,7 +212,7 @@ export async function deletePageRotation(
       .eq('page_number', pageNumber);
 
     if (error) {
-      logger.error('Error deleting page rotation', 'pageRotation.service.deletePageRotation', error);
+      logger.error('Error deleting page rotation', 'pageRotation.service.deletePageRotation', undefined, error);
       return false;
     }
 
@@ -233,7 +243,12 @@ export async function deleteAllPageRotations(processDocumentId: string): Promise
       .eq('process_document_id', processDocumentId);
 
     if (error) {
-      logger.error('Error deleting all page rotations', 'pageRotation.service.deleteAllPageRotations', error);
+      logger.error(
+        'Error deleting all page rotations',
+        'pageRotation.service.deleteAllPageRotations',
+        undefined,
+        error
+      );
       return false;
     }
 

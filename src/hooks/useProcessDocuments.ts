@@ -46,7 +46,7 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
    */
   const loadDocuments = useCallback(async (processId: string) => {
     if (!processId) {
-      logger.warn('ProcessId não fornecido para loadDocuments', undefined, 'useProcessDocuments');
+      logger.warn('ProcessId não fornecido para loadDocuments', 'useProcessDocuments');
       return;
     }
 
@@ -108,7 +108,7 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
   ): Promise<DocumentUploadResult> => {
     if (!processId || !file) {
       const error = 'ProcessId e arquivo são obrigatórios';
-      logger.warn(error, undefined, 'useProcessDocuments.uploadDocument');
+      logger.warn('Falha ao fazer upload do documento', 'useProcessDocuments.uploadDocument', error);
       return { success: false, error };
     }
 
@@ -177,7 +177,7 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
    */
   const deleteDocument = useCallback(async (processId: string): Promise<boolean> => {
     if (!processId) {
-      logger.warn('ProcessId não fornecido para deleteDocument', undefined, 'useProcessDocuments');
+      logger.warn('ProcessId não fornecido para deleteDocument', 'useProcessDocuments');
       return false;
     }
 
@@ -227,7 +227,7 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
    */
   const deleteDocumentById = useCallback(async (documentId: string): Promise<boolean> => {
     if (!documentId) {
-      logger.warn('DocumentId não fornecido para deleteDocumentById', undefined, 'useProcessDocuments');
+      logger.warn('DocumentId não fornecido para deleteDocumentById', 'useProcessDocuments');
       return false;
     }
 

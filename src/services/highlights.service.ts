@@ -37,12 +37,12 @@ export async function createHighlight(
       .maybeSingle();
 
     if (error) {
-      logger.error('Error creating highlight', 'highlights.service.createHighlight', error);
+      logger.error('Error creating highlight', 'highlights.service.createHighlight', undefined, error);
       return null;
     }
 
     if (!highlight) {
-      logger.warn('No highlight returned after creation', undefined, 'highlights.service.createHighlight');
+      logger.warn('No highlight returned after creation', 'highlights.service.createHighlight');
       return null;
     }
 
@@ -103,7 +103,7 @@ export async function getHighlights(filter: HighlightFilter = {}): Promise<PDFHi
     const { data, error } = await query;
 
     if (error) {
-      logger.error('Error fetching highlights', 'highlights.service.getHighlights', error);
+      logger.error('Error fetching highlights', 'highlights.service.getHighlights', undefined, error);
       return [];
     }
 
@@ -162,7 +162,7 @@ export async function updateHighlightColor(
       .eq('id', id);
 
     if (error) {
-      logger.error('Error updating highlight color', 'highlights.service.updateHighlightColor', error);
+      logger.error('Error updating highlight color', 'highlights.service.updateHighlightColor', undefined, error);
       return false;
     }
 
@@ -192,12 +192,12 @@ export async function deleteHighlight(id: string): Promise<boolean> {
       .maybeSingle();
 
     if (checkError) {
-      logger.error('Error checking highlight existence', 'highlights.service.deleteHighlight', checkError);
+      logger.error('Error checking highlight existence', 'highlights.service.deleteHighlight', undefined, checkError);
       return false;
     }
 
     if (!existing) {
-      logger.warn('Highlight not found for deletion', { id }, 'highlights.service.deleteHighlight');
+      logger.warn('Highlight not found for deletion', 'highlights.service.deleteHighlight', { id });
       return false;
     }
 
@@ -206,7 +206,11 @@ export async function deleteHighlight(id: string): Promise<boolean> {
     });
 
     if (removeFromVerbaError) {
-      logger.warn('Error removing highlight from verba_lancamentos', removeFromVerbaError, 'highlights.service.deleteHighlight');
+      logger.warn(
+        'Error removing highlight from verba_lancamentos',
+        'highlights.service.deleteHighlight',
+        removeFromVerbaError
+      );
     }
 
     const { error: removeFromDocError } = await supabase.rpc('remove_highlight_id_from_lancamentos_documentos', {
@@ -214,7 +218,11 @@ export async function deleteHighlight(id: string): Promise<boolean> {
     });
 
     if (removeFromDocError) {
-      logger.warn('Error removing highlight from lancamentos_documentos', removeFromDocError, 'highlights.service.deleteHighlight');
+      logger.warn(
+        'Error removing highlight from lancamentos_documentos',
+        'highlights.service.deleteHighlight',
+        removeFromDocError
+      );
     }
 
     const { error, count } = await supabase
@@ -223,7 +231,7 @@ export async function deleteHighlight(id: string): Promise<boolean> {
       .eq('id', id);
 
     if (error) {
-      logger.error('Error deleting highlight', 'highlights.service.deleteHighlight', error);
+      logger.error('Error deleting highlight', 'highlights.service.deleteHighlight', undefined, error);
       return false;
     }
 
@@ -339,7 +347,12 @@ export async function getHighlightByLancamentoId(lancamentoId: string): Promise<
       .maybeSingle();
 
     if (error) {
-      logger.error('Error fetching highlight by lancamento ID', 'highlights.service.getHighlightByLancamentoId', error);
+      logger.error(
+        'Error fetching highlight by lancamento ID',
+        'highlights.service.getHighlightByLancamentoId',
+        undefined,
+        error
+      );
       return null;
     }
 

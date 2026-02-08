@@ -7,28 +7,69 @@ export enum LogLevel {
   SUCCESS = 'SUCCESS'
 }
 
+export type LogContext = string;
+export type LogData = Record<string, unknown> | unknown;
+export type LogError = unknown;
+
 class Logger {
-  info(_message: string, _context?: string, _data?: unknown): void {
-    // Disabled in production
-  }
-
-  success(_message: string, _context?: string, _data?: unknown): void {
-    // Disabled in production
-  }
-
-  warn(_message: string, _context?: string, _data?: unknown): void {
-    // Disabled in production
-  }
-
-  error(message: string, error?: Error, context?: string): void {
+  private log(
+    level: LogLevel,
+    message: string,
+    context?: LogContext,
+    data?: LogData,
+    error?: LogError
+  ): void {
     if (isProduction) return;
 
     const contextStr = context ? `[${context}] ` : '';
-    console.error(`${contextStr}${message}`, error || '');
+    const formattedMessage = `${contextStr}${message}`;
+    const extra: unknown[] = [];
+
+    if (data !== undefined) {
+      extra.push(data);
+    }
+
+    if (error !== undefined) {
+      extra.push(error);
+    }
+
+    switch (level) {
+      case LogLevel.INFO:
+        console.info(formattedMessage, ...extra);
+        break;
+      case LogLevel.WARN:
+        console.warn(formattedMessage, ...extra);
+        break;
+      case LogLevel.ERROR:
+        console.error(formattedMessage, ...extra);
+        break;
+      case LogLevel.SUCCESS:
+        console.log(formattedMessage, ...extra);
+        break;
+      default:
+        console.log(formattedMessage, ...extra);
+        break;
+    }
   }
 
-  errorWithException(message: string, exception: Error, context?: string): void {
-    this.error(message, exception, context);
+  info(message: string, context?: LogContext, data?: LogData): void {
+    this.log(LogLevel.INFO, message, context, data);
+  }
+
+  success(message: string, context?: LogContext, data?: LogData): void {
+    this.log(LogLevel.SUCCESS, message, context, data);
+  }
+
+  warn(message: string, context?: LogContext, data?: LogData): void {
+    this.log(LogLevel.WARN, message, context, data);
+  }
+
+  error(message: string, context?: LogContext, data?: LogData, error?: LogError): void {
+    this.log(LogLevel.ERROR, message, context, data, error);
+  }
+
+  errorWithException(message: string, exception: Error, context?: LogContext, data?: LogData): void {
+    this.error(message, context, data, exception);
   }
 }
 
