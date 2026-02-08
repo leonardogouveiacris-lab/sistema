@@ -231,6 +231,8 @@ interface PDFViewerContextType {
   getPageWidth: (pageNumber: number) => number;
   setRenderRange: (range: number) => void;
   getEffectiveRenderRange: () => number;
+  registerScrollContainer: (container: HTMLDivElement | null) => void;
+  getVisiblePageFromScroll: () => number | null;
 
   // Highlights
   setHighlights: (highlights: PDFHighlight[]) => void;
@@ -461,6 +463,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    */
   const highlightClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightClearTokenRef = useRef<number>(0);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const cancelScheduledHighlightClear = useCallback(() => {
     if (highlightClearTimeoutRef.current) {
@@ -1294,6 +1297,51 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     });
   }, []);
 
+  const registerScrollContainer = useCallback((container: HTMLDivElement | null) => {
+    scrollContainerRef.current = container;
+  }, []);
+
+  const getVisiblePageFromScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container || state.viewMode !== 'continuous' || state.totalPages === 0) {
+      return null;
+    }
+
+    const scrollTop = container.scrollTop;
+    const viewportHeight = container.clientHeight;
+    const viewportCenter = scrollTop + viewportHeight / 2;
+    const gap = 16;
+
+    let accumulatedHeight = 0;
+    let centerPage = 1;
+    let minDistanceToCenter = Infinity;
+
+    for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
+      const pageHeight = getPageHeight(pageNum);
+      const pageTop = accumulatedHeight;
+      const pageBottom = accumulatedHeight + pageHeight;
+      const pageCenter = accumulatedHeight + pageHeight / 2;
+
+      const isPageVisible = pageBottom >= scrollTop && pageTop <= scrollTop + viewportHeight;
+
+      if (isPageVisible) {
+        const distanceToCenter = Math.abs(pageCenter - viewportCenter);
+        if (distanceToCenter < minDistanceToCenter) {
+          minDistanceToCenter = distanceToCenter;
+          centerPage = pageNum;
+        }
+      }
+
+      if (pageTop > scrollTop + viewportHeight) {
+        break;
+      }
+
+      accumulatedHeight += pageHeight + gap;
+    }
+
+    return centerPage;
+  }, [getPageHeight, state.totalPages, state.viewMode]);
+
   /**
    * Retorna a altura calculada de uma página com base no zoom e rotação
    * Quando a página está rotacionada 90 ou 270 graus, a altura efetiva
@@ -1632,6 +1680,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     (results: SearchResult[]) => {
       cancelScheduledHighlightClear();
       highlightClearTokenRef.current++;
+      const visiblePage = getVisiblePageFromScroll();
 
       setState(prev => {
         if (results.length === 0) {
@@ -1644,11 +1693,12 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
           };
         }
 
-        const nextIndex = results.findIndex(result => result.globalPageNumber >= prev.currentPage);
+        const referencePage = visiblePage ?? prev.currentPage;
+        const nextIndex = results.findIndex(result => result.globalPageNumber >= referencePage);
         const safeIndex = nextIndex === -1 ? results.length - 1 : nextIndex;
-        const hasMatchOnCurrentPage = results.some(result => result.globalPageNumber === prev.currentPage);
+        const hasMatchOnCurrentPage = results.some(result => result.globalPageNumber === referencePage);
         const nextHighlightedPage = hasMatchOnCurrentPage
-          ? prev.currentPage
+          ? referencePage
           : results[safeIndex]?.globalPageNumber ?? prev.highlightedPage;
         
         return {
@@ -1661,7 +1711,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
       });
     },
-    [cancelScheduledHighlightClear]
+    [cancelScheduledHighlightClear, getVisiblePageFromScroll]
   );
 
   const setCurrentSearchIndex = useCallback(
@@ -2027,6 +2077,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     getPageWidth,
     setRenderRange,
     getEffectiveRenderRange,
+    registerScrollContainer,
+    getVisiblePageFromScroll,
     setHighlights,
     addHighlight,
     removeHighlight,
