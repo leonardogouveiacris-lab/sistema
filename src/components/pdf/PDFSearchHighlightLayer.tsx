@@ -1,21 +1,21 @@
-/**
- * PDFSearchHighlightLayer - Overlay component for rendering search result highlights
- *
- * Performance optimizations:
- * - Limited retry attempts for textLayer detection (prevents infinite loops)
- * - Cached textLayer reference
- * - Equality check before setState
- * - Wrapped with React.memo
- */
 import React, { useMemo, useEffect, useRef, useState, memo } from 'react';
-import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import logger from '../../utils/logger';
+
+interface SearchResultItem {
+  globalPageNumber: number;
+  matchIndex: number;
+  matchStart: number;
+  matchText?: string;
+}
 
 interface PDFSearchHighlightLayerProps {
   pageNumber: number;
   scale: number;
   documentId: string;
   localPageNumber: number;
+  searchResults: SearchResultItem[];
+  currentSearchIndex: number;
+  searchQuery: string;
 }
 
 interface HighlightRect {
@@ -97,10 +97,10 @@ function rectsMapAreEqual(
 const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
   pageNumber,
   scale,
-  documentId,
-  localPageNumber
+  searchResults,
+  currentSearchIndex,
+  searchQuery
 }) => {
-  const { state } = usePDFViewer();
   const currentResultRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [highlightRects, setHighlightRects] = useState<Map<number, HighlightRect[]>>(new Map());
@@ -108,18 +108,18 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
   const lastRectsRef = useRef<Map<number, HighlightRect[]>>(new Map());
 
   const pageResults = useMemo(() => {
-    return state.searchResults.filter(r => r.globalPageNumber === pageNumber);
-  }, [state.searchResults, pageNumber]);
+    return searchResults.filter(r => r.globalPageNumber === pageNumber);
+  }, [searchResults, pageNumber]);
 
   const currentResultOnPage = useMemo(() => {
-    if (state.currentSearchIndex < 0) return null;
-    const currentResult = state.searchResults[state.currentSearchIndex];
+    if (currentSearchIndex < 0) return null;
+    const currentResult = searchResults[currentSearchIndex];
     if (!currentResult || currentResult.globalPageNumber !== pageNumber) return null;
     return currentResult;
-  }, [state.searchResults, state.currentSearchIndex, pageNumber]);
+  }, [searchResults, currentSearchIndex, pageNumber]);
 
   useEffect(() => {
-    if (pageResults.length === 0 || !state.searchQuery) {
+    if (pageResults.length === 0 || !searchQuery) {
       if (lastRectsRef.current.size > 0) {
         lastRectsRef.current = new Map();
         setHighlightRects(new Map());
@@ -159,7 +159,7 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
 
       const newRects = new Map<number, HighlightRect[]>();
       const parentRect = textLayer.getBoundingClientRect();
-      const searchTerm = normalizeString(state.searchQuery);
+      const searchTerm = normalizeString(searchQuery);
       if (!searchTerm) {
         return;
       }
@@ -289,7 +289,7 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
         cancelAnimationFrame(rafId);
       }
     };
-  }, [pageResults, pageNumber, scale, state.searchQuery]);
+  }, [pageResults, pageNumber, scale, searchQuery]);
 
   if (pageResults.length === 0) return null;
 
@@ -334,8 +334,9 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
   return (
     prevProps.pageNumber === nextProps.pageNumber &&
     prevProps.scale === nextProps.scale &&
-    prevProps.documentId === nextProps.documentId &&
-    prevProps.localPageNumber === nextProps.localPageNumber
+    prevProps.searchResults === nextProps.searchResults &&
+    prevProps.currentSearchIndex === nextProps.currentSearchIndex &&
+    prevProps.searchQuery === nextProps.searchQuery
   );
 });
 
