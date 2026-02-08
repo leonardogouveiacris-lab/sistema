@@ -465,6 +465,22 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const highlightClearTokenRef = useRef<number>(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const lastSearchNavigationRef = useRef<{ index: number; page: number; timestamp: number } | null>(null);
+  const MAX_SEARCH_SYNC_DISTANCE = 2;
+
+  const findNearestSearchIndex = useCallback((results: SearchResult[], referencePage: number) => {
+    return results.reduce((closestIndex, result, index) => {
+      const closestResult = results[closestIndex];
+      if (!closestResult) return index;
+
+      const currentDistance = Math.abs(result.globalPageNumber - referencePage);
+      const closestDistance = Math.abs(closestResult.globalPageNumber - referencePage);
+
+      if (currentDistance < closestDistance) return index;
+      if (currentDistance > closestDistance) return closestIndex;
+
+      return index < closestIndex ? index : closestIndex;
+    }, 0);
+  }, []);
 
   const cancelScheduledHighlightClear = useCallback(() => {
     if (highlightClearTimeoutRef.current) {
@@ -1709,8 +1725,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
         }
 
         const referencePage = visiblePage ?? prev.currentPage;
-        const nextIndex = results.findIndex(result => result.globalPageNumber >= referencePage);
-        const safeIndex = nextIndex === -1 ? results.length - 1 : nextIndex;
+        const safeIndex = findNearestSearchIndex(results, referencePage);
         const hasMatchOnCurrentPage = results.some(result => result.globalPageNumber === referencePage);
         const nextHighlightedPage = hasMatchOnCurrentPage
           ? referencePage
@@ -1726,7 +1741,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
       });
     },
-    [cancelScheduledHighlightClear, getVisiblePageFromScroll]
+    [cancelScheduledHighlightClear, findNearestSearchIndex, getVisiblePageFromScroll]
   );
 
   useEffect(() => {
@@ -1748,16 +1763,23 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       return;
     }
 
-    const pageMatchIndex = state.searchResults.findIndex(
-      result => result.globalPageNumber === state.currentPage
-    );
+    const pageMatchIndex = findNearestSearchIndex(state.searchResults, state.currentPage);
+    const pageMatchResult = state.searchResults[pageMatchIndex];
+    if (!pageMatchResult) {
+      return;
+    }
 
-    if (pageMatchIndex === -1 || pageMatchIndex === state.currentSearchIndex) {
+    const distanceToMatch = Math.abs(pageMatchResult.globalPageNumber - state.currentPage);
+    if (distanceToMatch > MAX_SEARCH_SYNC_DISTANCE) {
+      return;
+    }
+
+    if (pageMatchIndex === state.currentSearchIndex) {
       return;
     }
 
     setState(prev => ({ ...prev, currentSearchIndex: pageMatchIndex }));
-  }, [state.currentPage, state.currentSearchIndex, state.isSearchOpen, state.searchResults]);
+  }, [findNearestSearchIndex, state.currentPage, state.currentSearchIndex, state.isSearchOpen, state.searchResults]);
 
   const setCurrentSearchIndex = useCallback(
     (index: number) => {
