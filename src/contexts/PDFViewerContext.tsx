@@ -1645,16 +1645,20 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
         }
 
         const nextIndex = results.findIndex(result => result.globalPageNumber >= prev.currentPage);
-        const safeIndex = nextIndex === -1 ? results.length - 1 : Math.max(nextIndex - 1, 0);
+        const safeIndex = nextIndex === -1 ? results.length - 1 : nextIndex;
         const hasMatchOnCurrentPage = results.some(result => result.globalPageNumber === prev.currentPage);
-
+        const nextHighlightedPage = hasMatchOnCurrentPage
+          ? prev.currentPage
+          : results[safeIndex]?.globalPageNumber ?? prev.highlightedPage;
+        
         return {
           ...prev,
           searchResults: results,
           currentSearchIndex: safeIndex,
           isSearching: false,
-          highlightedPage: hasMatchOnCurrentPage ? prev.currentPage : prev.highlightedPage
+          highlightedPage: nextHighlightedPage
         };
+
       });
     },
     [cancelScheduledHighlightClear]
