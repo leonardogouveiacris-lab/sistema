@@ -153,6 +153,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const highlightedPageRef = useRef<number | null>(state.highlightedPage);
   const isModeSwitchingRef = useRef(false);
   const pageBeforeModeSwitchRef = useRef<number>(state.currentPage);
+  const prevViewModeRef = useRef<'continuous' | 'paginated'>(state.viewMode);
   const INTERACTION_DEBOUNCE_MS = 200;
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
@@ -1821,9 +1822,33 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [toggleViewMode, state.currentPage]);
 
   useEffect(() => {
-    if (state.viewMode === 'paginated' && scrollContainerRef.current) {
+    const prevMode = prevViewModeRef.current;
+    const currentMode = state.viewMode;
+
+    if (prevMode === currentMode) return;
+
+    prevViewModeRef.current = currentMode;
+
+    if (currentMode === 'paginated' && scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
       scrollContainerRef.current.scrollLeft = 0;
+    } else if (currentMode === 'continuous' && prevMode === 'paginated' && scrollContainerRef.current) {
+      isProgrammaticScrollRef.current = true;
+      const targetPage = pageBeforeModeSwitchRef.current;
+
+      const scrollToTargetPage = () => {
+        const pageElement = pageRefs.current.get(targetPage);
+        if (pageElement && scrollContainerRef.current) {
+          pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
+          setTimeout(() => {
+            isProgrammaticScrollRef.current = false;
+          }, 300);
+        } else {
+          setTimeout(scrollToTargetPage, 50);
+        }
+      };
+
+      setTimeout(scrollToTargetPage, 100);
     }
   }, [state.viewMode]);
 
