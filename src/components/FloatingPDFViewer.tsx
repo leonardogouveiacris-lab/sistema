@@ -303,7 +303,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       ? Math.abs(scrollTop - options.previousScrollTop)
       : 0;
     const isLargeScrollJump = scrollDelta > viewportHeight * 2;
-    const allowLargeJump = Boolean(options?.allowLargeJump || isLargeScrollJump || state.isSearchOpen);
+    const allowLargeJump = Boolean(
+      options?.allowLargeJump ||
+      isLargeScrollJump ||
+      (state.isSearchOpen && isSearchNavigationActive())
+    );
 
     let accumulatedHeight = 0;
     const visiblePages = new Set<number>();
