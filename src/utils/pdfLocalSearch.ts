@@ -22,6 +22,31 @@ interface PageSearchIndex {
 const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
 const WORD_CHAR_REGEX = /[\p{L}\p{N}_]/u;
 
+const trimTextWithMap = (
+  text: string,
+  indexMap: number[]
+): { trimmed: string; trimmedMap: number[] } => {
+  if (!text) {
+    return { trimmed: '', trimmedMap: [] };
+  }
+
+  let start = 0;
+  let end = text.length;
+
+  while (start < end && /\s/u.test(text[start])) {
+    start += 1;
+  }
+
+  while (end > start && /\s/u.test(text[end - 1])) {
+    end -= 1;
+  }
+
+  return {
+    trimmed: text.slice(start, end),
+    trimmedMap: indexMap.slice(start, end)
+  };
+};
+
 const collapseWhitespace = (text: string): { collapsed: string; indexMap: number[] } => {
   let collapsed = '';
   const indexMap: number[] = [];
@@ -42,7 +67,8 @@ const collapseWhitespace = (text: string): { collapsed: string; indexMap: number
     indexMap.push(i);
   }
 
-  return { collapsed: collapsed.trim(), indexMap };
+  const { trimmed, trimmedMap } = trimTextWithMap(collapsed, indexMap);
+  return { collapsed: trimmed, indexMap: trimmedMap };
 };
 
 const normalizeText = (
@@ -71,7 +97,8 @@ const normalizeText = (
     }
   }
 
-  return { normalized: normalized.trim(), indexMap: normalizedMap };
+  const { trimmed, trimmedMap } = trimTextWithMap(normalized, normalizedMap);
+  return { normalized: trimmed, indexMap: trimmedMap };
 };
 
 const isWholeWordMatch = (text: string, start: number, end: number): boolean => {
