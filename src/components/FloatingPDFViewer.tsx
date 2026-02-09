@@ -1820,6 +1820,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }, 500);
   }, [toggleViewMode, state.currentPage]);
 
+  useEffect(() => {
+    if (state.viewMode === 'paginated' && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+      scrollContainerRef.current.scrollLeft = 0;
+    }
+  }, [state.viewMode]);
+
   /**
    * Effect para navegação por teclado
    */
@@ -2581,9 +2588,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                 const numPages = documentPages.get(doc.id) || 0;
                 const offset = memoizedDocumentOffsets.get(doc.id);
 
+                if (state.viewMode === 'paginated') {
+                  const pageInfo = findDocumentByGlobalPage(state.currentPage);
+                  if (!pageInfo || pageInfo.document.id !== doc.id) {
+                    return null;
+                  }
+                }
+
                 return (
                   <div key={doc.id} className="flex flex-col items-center">
-                    {docIndex > 0 && (
+                    {docIndex > 0 && state.viewMode === 'continuous' && (
                       <div className="max-w-4xl mb-4 bg-white border-l-4 border-blue-400 rounded shadow-sm p-2.5">
                         <div className="flex items-center gap-2">
                           <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
