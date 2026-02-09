@@ -278,18 +278,6 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     });
   }, [processId, documentOffsets]);
 
-  const buildLocalSearchResults = useCallback((query: string): { hasIndexedContent: boolean; results: SearchResult[] } => {
-    const hasIndexedContent = localIndexRef.current.size > 0 &&
-      Array.from(localIndexRef.current.values()).some(pageMap => pageMap.size > 0);
-
-    if (!hasIndexedContent) {
-      return { hasIndexedContent: false, results: [] };
-    }
-
-    const results = searchLocal(query);
-    return { hasIndexedContent: true, results };
-  }, [searchLocal]);
-
   const searchWithFallback = useCallback(async (query: string) => {
     if (!query || query.length < 2) {
       setSearchResults([]);
