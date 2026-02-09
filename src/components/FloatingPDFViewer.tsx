@@ -2638,7 +2638,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
                 if (state.viewMode === 'paginated') {
                   const pageInfo = findDocumentByGlobalPage(state.currentPage);
-                  if (!pageInfo || pageInfo.document.id !== doc.id) {
+                  if (pageInfo) {
+                    if (pageInfo.document.id !== doc.id) {
+                      return null;
+                    }
+                  } else if (docIndex !== 0) {
                     return null;
                   }
                 }
@@ -2695,9 +2699,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                         // Modo Paginado: Renderiza apenas a página que pertence a este documento
                         (() => {
                           const pageInfo = findDocumentByGlobalPage(state.currentPage);
+                          const localPageNum = pageInfo ? pageInfo.localPage : state.currentPage;
 
-                          // Se a página atual não pertence a este documento, não renderiza nada
-                          if (!pageInfo || pageInfo.document.id !== doc.id) {
+                          if (pageInfo && pageInfo.document.id !== doc.id) {
+                            return null;
+                          }
+                          if (!pageInfo && docIndex !== 0) {
                             return null;
                           }
 
@@ -2711,7 +2718,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                               }}
                             >
                               <MemoizedPDFPage
-                                pageNumber={pageInfo.localPage}
+                                pageNumber={localPageNum}
                                 scale={state.zoom}
                                 displayScale={state.displayZoom}
                                 userRotation={getPageRotation(state.currentPage)}
