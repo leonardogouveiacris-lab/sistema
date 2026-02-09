@@ -10,9 +10,11 @@ interface MemoizedPDFPageProps {
   onLoadSuccess?: (page: any) => void;
   loading?: React.ReactNode;
   className?: string;
+  wrapperClassName?: string;
   renderTextLayer?: boolean;
   renderAnnotationLayer?: boolean;
   isInteracting?: boolean;
+  children?: React.ReactNode;
 }
 
 const MemoizedPDFPage: React.FC<MemoizedPDFPageProps> = memo(({
@@ -24,9 +26,11 @@ const MemoizedPDFPage: React.FC<MemoizedPDFPageProps> = memo(({
   onLoadSuccess,
   loading,
   className,
+  wrapperClassName,
   renderTextLayer = true,
   renderAnnotationLayer = true,
-  isInteracting = false
+  isInteracting = false,
+  children
 }) => {
   const effectiveDisplayScale = displayScale ?? scale;
   const cssScaleRatio = effectiveDisplayScale / scale;
@@ -47,7 +51,7 @@ const MemoizedPDFPage: React.FC<MemoizedPDFPageProps> = memo(({
   const combinedRotation = hasUserRotation ? ((internalRotation + userRotation) % 360 + 360) % 360 : undefined;
 
   return (
-    <div style={wrapperStyle}>
+    <div className={wrapperClassName} style={wrapperStyle}>
       <Page
         pageNumber={pageNumber}
         scale={scale}
@@ -58,6 +62,7 @@ const MemoizedPDFPage: React.FC<MemoizedPDFPageProps> = memo(({
         renderTextLayer={effectiveRenderTextLayer}
         renderAnnotationLayer={effectiveRenderAnnotationLayer}
       />
+      {children}
     </div>
   );
 }, (prevProps, nextProps) => {
@@ -69,6 +74,8 @@ const MemoizedPDFPage: React.FC<MemoizedPDFPageProps> = memo(({
   if (prevProps.renderTextLayer !== nextProps.renderTextLayer) return false;
   if (prevProps.renderAnnotationLayer !== nextProps.renderAnnotationLayer) return false;
   if (prevProps.isInteracting !== nextProps.isInteracting) return false;
+  if (prevProps.wrapperClassName !== nextProps.wrapperClassName) return false;
+  if (prevProps.children !== nextProps.children) return false;
   return true;
 });
 
