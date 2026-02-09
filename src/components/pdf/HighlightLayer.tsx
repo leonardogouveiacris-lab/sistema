@@ -166,7 +166,7 @@ const HighlightLayer: React.FC<HighlightLayerProps> = memo(({ pageNumber, scale 
           const isHovered = state.hoveredHighlightId === id;
           const isSelected = state.selectedHighlightIds.includes(id);
 
-          const multiplier = highlight.coordinateVersion === 2 ? 1 : scale;
+          const multiplier = 1;
 
           let rects: Array<{ x: number; y: number; width: number; height: number }>;
 
