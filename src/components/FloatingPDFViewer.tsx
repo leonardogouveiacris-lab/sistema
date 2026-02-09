@@ -155,6 +155,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const isModeSwitchingRef = useRef(false);
   const pageBeforeModeSwitchRef = useRef<number>(state.currentPage);
   const prevViewModeRef = useRef<'continuous' | 'paginated'>(state.viewMode);
+  const hasMountedRef = useRef(false);
   const INTERACTION_DEBOUNCE_MS = 200;
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
@@ -1826,7 +1827,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }, 500);
   }, [toggleViewMode, state.currentPage]);
 
+  useEffect(() => {
+    hasMountedRef.current = true;
+  }, []);
+
   useLayoutEffect(() => {
+    if (!hasMountedRef.current) return;
+
     const prevMode = prevViewModeRef.current;
     const currentMode = state.viewMode;
 
@@ -1841,6 +1848,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       setIsModeTransitioning(true);
       isProgrammaticScrollRef.current = true;
       const targetPage = pageBeforeModeSwitchRef.current;
+      let retryCount = 0;
+      const MAX_RETRIES = 50;
 
       const scrollToTargetPage = () => {
         const pageElement = pageRefs.current.get(targetPage);
@@ -1852,8 +1861,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               isProgrammaticScrollRef.current = false;
             }, 300);
           });
-        } else {
+        } else if (retryCount < MAX_RETRIES) {
+          retryCount++;
           setTimeout(scrollToTargetPage, 16);
+        } else {
+          setIsModeTransitioning(false);
+          isProgrammaticScrollRef.current = false;
         }
       };
 
