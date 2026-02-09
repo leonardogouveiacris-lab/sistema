@@ -1489,14 +1489,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (rect.width < 2 || rect.height < 2) continue;
 
         rawRects.push({
-          x: (rect.left - referenceRect.left) + offsetX,
-          y: (rect.top - referenceRect.top) + offsetY,
-          width: rect.width,
-          height: rect.height
+          x: ((rect.left - referenceRect.left) + offsetX) / currentZoom,
+          y: ((rect.top - referenceRect.top) + offsetY) / currentZoom,
+          width: rect.width / currentZoom,
+          height: rect.height / currentZoom
         });
       }
 
-      const rects = mergeRectsIntoLines(rawRects, 3 * currentZoom);
+      const rects = mergeRectsIntoLines(rawRects, 3 / currentZoom);
 
       const firstRect = clientRects[0];
       const lastRect = clientRects[clientRects.length - 1];
@@ -1507,10 +1507,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const actualPageNumber = extractedPageNumber || state.currentPage;
 
       const position = {
-        x: (firstRect.left - referenceRect.left) + offsetX,
-        y: (firstRect.top - referenceRect.top) + offsetY,
-        width: viewportWidth,
-        height: viewportHeight,
+        x: ((firstRect.left - referenceRect.left) + offsetX) / currentZoom,
+        y: ((firstRect.top - referenceRect.top) + offsetY) / currentZoom,
+        width: viewportWidth / currentZoom,
+        height: viewportHeight / currentZoom,
         rects,
         viewportX: firstRect.left,
         viewportY: firstRect.top,
