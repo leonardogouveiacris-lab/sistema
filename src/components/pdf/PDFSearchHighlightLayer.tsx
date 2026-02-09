@@ -128,19 +128,6 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
       return;
     }
 
-    const hasLocalRects = pageResults.every(result => result.rects && result.rects.length > 0);
-    if (hasLocalRects) {
-      const newRects = new Map<number, HighlightRect[]>();
-      pageResults.forEach((result) => {
-        newRects.set(result.matchIndex, result.rects || []);
-      });
-      if (!rectsMapAreEqual(newRects, lastRectsRef.current)) {
-        lastRectsRef.current = newRects;
-        setHighlightRects(newRects);
-      }
-      return;
-    }
-
     let retryCount = 0;
     let rafId: number | null = null;
 
