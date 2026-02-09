@@ -74,15 +74,16 @@ async function extractPageText(
         const rectY = Math.min(y1, y2);
         const rectWidth = Math.abs(x2 - x1);
         const rectHeight = Math.abs(y2 - y1);
+        const text = textItem.str;
         items.push({
-          text: textItem.str,
+          text,
           x: rectX,
           y: rectY,
           width: rectWidth,
           height: rectHeight,
           transform: textItem.transform || []
         });
-        fullText += `${itemText} `;
+        fullText += `${text} `;
       }
     }
 
