@@ -295,7 +295,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const skipPageChange = isProgrammaticScrollRef.current ||
       isModeSwitchingRef.current ||
       now < zoomBlockedUntilRef.current ||
-      (state.isSearchOpen && (highlightedPageRef.current || isSearchNavigationActive()));
+      (state.isSearchOpen && !isSearchNavigationActive());
 
     const scrollTop = container.scrollTop;
     const viewportHeight = container.clientHeight;
