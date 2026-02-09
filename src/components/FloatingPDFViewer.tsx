@@ -273,6 +273,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
+    if (state.isSearchOpen && state.highlightedPage) {
+      return;
+    }
+
     const scrollTop = container.scrollTop;
     const viewportHeight = container.clientHeight;
     const buffer = viewportHeight * 1.5;
@@ -374,7 +378,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       lastDetectionTimeRef.current = now;
       goToPage(centerPage);
     }
-  }, [state.viewMode, state.totalPages, state.currentPage, state.isSearchOpen, getPageHeight, goToPage]);
+  }, [state.viewMode, state.totalPages, state.currentPage, state.isSearchOpen, state.highlightedPage, getPageHeight, goToPage]);
 
   /**
    * Effect para detectar paginas visiveis durante scroll
