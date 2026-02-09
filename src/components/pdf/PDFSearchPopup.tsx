@@ -324,7 +324,8 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       const { results: localResults, searchedDocumentIds, missingDocumentIds } = searchLocalPdfText({
         query,
         documents: state.documents,
-        documentOffsets
+        documentOffsets,
+        searchOptions
       });
 
       if (
@@ -372,7 +373,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
         setIsSearching(false);
       }
     }
-  }, [documentOffsets, fetchDatabaseResults, processId, setIsSearching, setSearchQuery, setSearchResults, state.documents]);
+  }, [documentOffsets, fetchDatabaseResults, processId, searchOptions, setIsSearching, setSearchQuery, setSearchResults, state.documents]);
 
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 2) {

@@ -1,9 +1,11 @@
 import type { DocumentTextCache, SearchResult, TextItem } from '../utils/pdfTextExtractor';
 import { getDocumentTextCache } from '../utils/pdfTextExtractor';
+import type { SearchOptions } from '../utils/pdfLocalSearch';
 import { mergeRectsIntoLines } from '../utils/rectMerger';
 
 const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
 const CONTEXT_WINDOW = 40;
+const WORD_CHAR_REGEX = /[\p{L}\p{N}_]/u;
 
 interface Rect {
   x: number;
@@ -22,6 +24,7 @@ interface LocalSearchOptions {
   query: string;
   documents: Array<{ id: string }>;
   documentOffsets: Map<string, DocumentOffsetInfo>;
+  searchOptions: SearchOptions;
 }
 
 interface LocalSearchResponse {
@@ -30,7 +33,10 @@ interface LocalSearchResponse {
   missingDocumentIds: Set<string>;
 }
 
-const normalizeWithIndexMap = (text: string): { normalized: string; indexMap: number[] } => {
+const normalizeWithIndexMap = (
+  text: string,
+  options: SearchOptions
+): { normalized: string; indexMap: number[] } => {
   let normalized = '';
   const indexMap: number[] = [];
   let previousWasSpace = false;
@@ -46,7 +52,13 @@ const normalizeWithIndexMap = (text: string): { normalized: string; indexMap: nu
     }
 
     previousWasSpace = false;
-    const cleaned = char.normalize('NFD').replace(DIACRITICS_REGEX, '').toLowerCase();
+    let cleaned = char;
+    if (!options.matchDiacritics) {
+      cleaned = cleaned.normalize('NFD').replace(DIACRITICS_REGEX, '');
+    }
+    if (!options.matchCase) {
+      cleaned = cleaned.toLowerCase();
+    }
     for (let j = 0; j < cleaned.length; j += 1) {
       normalized += cleaned[j];
       indexMap.push(i);
@@ -56,8 +68,16 @@ const normalizeWithIndexMap = (text: string): { normalized: string; indexMap: nu
   return { normalized, indexMap };
 };
 
-const normalizeQuery = (value: string): string =>
-  value.normalize('NFD').replace(DIACRITICS_REGEX, '').toLowerCase().trim();
+const normalizeQuery = (value: string, options: SearchOptions): string => {
+  let normalized = value.trim();
+  if (!options.matchDiacritics) {
+    normalized = normalized.normalize('NFD').replace(DIACRITICS_REGEX, '');
+  }
+  if (!options.matchCase) {
+    normalized = normalized.toLowerCase();
+  }
+  return normalized;
+};
 
 const buildPageTextFromItems = (items: TextItem[]): { text: string; charRects: Array<Rect | null> } => {
   let text = '';
@@ -87,12 +107,21 @@ const hasRenderableItems = (cache: DocumentTextCache): boolean => {
   return false;
 };
 
+const isWholeWordMatch = (text: string, start: number, end: number): boolean => {
+  const before = start > 0 ? text[start - 1] : '';
+  const after = end < text.length ? text[end] : '';
+  const beforeIsWord = before ? WORD_CHAR_REGEX.test(before) : false;
+  const afterIsWord = after ? WORD_CHAR_REGEX.test(after) : false;
+  return !beforeIsWord && !afterIsWord;
+};
+
 export const searchLocalPdfText = ({
   query,
   documents,
-  documentOffsets
+  documentOffsets,
+  searchOptions
 }: LocalSearchOptions): LocalSearchResponse => {
-  const normalizedQuery = normalizeQuery(query);
+  const normalizedQuery = normalizeQuery(query, searchOptions);
   const results: SearchResult[] = [];
   const searchedDocumentIds = new Set<string>();
   const missingDocumentIds = new Set<string>();
@@ -130,7 +159,7 @@ export const searchLocalPdfText = ({
         continue;
       }
 
-      const { normalized, indexMap } = normalizeWithIndexMap(rawText);
+      const { normalized, indexMap } = normalizeWithIndexMap(rawText, searchOptions);
       if (!normalized) {
         continue;
       }
@@ -139,39 +168,42 @@ export const searchLocalPdfText = ({
       let matchIndex = normalized.indexOf(normalizedQuery, searchIndex);
 
       while (matchIndex !== -1) {
-        const startOriginal = indexMap[matchIndex];
-        const endOriginal = indexMap[matchIndex + normalizedQuery.length - 1] + 1;
-        const matchText = rawText.slice(startOriginal, endOriginal);
-        const contextBefore = rawText.slice(Math.max(0, startOriginal - CONTEXT_WINDOW), startOriginal);
-        const contextAfter = rawText.slice(endOriginal, Math.min(rawText.length, endOriginal + CONTEXT_WINDOW));
+        const matchEnd = matchIndex + normalizedQuery.length;
+        if (!searchOptions.matchWholeWord || isWholeWordMatch(normalized, matchIndex, matchEnd)) {
+          const startOriginal = indexMap[matchIndex];
+          const endOriginal = indexMap[matchEnd - 1] + 1;
+          const matchText = rawText.slice(startOriginal, endOriginal);
+          const contextBefore = rawText.slice(Math.max(0, startOriginal - CONTEXT_WINDOW), startOriginal);
+          const contextAfter = rawText.slice(endOriginal, Math.min(rawText.length, endOriginal + CONTEXT_WINDOW));
 
-        let rects: Rect[] = [];
-        if (charRects.length > 0) {
-          const rectSet = new Map<string, Rect>();
-          for (let i = startOriginal; i < endOriginal; i += 1) {
-            const rect = charRects[i];
-            if (!rect) continue;
-            const key = `${rect.x}-${rect.y}-${rect.width}-${rect.height}`;
-            if (!rectSet.has(key)) {
-              rectSet.set(key, rect);
+          let rects: Rect[] = [];
+          if (charRects.length > 0) {
+            const rectSet = new Map<string, Rect>();
+            for (let i = startOriginal; i < endOriginal; i += 1) {
+              const rect = charRects[i];
+              if (!rect) continue;
+              const key = `${rect.x}-${rect.y}-${rect.width}-${rect.height}`;
+              if (!rectSet.has(key)) {
+                rectSet.set(key, rect);
+              }
             }
+            rects = mergeRectsIntoLines(Array.from(rectSet.values()));
           }
-          rects = mergeRectsIntoLines(Array.from(rectSet.values()));
-        }
 
-        results.push({
-          documentId: doc.id,
-          documentIndex: docIndex,
-          globalPageNumber: offsetInfo.startPage + pageNumber - 1,
-          localPageNumber: pageNumber,
-          matchIndex: results.length,
-          matchStart: startOriginal,
-          matchEnd: endOriginal,
-          contextBefore,
-          matchText,
-          contextAfter,
-          rects
-        });
+          results.push({
+            documentId: doc.id,
+            documentIndex: docIndex,
+            globalPageNumber: offsetInfo.startPage + pageNumber - 1,
+            localPageNumber: pageNumber,
+            matchIndex: results.length,
+            matchStart: startOriginal,
+            matchEnd: endOriginal,
+            contextBefore,
+            matchText,
+            contextAfter,
+            rects
+          });
+        }
 
         searchIndex = matchIndex + normalizedQuery.length;
         matchIndex = normalized.indexOf(normalizedQuery, searchIndex);
