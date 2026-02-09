@@ -262,6 +262,7 @@ interface PDFViewerContextType {
   goToPreviousSearchResult: () => void;
   setIsSearching: (isSearching: boolean) => void;
   disableSearchNavigationSync: () => void;
+  isSearchNavigationActive: () => boolean;
   setTextExtractionProgress: (progress: { current: number; total: number } | null) => void;
   clearSearch: () => void;
 
@@ -487,6 +488,10 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       searchNavigationTimeoutRef.current = null;
     }
     isSearchNavigationActiveRef.current = false;
+  }, []);
+
+  const isSearchNavigationActive = useCallback(() => {
+    return isSearchNavigationActiveRef.current;
   }, []);
 
 
@@ -2165,6 +2170,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     goToPreviousSearchResult,
     setIsSearching,
     disableSearchNavigationSync,
+    isSearchNavigationActive,
     setTextExtractionProgress,
     clearSearch,
     getPageRotation,

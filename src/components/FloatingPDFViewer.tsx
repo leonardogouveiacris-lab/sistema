@@ -107,6 +107,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     setSelectedCommentColor,
     registerScrollContainer,
     disableSearchNavigationSync,
+    isSearchNavigationActive,
     setTextExtractionProgress
   } = usePDFViewer();
 
@@ -238,11 +239,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (!state.isInteracting) {
       setIsInteracting(true);
     }
-    disableSearchNavigationSync();
+    if (!isProgrammaticScrollRef.current && !isSearchNavigationActive()) {
+      disableSearchNavigationSync();
+    }
     interactionTimeoutRef.current = setTimeout(() => {
       setIsInteracting(false);
     }, INTERACTION_DEBOUNCE_MS);
-  }, [disableSearchNavigationSync, state.isInteracting, setIsInteracting]);
+  }, [disableSearchNavigationSync, isSearchNavigationActive, state.isInteracting, setIsInteracting]);
 
   /**
    * Cleanup do timeout de interacao
@@ -278,7 +281,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    if (state.isSearchOpen && highlightedPageRef.current) {
+    if (state.isSearchOpen && (highlightedPageRef.current || isSearchNavigationActive())) {
       return;
     }
 
