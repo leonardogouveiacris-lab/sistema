@@ -1467,7 +1467,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const offsetY = referenceRect.top - pageRect.top;
 
       const clientRects = range.getClientRects();
-      const currentZoom = state.zoom;
+      const currentZoom = state.displayZoom || state.zoom;
 
       const rawRects: Array<{ x: number; y: number; width: number; height: number }> = [];
 
@@ -1525,7 +1525,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           length: selectedText.length,
           rawRectsCount: rawRects.length,
           mergedRectsCount: rects.length,
-          zoom: state.zoom
+          zoom: state.zoom,
+          displayZoom: state.displayZoom
         }
       );
 
@@ -2630,21 +2631,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                 renderAnnotationLayer={!state.performanceMode.disableAnnotations}
                                 isInteracting={state.isInteracting && !state.isSearchOpen}
                               >
-                                <HighlightLayer pageNumber={state.currentPage} scale={state.zoom} />
-                                <CommentLayer
-                                  pageNumber={state.currentPage}
-                                  scale={state.zoom}
-                                  pageWidth={getPageWidth(state.currentPage) / state.zoom}
-                                  pageHeight={getPageHeight(state.currentPage) / state.zoom}
-                                  processDocumentId={doc.id}
-                                />
-                                <PDFSearchHighlightLayer
-                                  pageNumber={state.currentPage}
-                                  scale={state.zoom}
-                                  documentId={doc.id}
-                                  localPageNumber={pageInfo.localPage}
-                                  searchResults={state.searchResults}
-                                  currentSearchIndex={state.currentSearchIndex}
+                              <HighlightLayer pageNumber={state.currentPage} scale={state.displayZoom} />
+                              <CommentLayer
+                                pageNumber={state.currentPage}
+                                scale={state.displayZoom}
+                                pageWidth={getPageWidth(state.currentPage) / state.zoom}
+                                pageHeight={getPageHeight(state.currentPage) / state.zoom}
+                                processDocumentId={doc.id}
+                              />
+                              <PDFSearchHighlightLayer
+                                pageNumber={state.currentPage}
+                                scale={state.displayZoom}
+                                documentId={doc.id}
+                                localPageNumber={pageInfo.localPage}
+                                searchResults={state.searchResults}
+                                currentSearchIndex={state.currentSearchIndex}
                                   searchQuery={state.searchQuery}
                                 />
                                 <SelectionOverlay
@@ -2708,21 +2709,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                             renderAnnotationLayer={!state.performanceMode.disableAnnotations}
                                             isInteracting={state.isInteracting && !state.isSearchOpen}
                                           >
-                                            <HighlightLayer pageNumber={globalPageNum} scale={state.zoom} />
-                                            <CommentLayer
-                                              pageNumber={globalPageNum}
-                                              scale={state.zoom}
-                                              pageWidth={pageWidth / state.zoom}
-                                              pageHeight={pageHeight / state.zoom}
-                                              processDocumentId={doc.id}
-                                            />
-                                            <PDFSearchHighlightLayer
-                                              pageNumber={globalPageNum}
-                                              scale={state.zoom}
-                                              documentId={doc.id}
-                                              localPageNumber={localPageNum}
-                                              searchResults={state.searchResults}
-                                              currentSearchIndex={state.currentSearchIndex}
+                                        <HighlightLayer pageNumber={globalPageNum} scale={state.displayZoom} />
+                                        <CommentLayer
+                                          pageNumber={globalPageNum}
+                                          scale={state.displayZoom}
+                                          pageWidth={pageWidth / state.zoom}
+                                          pageHeight={pageHeight / state.zoom}
+                                          processDocumentId={doc.id}
+                                        />
+                                        <PDFSearchHighlightLayer
+                                          pageNumber={globalPageNum}
+                                          scale={state.displayZoom}
+                                          documentId={doc.id}
+                                          localPageNumber={localPageNum}
+                                          searchResults={state.searchResults}
+                                          currentSearchIndex={state.currentSearchIndex}
                                               searchQuery={state.searchQuery}
                                             />
                                             <SelectionOverlay
