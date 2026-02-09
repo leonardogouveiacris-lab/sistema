@@ -151,6 +151,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const zoomBlockedUntilRef = useRef<number>(0);
   const textExtractionProgressRef = useRef<Map<string, { current: number; total: number }>>(new Map());
   const highlightedPageRef = useRef<number | null>(state.highlightedPage);
+  const isModeSwitchingRef = useRef(false);
+  const pageBeforeModeSwitchRef = useRef<number>(state.currentPage);
   const INTERACTION_DEBOUNCE_MS = 200;
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
@@ -164,6 +166,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   useEffect(() => {
     highlightedPageRef.current = state.highlightedPage;
   }, [state.highlightedPage]);
+
+  useEffect(() => {
+    if (isModeSwitchingRef.current && state.currentPage !== pageBeforeModeSwitchRef.current) {
+      goToPage(pageBeforeModeSwitchRef.current);
+    }
+  }, [state.viewMode, state.currentPage, goToPage]);
 
   useEffect(() => {
     if (prevDisplayZoomRef.current !== state.displayZoom) {
@@ -277,11 +285,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const now = Date.now();
-    if (isZoomChangingRef.current || state.isRotating) {
+    if (isZoomChangingRef.current || state.isRotating || isModeSwitchingRef.current) {
       return;
     }
 
     const skipPageChange = isProgrammaticScrollRef.current ||
+      isModeSwitchingRef.current ||
       now < zoomBlockedUntilRef.current ||
       (state.isSearchOpen && (highlightedPageRef.current || isSearchNavigationActive()));
 
@@ -1798,6 +1807,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     nextPage();
   }, [nextPage, state.isRotating, state.currentPage, state.totalPages, state.viewMode]);
 
+  const handleToggleViewMode = useCallback(() => {
+    isModeSwitchingRef.current = true;
+    pageBeforeModeSwitchRef.current = state.currentPage;
+    isProgrammaticScrollRef.current = true;
+    lastDetectedPageRef.current = state.currentPage;
+    lastDetectionTimeRef.current = Date.now();
+    toggleViewMode();
+    setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+      isModeSwitchingRef.current = false;
+    }, 500);
+  }, [toggleViewMode, state.currentPage]);
+
   /**
    * Effect para navegação por teclado
    */
@@ -2372,7 +2394,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
                 {/* Toggle de modo de visualização */}
                 <button
-                  onClick={toggleViewMode}
+                  onClick={handleToggleViewMode}
                   className={`flex items-center space-x-1 px-2 sm:px-3 py-1 text-xs font-medium border rounded transition-colors duration-200 ${
                     state.viewMode === 'continuous'
                       ? 'bg-blue-50 text-blue-700 border-blue-300'
@@ -2481,7 +2503,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                     {/* View mode */}
                     <button
                       onClick={() => {
-                        toggleViewMode();
+                        handleToggleViewMode();
                         setShowToolbarOverflow(false);
                       }}
                       className={`w-full flex items-center space-x-2 px-3 py-2 text-sm ${
