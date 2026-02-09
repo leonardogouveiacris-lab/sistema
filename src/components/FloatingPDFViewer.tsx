@@ -24,7 +24,7 @@
  * - Performance otimizada para modo contínuo
  */
 
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { Document, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -125,6 +125,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const [forceRenderPages, setForceRenderPages] = useState<Set<number>>(new Set());
   const [scrollBasedVisiblePages, setScrollBasedVisiblePages] = useState<Set<number>>(new Set());
   const [pageInputValue, setPageInputValue] = useState<string>('');
+  const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const isSelectingTextRef = useRef(false);
   const isPointerDownInPdfRef = useRef(false);
   const isPointerDownRef = useRef(false);
@@ -1821,7 +1822,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }, 500);
   }, [toggleViewMode, state.currentPage]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const prevMode = prevViewModeRef.current;
     const currentMode = state.viewMode;
 
@@ -1833,6 +1834,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       scrollContainerRef.current.scrollTop = 0;
       scrollContainerRef.current.scrollLeft = 0;
     } else if (currentMode === 'continuous' && prevMode === 'paginated' && scrollContainerRef.current) {
+      setIsModeTransitioning(true);
       isProgrammaticScrollRef.current = true;
       const targetPage = pageBeforeModeSwitchRef.current;
 
@@ -1840,15 +1842,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const pageElement = pageRefs.current.get(targetPage);
         if (pageElement && scrollContainerRef.current) {
           pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
-          setTimeout(() => {
-            isProgrammaticScrollRef.current = false;
-          }, 300);
+          requestAnimationFrame(() => {
+            setIsModeTransitioning(false);
+            setTimeout(() => {
+              isProgrammaticScrollRef.current = false;
+            }, 300);
+          });
         } else {
-          setTimeout(scrollToTargetPage, 50);
+          setTimeout(scrollToTargetPage, 16);
         }
       };
 
-      setTimeout(scrollToTargetPage, 100);
+      scrollToTargetPage();
     }
   }, [state.viewMode]);
 
@@ -2606,6 +2611,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             <div
               ref={scrollContainerRef}
               className="absolute inset-0 overflow-auto bg-gray-200"
+              style={{ visibility: isModeTransitioning ? 'hidden' : 'visible' }}
             >
               <div className="flex justify-center py-4">
                 <div className="flex flex-col items-center space-y-4">
