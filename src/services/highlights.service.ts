@@ -36,7 +36,7 @@ export async function createHighlight(
         position_data: data.positionData,
         color: data.color,
         lancamento_id: lancamentoId || null,
-        coordinate_version: 1
+        coordinate_version: 2
       })
       .select()
       .maybeSingle();
