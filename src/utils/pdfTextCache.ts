@@ -16,13 +16,12 @@ function openDB(): Promise<IDBDatabase | null> {
     return Promise.resolve(null);
   }
 
-  dbPromise = new Promise<IDBDatabase | null>((resolve) => {
+  dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => {
       logger.error('Failed to open IndexedDB', 'pdfTextCache.openDB', undefined, request.error);
-      dbPromise = null;
-      resolve(null);
+      reject(request.error);
     };
 
     request.onsuccess = () => {

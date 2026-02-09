@@ -150,6 +150,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
   const textExtractionProgressRef = useRef<Map<string, { current: number; total: number }>>(new Map());
+  const highlightedPageRef = useRef<number | null>(state.highlightedPage);
   const INTERACTION_DEBOUNCE_MS = 200;
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
@@ -159,6 +160,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       pageBeforeZoomRef.current = state.currentPage;
     }
   }, [state.currentPage]);
+
+  useEffect(() => {
+    highlightedPageRef.current = state.highlightedPage;
+  }, [state.highlightedPage]);
 
   useEffect(() => {
     if (prevDisplayZoomRef.current !== state.displayZoom) {
@@ -278,7 +283,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const skipPageChange = isProgrammaticScrollRef.current ||
       now < zoomBlockedUntilRef.current ||
-      (state.isSearchOpen && isSearchNavigationActive());
+      (state.isSearchOpen && (highlightedPageRef.current || isSearchNavigationActive()));
 
     const scrollTop = container.scrollTop;
     const viewportHeight = container.clientHeight;
