@@ -108,6 +108,32 @@ export const buildPageSearchIndex = (page: PageTextContent): PageSearchIndex => 
   return { pageNumber: page.pageNumber, text: text.trim(), spans };
 };
 
+const calculatePartialRect = (
+  span: TextSpan,
+  matchStart: number,
+  matchEnd: number
+): { x: number; y: number; width: number; height: number } => {
+  const spanLength = span.end - span.start;
+  if (spanLength <= 0) return span.rect;
+
+  const overlapStart = Math.max(span.start, matchStart);
+  const overlapEnd = Math.min(span.end, matchEnd);
+  const overlapLength = overlapEnd - overlapStart;
+
+  if (overlapLength <= 0) return span.rect;
+
+  const charWidth = span.rect.width / spanLength;
+  const startOffset = overlapStart - span.start;
+  const xOffset = startOffset * charWidth;
+
+  return {
+    x: span.rect.x + xOffset,
+    y: span.rect.y,
+    width: overlapLength * charWidth,
+    height: span.rect.height
+  };
+};
+
 export const searchPage = (
   pageIndex: PageSearchIndex,
   query: string,
@@ -131,7 +157,7 @@ export const searchPage = (
 
       const rects = pageIndex.spans
         .filter(span => span.end > originalStart && span.start < originalEnd)
-        .map(span => span.rect);
+        .map(span => calculatePartialRect(span, originalStart, originalEnd));
 
       const mergedRects = mergeRectsIntoLines(rects);
       matches.push({
