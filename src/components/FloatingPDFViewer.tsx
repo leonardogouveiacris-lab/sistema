@@ -277,13 +277,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const now = Date.now();
-    if (isZoomChangingRef.current || isProgrammaticScrollRef.current || state.isRotating || now < zoomBlockedUntilRef.current) {
+    if (isZoomChangingRef.current || state.isRotating) {
       return;
     }
 
-    if (state.isSearchOpen && (highlightedPageRef.current || isSearchNavigationActive())) {
-      return;
-    }
+    const skipPageChange = isProgrammaticScrollRef.current ||
+      now < zoomBlockedUntilRef.current ||
+      (state.isSearchOpen && (highlightedPageRef.current || isSearchNavigationActive()));
 
     const scrollTop = container.scrollTop;
     const viewportHeight = container.clientHeight;
@@ -333,7 +333,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     });
 
     const timeSinceLastZoom = now - lastZoomTimestampRef.current;
-    if (timeSinceLastZoom < ZOOM_PROTECTION_DURATION_MS) {
+    if (timeSinceLastZoom < ZOOM_PROTECTION_DURATION_MS || skipPageChange) {
       return;
     }
 
