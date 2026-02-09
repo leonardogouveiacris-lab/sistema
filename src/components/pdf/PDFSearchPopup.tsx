@@ -227,6 +227,20 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     return results;
   }, [documentOffsets, searchOptions, state.documents]);
 
+  const buildLocalSearchResults = useCallback((query: string) => {
+    const indexedPages = Array.from(localIndexRef.current.values())
+      .reduce((sum, pageMap) => sum + pageMap.size, 0);
+
+    if (indexedPages === 0) {
+      return { results: [], hasIndexedContent: false };
+    }
+
+    return {
+      results: searchLocal(query),
+      hasIndexedContent: true
+    };
+  }, [searchLocal]);
+
   const fetchDatabaseResults = useCallback(async (query: string): Promise<SearchResult[]> => {
     if (!query || query.length < 2 || !processId) {
       return [];
