@@ -545,6 +545,10 @@ export function useSelectionOverlay(
     lastMouseX: 0,
     lastMouseY: 0
   });
+  const lastValidCaretRef = useRef<{ node: Node; offset: number; spanInfo?: SpanInfo } | null>(null);
+  const anchorCaretRef = useRef<{ node: Node; offset: number } | null>(null);
+  const dragUpdateThrottleRef = useRef<number>(0);
+  const DRAG_THROTTLE_MS = 16;
 
   const clearOverlay = useCallback(() => {
     if (lastRectsMapRef.current.size === 0 && !hasActiveSelectionRef.current) {
@@ -675,6 +679,92 @@ export function useSelectionOverlay(
     }
   }, [containerRef, clearOverlay]);
 
+  const isPointOverValidText = useCallback((x: number, y: number, textLayer: Element): boolean => {
+    const spans = textLayer.querySelectorAll('span[role="presentation"], span:not([role])');
+
+    for (const span of spans) {
+      if (!(span instanceof HTMLElement)) continue;
+      if (!span.textContent?.trim()) continue;
+
+      const rect = span.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        return true;
+      }
+    }
+
+    return false;
+  }, []);
+
+  const updateSelectionDuringDrag = useCallback((x: number, y: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const pageEl = document.elementFromPoint(x, y)?.closest('[data-global-page]');
+    if (!pageEl) return;
+
+    const textLayer = pageEl.querySelector('.textLayer') ||
+                      pageEl.querySelector('.react-pdf__Page__textContent');
+    if (!textLayer) return;
+
+    const metrics = currentTextMetricsRef.current || getTextMetricsFromTextLayer(textLayer);
+    const anchorY = anchorCaretRef.current ? y : y;
+
+    const isOverText = isPointOverValidText(x, y, textLayer);
+
+    if (!isOverText && lastValidCaretRef.current) {
+      return;
+    }
+
+    const caretInfo = getSnappedCaretInfo(
+      x, y, textLayer, metrics, anchorY,
+      lastValidCaretRef.current?.spanInfo
+    );
+
+    if (!caretInfo || !textLayer.contains(caretInfo.node)) {
+      return;
+    }
+
+    lastValidCaretRef.current = caretInfo;
+
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    if (!anchorCaretRef.current) {
+      anchorCaretRef.current = { node: caretInfo.node, offset: caretInfo.offset };
+    }
+
+    const anchor = anchorCaretRef.current;
+
+    try {
+      isProgrammaticSelectionRef.current = true;
+
+      const range = document.createRange();
+
+      const position = anchor.node.compareDocumentPosition(caretInfo.node);
+      const isBefore = position & Node.DOCUMENT_POSITION_FOLLOWING ||
+                       (anchor.node === caretInfo.node && anchor.offset <= caretInfo.offset);
+
+      if (isBefore) {
+        range.setStart(anchor.node, anchor.offset);
+        range.setEnd(caretInfo.node, caretInfo.offset);
+      } else {
+        range.setStart(caretInfo.node, caretInfo.offset);
+        range.setEnd(anchor.node, anchor.offset);
+      }
+
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      calculateSelectionRects(true);
+    } finally {
+      queueMicrotask(() => {
+        isProgrammaticSelectionRef.current = false;
+      });
+    }
+  }, [containerRef, calculateSelectionRects, isPointOverValidText]);
+
   const handleSelectionChange = useCallback(() => {
     if (isProgrammaticSelectionRef.current) {
       return;
@@ -740,6 +830,20 @@ export function useSelectionOverlay(
           lastMouseX: e.clientX,
           lastMouseY: e.clientY
         };
+
+        const caretInfo = getSnappedCaretInfo(
+          e.clientX, e.clientY, textLayer, currentTextMetricsRef.current, e.clientY, null
+        );
+        if (caretInfo) {
+          anchorCaretRef.current = { node: caretInfo.node, offset: caretInfo.offset };
+          lastValidCaretRef.current = caretInfo;
+        } else {
+          anchorCaretRef.current = null;
+          lastValidCaretRef.current = null;
+        }
+      } else {
+        anchorCaretRef.current = null;
+        lastValidCaretRef.current = null;
       }
 
       if (hasActiveSelectionRef.current) {
@@ -758,12 +862,22 @@ export function useSelectionOverlay(
 
       dragStateRef.current.lastMouseX = e.clientX;
       dragStateRef.current.lastMouseY = e.clientY;
+
+      const now = performance.now();
+      if (now - dragUpdateThrottleRef.current < DRAG_THROTTLE_MS) {
+        return;
+      }
+      dragUpdateThrottleRef.current = now;
+
+      updateSelectionDuringDrag(e.clientX, e.clientY);
     };
 
     const handleMouseUp = () => {
       const wasDragging = dragStateRef.current.isDragging;
       isMouseDownRef.current = false;
       dragStateRef.current.isDragging = false;
+      anchorCaretRef.current = null;
+      lastValidCaretRef.current = null;
 
       if (wasDragging) {
         selectionUpdateTokenRef.current++;
@@ -864,7 +978,7 @@ export function useSelectionOverlay(
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [clearSelection, calculateSelectionRects, containerRef]);
+  }, [clearSelection, calculateSelectionRects, containerRef, updateSelectionDuringDrag]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
