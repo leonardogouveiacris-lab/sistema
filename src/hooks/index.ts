@@ -12,6 +12,9 @@ export { useDebounce } from './useDebounce';
 export { useBackToTop } from './useBackToTop';
 export { useRealtimeSubscription } from './useRealtimeSubscription';
 export { useResponsivePanel } from './useResponsivePanel';
+export { useSelectionOverlay } from './useSelectionOverlay';
+export type { SelectionRect, SelectionOverlayResult } from './useSelectionOverlay';
+export { getTelemetry, resetTelemetry } from './selectionEngine';
 
 export { useDecisionContext as useDecisions } from '../contexts/DecisionContext';
 export { useVerbaContext as useVerbas } from '../contexts/VerbaContext';
