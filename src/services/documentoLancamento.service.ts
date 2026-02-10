@@ -91,8 +91,8 @@ class DocumentoLancamentoService {
 
       if (input.tipoDocumento !== undefined) updateData.tipo_documento = input.tipoDocumento;
       if (input.comentarios !== undefined) updateData.comentarios = input.comentarios || null;
-      if (input.paginaVinculada !== undefined) updateData.pagina_vinculada = input.paginaVinculada || null;
-      if (input.processDocumentId !== undefined) updateData.process_document_id = input.processDocumentId || null;
+      if (input.paginaVinculada !== undefined) updateData.pagina_vinculada = input.paginaVinculada ?? null;
+      if (input.processDocumentId !== undefined) updateData.process_document_id = input.processDocumentId ?? null;
 
       const { data, error } = await supabase
         .from(this.tableName)

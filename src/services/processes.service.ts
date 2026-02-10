@@ -482,10 +482,11 @@ export class ProcessesService {
         throw new Error('Supabase não configurado');
       }
 
+      const sanitized = searchTerm.replace(/[%_,().*]/g, '');
       const { data, error } = await supabase
         .from('processes')
         .select('*')
-        .or(`numero_processo.ilike.%${searchTerm}%,reclamante.ilike.%${searchTerm}%,reclamada.ilike.%${searchTerm}%,observacoes_gerais.ilike.%${searchTerm}%`)
+        .or(`numero_processo.ilike.%${sanitized}%,reclamante.ilike.%${sanitized}%,reclamada.ilike.%${sanitized}%,observacoes_gerais.ilike.%${sanitized}%`)
         .order('updated_at', { ascending: false });
 
       if (error) {
@@ -581,36 +582,22 @@ export class ProcessesService {
         throw new Error('Supabase não configurado');
       }
 
-      // Consulta para total
-      const { count: total, error: errorTotal } = await supabase
-        .from('processes')
-        .select('*', { count: 'exact', head: true });
+      const [totalResult, weekResult, monthResult, yearResult] = await Promise.all([
+        supabase.from('processes').select('*', { count: 'exact', head: true }),
+        supabase.from('processes').select('*', { count: 'exact', head: true }).gte('created_at', oneWeekAgo),
+        supabase.from('processes').select('*', { count: 'exact', head: true }).gte('created_at', oneMonthAgo),
+        supabase.from('processes').select('*', { count: 'exact', head: true }).gte('created_at', oneYearAgo)
+      ]);
 
-      if (errorTotal) throw errorTotal;
+      if (totalResult.error) throw totalResult.error;
+      if (weekResult.error) throw weekResult.error;
+      if (monthResult.error) throw monthResult.error;
+      if (yearResult.error) throw yearResult.error;
 
-      // Consulta para última semana
-      const { count: ultima_semana, error: errorWeek } = await supabase
-        .from('processes')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', oneWeekAgo);
-
-      if (errorWeek) throw errorWeek;
-
-      // Consulta para último mês
-      const { count: ultimo_mes, error: errorMonth } = await supabase
-        .from('processes')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', oneMonthAgo);
-
-      if (errorMonth) throw errorMonth;
-
-      // Consulta para último ano
-      const { count: ultimo_ano, error: errorYear } = await supabase
-        .from('processes')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', oneYearAgo);
-
-      if (errorYear) throw errorYear;
+      const total = totalResult.count;
+      const ultima_semana = weekResult.count;
+      const ultimo_mes = monthResult.count;
+      const ultimo_ano = yearResult.count;
 
       const stats = {
         total: total || 0,

@@ -48,20 +48,24 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, []);
 
   useEffect(() => {
+    let completed = false;
     const loadInitial = async () => {
       const timeoutId = setTimeout(() => {
-        setIsLoading(false);
-        setError('Timeout ao carregar decisões.');
-        setDecisions([]);
+        if (!completed) {
+          setIsLoading(false);
+          setError('Timeout ao carregar decisões.');
+        }
       }, 15000);
 
       try {
         setIsLoading(true);
         setError(null);
         const data = await DecisionsService.getAll();
+        completed = true;
         setDecisions(data);
         logger.success(`${data.length} decisões carregadas`, 'DecisionContext');
       } catch (err) {
+        completed = true;
         const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
         setError(errorMessage);
         setDecisions([]);

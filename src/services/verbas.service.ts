@@ -166,9 +166,9 @@ export class VerbasService {
   ): VerbaLancamentoInsert {
     const fundamentacao = lancamento.fundamentacao?.trim() || null;
     const comentariosCalculistas = lancamento.comentariosCalculistas?.trim() || null;
-    const paginaVinculada = lancamento.paginaVinculada || null;
-    const processDocumentId = lancamento.processDocumentId || null;
-    const highlightId = lancamento.highlightId || null;
+    const paginaVinculada = lancamento.paginaVinculada ?? null;
+    const processDocumentId = lancamento.processDocumentId ?? null;
+    const highlightId = lancamento.highlightId ?? null;
     const highlightIds = lancamento.highlightIds || [];
 
     return {
@@ -210,15 +210,15 @@ export class VerbasService {
     }
 
     if (updates.paginaVinculada !== undefined) {
-      record.pagina_vinculada = updates.paginaVinculada || null;
+      record.pagina_vinculada = updates.paginaVinculada ?? null;
     }
 
     if (updates.processDocumentId !== undefined) {
-      record.process_document_id = updates.processDocumentId || null;
+      record.process_document_id = updates.processDocumentId ?? null;
     }
 
     if (updates.highlightId !== undefined) {
-      record.highlight_id = updates.highlightId || null;
+      record.highlight_id = updates.highlightId ?? null;
     }
 
     if (updates.highlightIds !== undefined) {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { X, RotateCw, RotateCcw, RefreshCcw, AlertCircle } from 'lucide-react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 
@@ -55,20 +55,22 @@ const PageRangeRotationModal: React.FC<PageRangeRotationModalProps> = ({ totalPa
     return Array.from(pages).sort((a, b) => a - b);
   }, [totalPages]);
 
-  const { parsedPages, isValid } = useMemo(() => {
+  const { parsedPages, isValid, parseError } = useMemo(() => {
     if (!inputValue.trim()) {
-      return { parsedPages: [], isValid: false };
+      return { parsedPages: [] as number[], isValid: false, parseError: null as string | null };
     }
 
     try {
       const pages = parsePageRanges(inputValue);
-      setValidationError(null);
-      return { parsedPages: pages, isValid: pages.length > 0 };
+      return { parsedPages: pages, isValid: pages.length > 0, parseError: null as string | null };
     } catch (error) {
-      setValidationError((error as Error).message);
-      return { parsedPages: [], isValid: false };
+      return { parsedPages: [] as number[], isValid: false, parseError: (error as Error).message };
     }
   }, [inputValue, parsePageRanges]);
+
+  useEffect(() => {
+    setValidationError(parseError);
+  }, [parseError]);
 
   const handleRotate = useCallback((degrees: number) => {
     if (!isValid || parsedPages.length === 0) return;

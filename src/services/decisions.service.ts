@@ -74,7 +74,7 @@ export class DecisionsService {
       id_decisao: decision.idDecisao,
       situacao: decision.situacao,
       observacoes: decision.observacoes || null,
-      pagina_vinculada: decision.paginaVinculada || null
+      pagina_vinculada: decision.paginaVinculada ?? null
     };
   }
 
@@ -104,7 +104,7 @@ export class DecisionsService {
     }
 
     if (updates.paginaVinculada !== undefined) {
-      record.pagina_vinculada = updates.paginaVinculada || null;
+      record.pagina_vinculada = updates.paginaVinculada ?? null;
     }
 
     return record;
@@ -455,10 +455,11 @@ export class DecisionsService {
         { searchTerm, processId }
       );
 
+      const sanitized = searchTerm.replace(/[%_,().*]/g, '');
       let query = supabase
         .from('decisions')
         .select('*')
-        .or(`id_decisao.ilike.%${searchTerm}%,tipo_decisao.ilike.%${searchTerm}%,situacao.ilike.%${searchTerm}%,observacoes.ilike.%${searchTerm}%`);
+        .or(`id_decisao.ilike.%${sanitized}%,tipo_decisao.ilike.%${sanitized}%,situacao.ilike.%${sanitized}%,observacoes.ilike.%${sanitized}%`);
 
       if (processId) {
         query = query.eq('process_id', processId);

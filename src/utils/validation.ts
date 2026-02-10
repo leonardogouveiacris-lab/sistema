@@ -152,13 +152,16 @@ class ValidationUtils {
       errors.tipoVerba = `Tipo deve ter pelo menos ${VERBA_CONSTANTS.MIN_TIPO_LENGTH} caracteres`;
     }
 
-    // Validação da decisão vinculada
+    if (!data.lancamento) {
+      errors.lancamento = 'Dados do lançamento são obrigatórios';
+      return { isValid: false, errors };
+    }
+
     const decisaoError = this.isRequired(data.lancamento.decisaoVinculada, 'Decisão vinculada');
     if (decisaoError) {
       errors.decisaoVinculada = decisaoError;
     }
 
-    // Validação da situação
     const situacaoError = this.isRequired(data.lancamento.situacao, 'Situação');
     if (situacaoError) {
       errors.situacao = situacaoError;

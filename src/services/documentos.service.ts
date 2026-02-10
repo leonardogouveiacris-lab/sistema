@@ -77,7 +77,7 @@ export class DocumentosService {
       processId: record.process_id,
       tipoDocumento: record.tipo_documento,
       comentarios: record.comentarios || '',
-      paginaVinculada: record.pagina_vinculada || undefined,
+      paginaVinculada: record.pagina_vinculada ?? undefined,
       highlightIds: record.highlight_ids || [],
       dataCriacao: new Date(record.created_at),
       dataAtualizacao: new Date(record.updated_at)
@@ -95,7 +95,7 @@ export class DocumentosService {
       process_id: documento.processId,
       tipo_documento: documento.tipoDocumento,
       comentarios: documento.comentarios || null,
-      pagina_vinculada: documento.paginaVinculada || null,
+      pagina_vinculada: documento.paginaVinculada ?? null,
       highlight_ids: documento.highlightIds || []
     };
   }
@@ -118,7 +118,7 @@ export class DocumentosService {
     }
 
     if (updates.paginaVinculada !== undefined) {
-      record.pagina_vinculada = updates.paginaVinculada || null;
+      record.pagina_vinculada = updates.paginaVinculada ?? null;
     }
 
     if (updates.highlightIds !== undefined) {
@@ -484,10 +484,11 @@ export class DocumentosService {
         { searchTerm, processId }
       );
 
+      const sanitized = searchTerm.replace(/[%_,().*]/g, '');
       let query = supabase
         .from('lancamentos_documentos')
         .select('*')
-        .or(`tipo_documento.ilike.%${searchTerm}%,comentarios.ilike.%${searchTerm}%`);
+        .or(`tipo_documento.ilike.%${sanitized}%,comentarios.ilike.%${sanitized}%`);
 
       if (processId) {
         query = query.eq('process_id', processId);

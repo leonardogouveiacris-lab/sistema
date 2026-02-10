@@ -8,7 +8,7 @@
  * - Inserção de texto selecionado nos campos
  */
 
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode, useEffect, useRef } from 'react';
 import { ProcessDocument } from '../types/ProcessDocument';
 import { PDFBookmark } from '../types/PDFBookmark';
 import { PDFHighlight, HighlightColor } from '../types/Highlight';
@@ -2092,8 +2092,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const hasRotations = Object.keys(state.pageRotations).length > 0;
   const rotatedPageCount = Object.keys(state.pageRotations).length;
 
-  // Valor do contexto
-  const value: PDFViewerContextType = {
+  const value = useMemo<PDFViewerContextType>(() => ({
     state,
     openViewer,
     closeViewer,
@@ -2203,7 +2202,31 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     removeConnectorFromComment,
     setDrawingConnector,
     setEditingConnectorId
-  };
+  }), [
+    state, hasRotations, rotatedPageCount,
+    openViewer, closeViewer, toggleMinimize,
+    getCurrentDocument, getDocumentByGlobalPage, getLocalPageNumber, getGlobalPageNumber, setDocumentPageInfo,
+    goToPage, nextPage, previousPage, setTotalPages, navigateToPageWithHighlight,
+    zoomIn, zoomOut, resetZoom, setZoom, setDisplayZoom, setIsInteracting,
+    setSelectedText, clearSelection, setPanelWidth, setViewMode, toggleViewMode,
+    setSidebarTab, setFormMode, startCreateDecision, startCreateVerba, startCreateDocumento, startCreateDocumentoLancamento,
+    startEditDecision, startEditVerba, startEditDocumento, startEditDocumentoLancamento, cancelForm,
+    registerEditor, unregisterEditor, insertTextInField,
+    setBookmarks, setIsLoadingBookmarks, setBookmarksError, toggleBookmarkPanel, setBookmarkPanelVisible, setBookmarkPanelWidth,
+    setPageDimensions, getPageHeight, getPageWidth, setRenderRange, getEffectiveRenderRange, registerScrollContainer, getVisiblePageFromScroll,
+    setHighlights, addHighlight, removeHighlight, updateHighlightColor,
+    toggleHighlighter, setHighlighterActive, setSelectedHighlightColor, setHoveredHighlightId,
+    getHighlightsByPage, setSelectedHighlightIds, addHighlightIdToLink, clearHighlightIdsToLink, scrollToMultipleHighlights,
+    openSearch, closeSearch, toggleSearch, setSearchQuery, setSearchAnchorPage, setSearchResults,
+    setCurrentSearchIndex, goToNextSearchResult, goToPreviousSearchResult, setIsSearching,
+    disableSearchNavigationSync, isSearchNavigationActive, setTextExtractionProgress, clearSearch,
+    getPageRotation, rotatePage, rotatePageBy, rotatePages, rotatePagesBy, resetPageRotation, resetAllRotations,
+    openRotationModal, closeRotationModal, openPageExtractionModal, closePageExtractionModal,
+    toggleSidebar, setSidebarVisible, setSidebarWidth,
+    setComments, addComment, updateComment, removeComment, toggleCommentMode, setCommentModeActive,
+    selectComment, setSelectedCommentColor, getCommentsByPage,
+    addConnectorToComment, updateConnectorInComment, removeConnectorFromComment, setDrawingConnector, setEditingConnectorId
+  ]);
 
   return <PDFViewerContext.Provider value={value}>{children}</PDFViewerContext.Provider>;
 };

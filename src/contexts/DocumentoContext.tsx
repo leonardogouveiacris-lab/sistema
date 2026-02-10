@@ -46,20 +46,24 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, []);
 
   useEffect(() => {
+    let completed = false;
     const loadInitial = async () => {
       const timeoutId = setTimeout(() => {
-        setIsLoading(false);
-        setError('Timeout ao carregar documentos.');
-        setDocumentos([]);
+        if (!completed) {
+          setIsLoading(false);
+          setError('Timeout ao carregar documentos.');
+        }
       }, 15000);
 
       try {
         setIsLoading(true);
         setError(null);
         const data = await DocumentosService.getAll();
+        completed = true;
         setDocumentos(data);
         logger.success(`${data.length} documentos carregados`, 'DocumentoContext');
       } catch (err) {
+        completed = true;
         const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
         setError(errorMessage);
         setDocumentos([]);

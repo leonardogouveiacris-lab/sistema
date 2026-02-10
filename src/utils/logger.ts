@@ -76,4 +76,8 @@ class Logger {
 const logger = new Logger();
 
 export default logger;
-export const { info, success, warn, error, errorWithException } = logger;
+export const info = logger.info.bind(logger);
+export const success = logger.success.bind(logger);
+export const warn = logger.warn.bind(logger);
+export const error = logger.error.bind(logger);
+export const errorWithException = logger.errorWithException.bind(logger);

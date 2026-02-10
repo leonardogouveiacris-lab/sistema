@@ -453,13 +453,19 @@ export class DynamicEnumService {
    * @param enumName - Nome do enum para invalidar o cache
    */
   private static invalidateCache(enumName: string): void {
-    const cacheKey = this.getCacheKey(enumName);
-    this.cache.delete(cacheKey);
-    
+    const prefix = `enum_values:${enumName}`;
+    const keysToDelete: string[] = [];
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) {
+        keysToDelete.push(key);
+      }
+    }
+    keysToDelete.forEach(key => this.cache.delete(key));
+
     logger.info(
-      `Cache invalidado para enum: ${enumName}`,
+      `Cache invalidado para enum: ${enumName} (${keysToDelete.length} entradas)`,
       'DynamicEnumService.invalidateCache',
-      { enumName }
+      { enumName, entriesCleared: keysToDelete.length }
     );
   }
   

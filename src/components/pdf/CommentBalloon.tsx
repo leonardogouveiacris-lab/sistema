@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MessageCircle, X, Trash2, ArrowRight, Square, Palette, CornerDownRight } from 'lucide-react';
 import { PDFComment, CommentColor, COMMENT_COLORS, ConnectorType } from '../../types/PDFComment';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
@@ -144,8 +144,10 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     }
   };
 
-  const handleDrag = (e: MouseEvent) => {
-    if (!isDragging || !balloonRef.current) return;
+  const latestPositionRef = useRef({ x: comment.positionX, y: comment.positionY });
+
+  const handleDrag = useCallback((e: MouseEvent) => {
+    if (!balloonRef.current) return;
 
     const parent = balloonRef.current.parentElement;
     if (!parent) return;
@@ -157,22 +159,22 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     const clampedX = Math.max(0, Math.min(newX, pageWidth - 24));
     const clampedY = Math.max(0, Math.min(newY, pageHeight - 24));
 
+    latestPositionRef.current = { x: clampedX, y: clampedY };
     updateComment(comment.id, { positionX: clampedX, positionY: clampedY });
-  };
+  }, [dragOffset, scale, pageWidth, pageHeight, comment.id, updateComment]);
 
-  const handleDragEnd = async () => {
-    if (isDragging) {
-      setIsDragging(false);
-      try {
-        await PDFCommentsService.updateComment(comment.id, {
-          positionX: comment.positionX,
-          positionY: comment.positionY
-        });
-      } catch (error) {
-        console.error('Erro ao salvar posição:', error);
-      }
+  const handleDragEnd = useCallback(async () => {
+    setIsDragging(false);
+    const { x, y } = latestPositionRef.current;
+    try {
+      await PDFCommentsService.updateComment(comment.id, {
+        positionX: x,
+        positionY: y
+      });
+    } catch (error) {
+      console.error('Erro ao salvar posição:', error);
     }
-  };
+  }, [comment.id]);
 
   useEffect(() => {
     if (isDragging) {
@@ -183,7 +185,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
         window.removeEventListener('mouseup', handleDragEnd);
       };
     }
-  }, [isDragging, dragOffset, scale, pageWidth, pageHeight]);
+  }, [isDragging, handleDrag, handleDragEnd]);
 
   const colorConfig = COMMENT_COLORS[comment.color];
   const formattedDate = new Date(comment.createdAt).toLocaleString('pt-BR', {

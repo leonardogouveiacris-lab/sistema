@@ -50,20 +50,24 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
 
   useEffect(() => {
+    let completed = false;
     const loadInitial = async () => {
       const timeoutId = setTimeout(() => {
-        setIsLoading(false);
-        setError('Timeout ao carregar verbas.');
-        setVerbas([]);
+        if (!completed) {
+          setIsLoading(false);
+          setError('Timeout ao carregar verbas.');
+        }
       }, 15000);
 
       try {
         setIsLoading(true);
         setError(null);
         const data = await VerbasService.getAll();
+        completed = true;
         setVerbas(data);
         logger.success(`${data.length} verbas carregadas`, 'VerbaContext');
       } catch (err) {
+        completed = true;
         const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
         setError(errorMessage);
         setVerbas([]);
@@ -168,20 +172,21 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const removeVerbaLancamento = useCallback(async (verbaId: string, lancamentoId: string, skipGlobalError = false): Promise<OperationResult> => {
     try {
-      const verba = verbas.find(v => v.id === verbaId);
-      const isLastLancamento = verba ? verba.lancamentos.length === 1 : false;
-
       await VerbasService.removeLancamento(verbaId, lancamentoId);
 
-      if (isLastLancamento) {
-        setVerbas(prev => prev.filter(v => v.id !== verbaId));
-      } else {
-        setVerbas(prev => prev.map(v =>
+      setVerbas(prev => {
+        const verba = prev.find(v => v.id === verbaId);
+        const isLastLancamento = verba ? verba.lancamentos.length === 1 : false;
+
+        if (isLastLancamento) {
+          return prev.filter(v => v.id !== verbaId);
+        }
+        return prev.map(v =>
           v.id === verbaId
             ? { ...v, lancamentos: v.lancamentos.filter(l => l.id !== lancamentoId), dataAtualizacao: new Date() }
             : v
-        ));
-      }
+        );
+      });
       setError(null);
       return { success: true };
     } catch (err) {
@@ -190,7 +195,7 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
     }
-  }, [verbas]);
+  }, []);
 
   const removeVerba = useCallback(async (verbaId: string, skipGlobalError = false): Promise<OperationResult> => {
     try {

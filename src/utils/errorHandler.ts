@@ -159,7 +159,7 @@ export const safeAsyncOperation = async <T>(
       );
       
       // Delay progressivo entre tentativas
-      await new Promise(resolve => setTimeout(resolve, (4 - retryCount) * 1000));
+      await new Promise(resolve => setTimeout(resolve, Math.max(1000, (4 - retryCount) * 1000)));
       
       return safeAsyncOperation(operation, context, retryCount - 1);
     }
