@@ -9,6 +9,8 @@ import {
   getTextMetricsFromTextLayer,
   selectWordAtPoint,
   calculatePageRects,
+  createHysteresisState,
+  shouldHoldSelection,
   logSelectionEvent,
   incrementDroppedEvents,
   incrementProgrammaticBlocks
@@ -54,6 +56,7 @@ export function useSelectionOverlay(
   const lastSelectionTextRef = useRef('');
   const isKeyboardSelectingRef = useRef(false);
   const currentTextMetricsRef = useRef<TextMetrics | null>(null);
+  const activeTextLayerRef = useRef<Element | null>(null);
   const selectionModeRef = useRef<SelectionMode>('idle');
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('idle');
 
@@ -74,11 +77,13 @@ export function useSelectionOverlay(
     contextCommits: 0,
     droppedByProgrammatic: 0,
     droppedByStaleEpoch: 0,
-    droppedByKeyboardGuard: 0
+    droppedByKeyboardGuard: 0,
+    droppedByGapHysteresis: 0
   });
 
   const lastValidRangeRef = useRef<RangeSignature | null>(null);
   const lastValidCaretRef = useRef<{ x: number; y: number } | null>(null);
+  const gapHysteresisRef = useRef(createHysteresisState());
 
   const rafCoalesceRef = useRef<{
     pending: boolean;
@@ -321,8 +326,13 @@ export function useSelectionOverlay(
       return;
     }
 
+    if (isDraggingRef.current) {
+      logSelectionEvent('selectionchange:blocked-native-drag');
+      return;
+    }
+
     logSelectionEvent('selectionchange:process', { isDragging: isDraggingRef.current });
-    scheduleRafUpdate(isDraggingRef.current);
+    scheduleRafUpdate(false);
   }, [scheduleRafUpdate]);
 
   const clearSelection = useCallback(() => {
@@ -343,6 +353,8 @@ export function useSelectionOverlay(
     endProgrammaticSelection(epoch);
 
     isDraggingRef.current = false;
+    activeTextLayerRef.current = null;
+    gapHysteresisRef.current = createHysteresisState();
     updateSelectionMode('idle');
     clearOverlay();
     logSelectionEvent('selection:cleared');
@@ -359,6 +371,7 @@ export function useSelectionOverlay(
 
       if (textLayer) {
         currentTextMetricsRef.current = getTextMetricsFromTextLayer(textLayer);
+        activeTextLayerRef.current = textLayer;
         isDraggingRef.current = true;
         dragSessionIdRef.current += 1;
         dragStatsRef.current = {
@@ -367,8 +380,10 @@ export function useSelectionOverlay(
           contextCommits: 0,
           droppedByProgrammatic: 0,
           droppedByStaleEpoch: 0,
-          droppedByKeyboardGuard: 0
+          droppedByKeyboardGuard: 0,
+          droppedByGapHysteresis: 0
         };
+        gapHysteresisRef.current = createHysteresisState();
         updateSelectionMode('native-drag');
         lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
         logSelectionEvent('mousedown:text-layer', { x: e.clientX, y: e.clientY });
@@ -391,6 +406,23 @@ export function useSelectionOverlay(
     const handleMouseMove = (e: MouseEvent) => {
       if (!isMouseDownRef.current || !isDraggingRef.current) return;
 
+      const textLayer = activeTextLayerRef.current;
+      if (textLayer) {
+        const hysteresisResult = shouldHoldSelection(
+          e.clientX,
+          e.clientY,
+          textLayer,
+          gapHysteresisRef.current,
+          80
+        );
+        gapHysteresisRef.current = hysteresisResult.updatedHysteresis;
+
+        if (hysteresisResult.hold) {
+          dragStatsRef.current.droppedByGapHysteresis += 1;
+          return;
+        }
+      }
+
       const now = performance.now();
       if (now - dragUpdateThrottleRef.current < DRAG_THROTTLE_MS) {
         return;
@@ -410,6 +442,8 @@ export function useSelectionOverlay(
         logSelectionEvent('mouseup:end-drag');
         printDragSessionStats(dragSessionIdRef.current);
         updateSelectionMode('idle');
+        activeTextLayerRef.current = null;
+        gapHysteresisRef.current = createHysteresisState();
         scheduleRafUpdate(true);
       }
     };
