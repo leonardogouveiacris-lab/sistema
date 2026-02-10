@@ -40,9 +40,15 @@ export interface SelectionTelemetry {
   hysteresisHolds: number;
 }
 
-const DEBUG_ENABLED = typeof window !== 'undefined' &&
-  (localStorage.getItem('SELECTION_DEBUG') === 'true' ||
-   new URLSearchParams(window.location.search).get('selectionDebug') === '1');
+const DEBUG_ENABLED = (() => {
+  try {
+    return typeof window !== 'undefined' &&
+      (localStorage.getItem('SELECTION_DEBUG') === 'true' ||
+       new URLSearchParams(window.location.search).get('selectionDebug') === '1');
+  } catch {
+    return false;
+  }
+})();
 
 let telemetry: SelectionTelemetry = {
   eventCount: 0,
@@ -117,6 +123,7 @@ export function areMapsEqual(
 }
 
 export function areRangesEqual(a: RangeSignature | null, b: RangeSignature | null): boolean {
+  if (a === b) return true;
   if (!a || !b) return false;
   return (
     a.startContainer === b.startContainer &&
@@ -257,16 +264,18 @@ export function findBestSpanForPoint(
   const sortedLines = Array.from(lineGroups.entries()).sort((a, b) => a[0] - b[0]);
 
   let targetLine: SpanInfo[] | null = null;
-  let targetLineIndex = -1;
 
   for (let i = 0; i < sortedLines.length; i++) {
     const [, lineSpans] = sortedLines[i];
-    const lineTop = Math.min(...lineSpans.map(s => s.rect.top));
-    const lineBottom = Math.max(...lineSpans.map(s => s.rect.bottom));
+    let lineTop = Infinity;
+    let lineBottom = -Infinity;
+    for (const s of lineSpans) {
+      if (s.rect.top < lineTop) lineTop = s.rect.top;
+      if (s.rect.bottom > lineBottom) lineBottom = s.rect.bottom;
+    }
 
     if (y >= lineTop && y <= lineBottom) {
       targetLine = lineSpans;
-      targetLineIndex = i;
       break;
     }
   }
@@ -274,16 +283,18 @@ export function findBestSpanForPoint(
   if (!targetLine && sortedLines.length > 0) {
     for (let i = 0; i < sortedLines.length; i++) {
       const [, lineSpans] = sortedLines[i];
-      const lineTop = Math.min(...lineSpans.map(s => s.rect.top));
-      const lineBottom = Math.max(...lineSpans.map(s => s.rect.bottom));
+      let lineTop = Infinity;
+      let lineBottom = -Infinity;
+      for (const s of lineSpans) {
+        if (s.rect.top < lineTop) lineTop = s.rect.top;
+        if (s.rect.bottom > lineBottom) lineBottom = s.rect.bottom;
+      }
 
       if (y < lineTop) {
         if (isDraggingDown && i > 0) {
           targetLine = sortedLines[i - 1][1];
-          targetLineIndex = i - 1;
         } else {
           targetLine = lineSpans;
-          targetLineIndex = i;
         }
         break;
       }
@@ -297,22 +308,22 @@ export function findBestSpanForPoint(
 
   if (!targetLine) return lastValidSpan || null;
 
-  targetLine.sort((a, b) => a.rect.left - b.rect.left);
+  const sortedTargetLine = [...targetLine].sort((a, b) => a.rect.left - b.rect.left);
 
-  for (const info of targetLine) {
+  for (const info of sortedTargetLine) {
     if (x >= info.rect.left && x <= info.rect.right) {
       return info;
     }
   }
 
   if (lastValidSpan) {
-    const lastSpanInTargetLine = targetLine.find(s => s.span === lastValidSpan.span);
+    const lastSpanInTargetLine = sortedTargetLine.find(s => s.span === lastValidSpan.span);
     if (lastSpanInTargetLine) {
-      const lastSpanIndex = targetLine.indexOf(lastSpanInTargetLine);
+      const lastSpanIndex = sortedTargetLine.indexOf(lastSpanInTargetLine);
 
-      for (let i = 0; i < targetLine.length; i++) {
-        const span = targetLine[i];
-        const nextSpan = targetLine[i + 1];
+      for (let i = 0; i < sortedTargetLine.length; i++) {
+        const span = sortedTargetLine[i];
+        const nextSpan = sortedTargetLine[i + 1];
 
         if (nextSpan && x > span.rect.right && x < nextSpan.rect.left) {
           if (lastSpanIndex <= i) {
@@ -325,10 +336,10 @@ export function findBestSpanForPoint(
     }
   }
 
-  let closestSpan = targetLine[0];
+  let closestSpan = sortedTargetLine[0];
   let minDist = Infinity;
 
-  for (const info of targetLine) {
+  for (const info of sortedTargetLine) {
     const distLeft = Math.abs(x - info.rect.left);
     const distRight = Math.abs(x - info.rect.right);
     const dist = Math.min(distLeft, distRight);
@@ -338,12 +349,12 @@ export function findBestSpanForPoint(
     }
   }
 
-  if (x < targetLine[0].rect.left) {
-    return targetLine[0];
+  if (x < sortedTargetLine[0].rect.left) {
+    return sortedTargetLine[0];
   }
 
-  if (x > targetLine[targetLine.length - 1].rect.right) {
-    return targetLine[targetLine.length - 1];
+  if (x > sortedTargetLine[sortedTargetLine.length - 1].rect.right) {
+    return sortedTargetLine[sortedTargetLine.length - 1];
   }
 
   return closestSpan;

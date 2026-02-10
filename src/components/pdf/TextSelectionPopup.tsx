@@ -39,10 +39,11 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
   hasFundamentacaoField = false
 }) => {
   const popupRef = useRef<HTMLDivElement>(null);
-  const [calculatedPosition, setCalculatedPosition] = useState<{ top: number; left: number; placement: 'top' | 'bottom' }>({
+  const [calculatedPosition, setCalculatedPosition] = useState<{ top: number; left: number; placement: 'top' | 'bottom'; ready: boolean }>({
     top: 0,
     left: 0,
-    placement: 'bottom'
+    placement: 'bottom',
+    ready: false
   });
 
   /**
@@ -94,7 +95,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       placement = 'top';
     }
 
-    setCalculatedPosition({ top, left, placement });
+    setCalculatedPosition({ top, left, placement, ready: true });
   }, [position, containerRef]);
 
   /**
@@ -104,9 +105,6 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     calculatePosition();
   }, [calculatePosition]);
 
-  /**
-   * Fecha ao clicar fora
-   */
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
@@ -114,37 +112,28 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
-
-  /**
-   * Fecha ao rolar
-   */
-  useEffect(() => {
-    const container = containerRef?.current || window;
-
     const handleScroll = () => {
       onClose();
     };
 
-    container.addEventListener('scroll', handleScroll as EventListener);
-    return () => container.removeEventListener('scroll', handleScroll as EventListener);
-  }, [onClose, containerRef]);
-
-  /**
-   * Fecha ao pressionar Escape
-   */
-  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         onClose();
       }
     };
 
+    const scrollTarget = containerRef?.current || window;
+
+    document.addEventListener('mousedown', handleClickOutside);
+    scrollTarget.addEventListener('scroll', handleScroll as EventListener);
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      scrollTarget.removeEventListener('scroll', handleScroll as EventListener);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose, containerRef]);
 
   const characterCount = selectedText.length;
 
@@ -156,7 +145,8 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       style={{
         top: `${calculatedPosition.top}px`,
         left: `${calculatedPosition.left}px`,
-        width: '240px'
+        width: '240px',
+        visibility: calculatedPosition.ready ? 'visible' : 'hidden'
       }}
     >
       {/* Seta indicadora */}

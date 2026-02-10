@@ -35,9 +35,7 @@ const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, re
             width: `${rect.width}px`,
             height: `${rect.height}px`,
             backgroundColor: 'rgba(0, 120, 215, 0.3)',
-            pointerEvents: 'none',
-            transition: 'opacity 50ms ease-out',
-            willChange: 'opacity'
+            pointerEvents: 'none'
           }}
         />
       ))}

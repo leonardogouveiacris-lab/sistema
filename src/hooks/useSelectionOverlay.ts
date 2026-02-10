@@ -463,7 +463,7 @@ export function useSelectionOverlay(
         logSelectionEvent('mousedown:outside');
       }
 
-      if (hasActiveSelectionRef.current) {
+      if (hasActiveSelectionRef.current && !textLayer) {
         const isOnSelectionOverlay = target.closest('[data-selection-overlay]');
         const isOnTextSelectionPopup = target.closest('[data-text-selection-popup]');
         const isOnInlineForm = target.closest('[data-inline-form]');
@@ -471,11 +471,21 @@ export function useSelectionOverlay(
         if (!isOnSelectionOverlay && !isOnTextSelectionPopup && !isOnInlineForm) {
           clearSelection();
         }
+      } else if (hasActiveSelectionRef.current && textLayer) {
+        lastAppliedRangeRef.current = null;
+        lastValidRangeSignatureRef.current = null;
+        clearOverlay();
       }
     };
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isMouseDownRef.current || !isDraggingRef.current) return;
+
+      const now = performance.now();
+      if (now - dragUpdateThrottleRef.current < DRAG_THROTTLE_MS) {
+        return;
+      }
+      dragUpdateThrottleRef.current = now;
 
       const textLayer = activeTextLayerRef.current;
       if (textLayer) {
@@ -533,13 +543,7 @@ export function useSelectionOverlay(
         dragStatsRef.current.syntheticRangeUpdates += 1;
       }
 
-      const now = performance.now();
-      if (now - dragUpdateThrottleRef.current < DRAG_THROTTLE_MS) {
-        return;
-      }
-      dragUpdateThrottleRef.current = now;
       lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
-
       scheduleRafUpdate(true);
     };
 
@@ -562,6 +566,7 @@ export function useSelectionOverlay(
         dragAnchorRef.current = null;
         dragSyntheticRangeRef.current = null;
         lastValidRangeRef.current = null;
+        lastValidRangeSignatureRef.current = null;
         lastValidSpanRef.current = null;
         gapHysteresisRef.current = createHysteresisState();
         scheduleRafUpdate(true);
@@ -599,7 +604,7 @@ export function useSelectionOverlay(
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (isKeyboardSelectingRef.current) {
+      if (isKeyboardSelectingRef.current && (e.key === 'Shift' || e.key.startsWith('Arrow'))) {
         isKeyboardSelectingRef.current = false;
         updateSelectionMode('idle');
         logSelectionEvent('keyup:keyboard-selection-end');
@@ -639,6 +644,7 @@ export function useSelectionOverlay(
       }
       if (pendingProgrammaticResetRef.current !== null) {
         cancelAnimationFrame(pendingProgrammaticResetRef.current);
+        pendingProgrammaticResetRef.current = null;
       }
     };
   }, [handleSelectionChange]);

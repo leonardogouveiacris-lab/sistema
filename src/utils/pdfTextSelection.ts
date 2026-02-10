@@ -1,23 +1,29 @@
+let _cachedBrowser: string | null = null;
+
 export function getBrowser(): string {
+  if (_cachedBrowser !== null) return _cachedBrowser;
+
   const userAgent = navigator.userAgent;
 
   if (userAgent.indexOf('Firefox') > -1) {
-    return 'Firefox';
+    _cachedBrowser = 'Firefox';
   } else if (userAgent.indexOf('SamsungBrowser') > -1) {
-    return 'Samsung';
+    _cachedBrowser = 'Samsung';
   } else if (userAgent.indexOf('Opera') > -1 || userAgent.indexOf('OPR') > -1) {
-    return 'Opera';
+    _cachedBrowser = 'Opera';
   } else if (userAgent.indexOf('Trident') > -1) {
-    return 'IE';
-  } else if (userAgent.indexOf('Edge') > -1) {
-    return 'Edge';
+    _cachedBrowser = 'IE';
+  } else if (userAgent.indexOf('Edg') > -1) {
+    _cachedBrowser = 'Edge';
   } else if (userAgent.indexOf('Chrome') > -1) {
-    return 'Chrome';
+    _cachedBrowser = 'Chrome';
   } else if (userAgent.indexOf('Safari') > -1) {
-    return 'Safari';
+    _cachedBrowser = 'Safari';
+  } else {
+    _cachedBrowser = 'Unknown';
   }
 
-  return 'Unknown';
+  return _cachedBrowser;
 }
 
 export function resetTextLayer(endDiv: HTMLElement, textLayer: HTMLElement): void {
