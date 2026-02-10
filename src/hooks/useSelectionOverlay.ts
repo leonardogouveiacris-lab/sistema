@@ -3,12 +3,15 @@ import {
   SelectionRect,
   TextMetrics,
   RangeSignature,
+  SpanInfo,
   areRangesEqual,
   getRangeSignature,
   areMapsEqual,
   getTextMetricsFromTextLayer,
   selectWordAtPoint,
   calculatePageRects,
+  createSelectionRange,
+  getSnappedCaretInfo,
   createHysteresisState,
   shouldHoldSelection,
   logSelectionEvent,
@@ -78,10 +81,17 @@ export function useSelectionOverlay(
     droppedByProgrammatic: 0,
     droppedByStaleEpoch: 0,
     droppedByKeyboardGuard: 0,
-    droppedByGapHysteresis: 0
+    droppedByGapHysteresis: 0,
+    syntheticRangeUpdates: 0,
+    syntheticRangeFrozenInGap: 0,
+    nativeRangeFallbacks: 0
   });
 
-  const lastValidRangeRef = useRef<RangeSignature | null>(null);
+  const dragAnchorRef = useRef<{ node: Node; offset: number; anchorY: number } | null>(null);
+  const dragSyntheticRangeRef = useRef<Range | null>(null);
+  const lastValidRangeRef = useRef<Range | null>(null);
+  const lastValidRangeSignatureRef = useRef<RangeSignature | null>(null);
+  const lastValidSpanRef = useRef<SpanInfo | null>(null);
   const lastValidCaretRef = useRef<{ x: number; y: number } | null>(null);
   const gapHysteresisRef = useRef(createHysteresisState());
 
@@ -157,7 +167,7 @@ export function useSelectionOverlay(
       selection.removeAllRanges();
       selection.addRange(range);
       lastAppliedRangeRef.current = newSignature;
-      lastValidRangeRef.current = newSignature;
+      lastValidRangeSignatureRef.current = newSignature;
       logSelectionEvent('apply-selection:success', { source, epoch });
       return true;
     } finally {
@@ -199,6 +209,31 @@ export function useSelectionOverlay(
 
   const calculateSelectionRects = useCallback((forceUpdate = false) => {
     const selection = document.getSelection();
+
+    if (isDraggingRef.current && selectionModeRef.current === 'native-drag') {
+      const container = containerRef.current;
+      const syntheticRange = dragSyntheticRangeRef.current || lastValidRangeRef.current;
+
+      if (!container || !syntheticRange) {
+        return;
+      }
+
+      const signature = getRangeSignature(syntheticRange);
+      if (areRangesEqual(lastValidRangeSignatureRef.current, signature) && !forceUpdate) {
+        logSelectionEvent('overlay:drag-identical-range-skip');
+        return;
+      }
+
+      lastValidRangeSignatureRef.current = signature;
+      const pageRectsMap = calculatePageRects(container, syntheticRange, clearOverlay);
+      if (pageRectsMap.size > 0) {
+        rafCoalesceRef.current.forceUpdate = forceUpdate;
+        flushOverlayUpdate(pageRectsMap, syntheticRange.toString());
+        rafCoalesceRef.current.forceUpdate = false;
+      }
+      return;
+    }
+
     const selectionText = selection?.toString() || '';
 
     if (!selection || selection.rangeCount === 0) {
@@ -238,13 +273,13 @@ export function useSelectionOverlay(
 
     const range = selection.getRangeAt(0);
     const signature = getRangeSignature(range);
-    if (isDraggingRef.current && areRangesEqual(lastValidRangeRef.current, signature)) {
+    if (isDraggingRef.current && areRangesEqual(lastValidRangeSignatureRef.current, signature)) {
       logSelectionEvent('overlay:drag-identical-range-skip');
       return;
     }
 
     if (isDraggingRef.current) {
-      lastValidRangeRef.current = signature;
+      lastValidRangeSignatureRef.current = signature;
     }
     const pageRectsMap = calculatePageRects(container, range, clearOverlay);
 
@@ -354,6 +389,10 @@ export function useSelectionOverlay(
 
     isDraggingRef.current = false;
     activeTextLayerRef.current = null;
+    dragAnchorRef.current = null;
+    dragSyntheticRangeRef.current = null;
+    lastValidRangeRef.current = null;
+    lastValidSpanRef.current = null;
     gapHysteresisRef.current = createHysteresisState();
     updateSelectionMode('idle');
     clearOverlay();
@@ -370,7 +409,8 @@ export function useSelectionOverlay(
       const textLayer = target.closest('.textLayer') || target.closest('.react-pdf__Page__textContent');
 
       if (textLayer) {
-        currentTextMetricsRef.current = getTextMetricsFromTextLayer(textLayer);
+        const metrics = getTextMetricsFromTextLayer(textLayer);
+        currentTextMetricsRef.current = metrics;
         activeTextLayerRef.current = textLayer;
         isDraggingRef.current = true;
         dragSessionIdRef.current += 1;
@@ -381,10 +421,41 @@ export function useSelectionOverlay(
           droppedByProgrammatic: 0,
           droppedByStaleEpoch: 0,
           droppedByKeyboardGuard: 0,
-          droppedByGapHysteresis: 0
+          droppedByGapHysteresis: 0,
+          syntheticRangeUpdates: 0,
+          syntheticRangeFrozenInGap: 0,
+          nativeRangeFallbacks: 0
         };
         gapHysteresisRef.current = createHysteresisState();
         updateSelectionMode('native-drag');
+        const anchorCaret = getSnappedCaretInfo(
+          e.clientX,
+          e.clientY,
+          textLayer,
+          metrics,
+          e.clientY,
+          null
+        );
+        if (anchorCaret) {
+          dragAnchorRef.current = {
+            node: anchorCaret.node,
+            offset: anchorCaret.offset,
+            anchorY: e.clientY
+          };
+          lastValidSpanRef.current = anchorCaret.spanInfo ?? null;
+          const initialRange = createSelectionRange(
+            anchorCaret.node,
+            anchorCaret.offset,
+            anchorCaret.node,
+            anchorCaret.offset
+          );
+          dragSyntheticRangeRef.current = initialRange;
+          lastValidRangeRef.current = initialRange;
+          lastValidRangeSignatureRef.current = getRangeSignature(initialRange);
+        } else {
+          dragAnchorRef.current = null;
+          dragStatsRef.current.nativeRangeFallbacks += 1;
+        }
         lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
         logSelectionEvent('mousedown:text-layer', { x: e.clientX, y: e.clientY });
       } else {
@@ -408,6 +479,13 @@ export function useSelectionOverlay(
 
       const textLayer = activeTextLayerRef.current;
       if (textLayer) {
+        const anchor = dragAnchorRef.current;
+        const metrics = currentTextMetricsRef.current;
+        if (!anchor || !metrics) {
+          dragStatsRef.current.nativeRangeFallbacks += 1;
+          return;
+        }
+
         const hysteresisResult = shouldHoldSelection(
           e.clientX,
           e.clientY,
@@ -419,8 +497,40 @@ export function useSelectionOverlay(
 
         if (hysteresisResult.hold) {
           dragStatsRef.current.droppedByGapHysteresis += 1;
+          dragStatsRef.current.syntheticRangeFrozenInGap += 1;
+          dragSyntheticRangeRef.current = lastValidRangeRef.current;
+          scheduleRafUpdate(true);
           return;
         }
+
+        const focusCaret = getSnappedCaretInfo(
+          e.clientX,
+          e.clientY,
+          textLayer,
+          metrics,
+          anchor.anchorY,
+          lastValidSpanRef.current
+        );
+
+        if (!focusCaret) {
+          dragStatsRef.current.syntheticRangeFrozenInGap += 1;
+          dragStatsRef.current.nativeRangeFallbacks += 1;
+          dragSyntheticRangeRef.current = lastValidRangeRef.current;
+          scheduleRafUpdate(true);
+          return;
+        }
+
+        lastValidSpanRef.current = focusCaret.spanInfo ?? lastValidSpanRef.current;
+        const syntheticRange = createSelectionRange(
+          anchor.node,
+          anchor.offset,
+          focusCaret.node,
+          focusCaret.offset
+        );
+        dragSyntheticRangeRef.current = syntheticRange;
+        lastValidRangeRef.current = syntheticRange;
+        lastValidRangeSignatureRef.current = getRangeSignature(syntheticRange);
+        dragStatsRef.current.syntheticRangeUpdates += 1;
       }
 
       const now = performance.now();
@@ -435,14 +545,24 @@ export function useSelectionOverlay(
 
     const handleMouseUp = () => {
       const wasDragging = isDraggingRef.current;
+      const finalSyntheticRange = dragSyntheticRangeRef.current || lastValidRangeRef.current;
       isMouseDownRef.current = false;
       isDraggingRef.current = false;
 
       if (wasDragging) {
+        if (finalSyntheticRange) {
+          applySelectionSafely(finalSyntheticRange, 'caret-shift-click');
+        } else {
+          dragStatsRef.current.nativeRangeFallbacks += 1;
+        }
         logSelectionEvent('mouseup:end-drag');
         printDragSessionStats(dragSessionIdRef.current);
         updateSelectionMode('idle');
         activeTextLayerRef.current = null;
+        dragAnchorRef.current = null;
+        dragSyntheticRangeRef.current = null;
+        lastValidRangeRef.current = null;
+        lastValidSpanRef.current = null;
         gapHysteresisRef.current = createHysteresisState();
         scheduleRafUpdate(true);
       }
