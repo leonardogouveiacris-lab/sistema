@@ -8,6 +8,35 @@ export interface SelectionRect {
   height: number;
 }
 
+function areRectsEqual(a: SelectionRect[], b: SelectionRect[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (
+      Math.abs(a[i].x - b[i].x) > 0.5 ||
+      Math.abs(a[i].y - b[i].y) > 0.5 ||
+      Math.abs(a[i].width - b[i].width) > 0.5 ||
+      Math.abs(a[i].height - b[i].height) > 0.5
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areMapsEqual(
+  a: Map<number, SelectionRect[]>,
+  b: Map<number, SelectionRect[]>
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [key, aRects] of a) {
+    const bRects = b.get(key);
+    if (!bRects || !areRectsEqual(aRects, bRects)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export interface SelectionOverlayResult {
   selectionsByPage: Map<number, SelectionRect[]>;
   hasSelection: boolean;
@@ -304,10 +333,12 @@ export function useSelectionOverlay(
   const lastSelectionTextRef = useRef('');
   const isKeyboardSelectingRef = useRef(false);
   const currentTextMetricsRef = useRef<TextMetrics | null>(null);
-  const selectionThrottleRef = useRef<number | null>(null);
   const lastCalculationTimeRef = useRef(0);
 
   const clearOverlay = useCallback(() => {
+    if (lastRectsMapRef.current.size === 0 && !hasActiveSelectionRef.current) {
+      return;
+    }
     lastRectsMapRef.current = new Map();
     hasActiveSelectionRef.current = false;
     lastSelectionTextRef.current = '';
@@ -430,11 +461,15 @@ export function useSelectionOverlay(
     });
 
     if (pageRectsMap.size > 0) {
-      lastRectsMapRef.current = pageRectsMap;
-      hasActiveSelectionRef.current = true;
-      lastSelectionTextRef.current = selectionText;
-      setSelectionsByPage(new Map(pageRectsMap));
-      setHasSelection(true);
+      const hasChanged = !areMapsEqual(lastRectsMapRef.current, pageRectsMap);
+
+      if (hasChanged) {
+        lastRectsMapRef.current = pageRectsMap;
+        hasActiveSelectionRef.current = true;
+        lastSelectionTextRef.current = selectionText;
+        setSelectionsByPage(new Map(pageRectsMap));
+        setHasSelection(true);
+      }
     }
   }, [containerRef, clearOverlay]);
 
@@ -443,16 +478,8 @@ export function useSelectionOverlay(
       cancelAnimationFrame(rafRef.current);
     }
 
-    if (selectionThrottleRef.current !== null) {
-      cancelAnimationFrame(selectionThrottleRef.current);
-    }
-
-    selectionThrottleRef.current = requestAnimationFrame(() => {
-      calculateSelectionRects();
-      selectionThrottleRef.current = null;
-    });
-
     rafRef.current = requestAnimationFrame(() => {
+      calculateSelectionRects();
       rafRef.current = null;
     });
   }, [calculateSelectionRects]);
@@ -558,9 +585,6 @@ export function useSelectionOverlay(
       document.removeEventListener('selectionchange', handleSelectionChange);
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
-      }
-      if (selectionThrottleRef.current !== null) {
-        cancelAnimationFrame(selectionThrottleRef.current);
       }
     };
   }, [handleSelectionChange]);
