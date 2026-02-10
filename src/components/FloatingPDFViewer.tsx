@@ -148,6 +148,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const isZoomChangingRef = useRef(false);
   const lastZoomTimestampRef = useRef<number>(0);
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const textSelectionDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const keyNavigationDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
   const textExtractionProgressRef = useRef<Map<string, { current: number; total: number }>>(new Map());
@@ -313,19 +315,32 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     let accumulatedHeight = 0;
     const visiblePages = new Set<number>();
     const gap = 16;
+    const viewportCenter = scrollTop + viewportHeight / 2;
+    let centerPage = 1;
+    let minDistanceToCenter = Infinity;
 
     for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
       const pageHeight = getPageHeight(pageNum);
       const pageTop = accumulatedHeight;
       const pageBottom = accumulatedHeight + pageHeight;
+      const pageCenter = accumulatedHeight + pageHeight / 2;
 
-      const isInViewport = (
+      const isInBufferedViewport = (
         pageBottom >= scrollTop - buffer &&
         pageTop <= scrollTop + viewportHeight + buffer
       );
 
-      if (isInViewport) {
+      if (isInBufferedViewport) {
         visiblePages.add(pageNum);
+      }
+
+      const isPageVisible = pageBottom >= scrollTop && pageTop <= scrollTop + viewportHeight;
+      if (isPageVisible) {
+        const distanceToCenter = Math.abs(pageCenter - viewportCenter);
+        if (distanceToCenter < minDistanceToCenter) {
+          minDistanceToCenter = distanceToCenter;
+          centerPage = pageNum;
+        }
       }
 
       if (pageTop > scrollTop + viewportHeight + buffer) {
@@ -351,34 +366,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const timeSinceLastZoom = now - lastZoomTimestampRef.current;
     if (timeSinceLastZoom < ZOOM_PROTECTION_DURATION_MS || skipPageChange) {
       return;
-    }
-
-    const viewportCenter = scrollTop + viewportHeight / 2;
-    let centerPage = 1;
-    let minDistanceToCenter = Infinity;
-    accumulatedHeight = 0;
-
-    for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
-      const pageHeight = getPageHeight(pageNum);
-      const pageTop = accumulatedHeight;
-      const pageBottom = accumulatedHeight + pageHeight;
-      const pageCenter = accumulatedHeight + pageHeight / 2;
-
-      const isPageVisible = pageBottom >= scrollTop && pageTop <= scrollTop + viewportHeight;
-
-      if (isPageVisible) {
-        const distanceToCenter = Math.abs(pageCenter - viewportCenter);
-        if (distanceToCenter < minDistanceToCenter) {
-          minDistanceToCenter = distanceToCenter;
-          centerPage = pageNum;
-        }
-      }
-
-      if (pageTop > scrollTop + viewportHeight) {
-        break;
-      }
-
-      accumulatedHeight += pageHeight + gap;
     }
 
     const timeSinceLastDetection = now - lastDetectionTimeRef.current;
@@ -426,7 +413,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       const now = Date.now();
-      if (now - scrollThrottleRef.current < 100) {
+      if (now - scrollThrottleRef.current < 200) {
         return;
       }
       scrollThrottleRef.current = now;
@@ -517,11 +504,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const loadComments = async () => {
       try {
-        const allComments = [];
-        for (const doc of state.documents) {
-          const comments = await PDFCommentsService.getCommentsWithConnectorsByDocument(doc.id);
-          allComments.push(...comments);
-        }
+        const commentPromises = state.documents.map(doc =>
+          PDFCommentsService.getCommentsWithConnectorsByDocument(doc.id)
+        );
+        const commentsArrays = await Promise.all(commentPromises);
+        const allComments = commentsArrays.flat();
         setComments(allComments);
         logger.info(
           `Loaded ${allComments.length} comments`,
@@ -537,7 +524,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     loadComments();
-  }, [state.isOpen, state.documents, setComments]);
+  }, [state.isOpen, state.documents.length, setComments]);
 
   /**
    * Effect para gerenciar o caret piscando (como no Acrobat)
@@ -730,13 +717,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const currentRect = currentSpan.getBoundingClientRect();
       const currentCenterX = currentRect.left + currentRect.width / 2;
 
+      const spanRects = new Map<HTMLElement, DOMRect>();
+      for (const span of spans) {
+        if (span !== currentSpan) {
+          spanRects.set(span, span.getBoundingClientRect());
+        }
+      }
+
       let bestSpan: HTMLElement | null = null;
       let bestDistance = Infinity;
 
-      for (const span of spans) {
-        if (span === currentSpan) continue;
-        const rect = span.getBoundingClientRect();
-
+      for (const [span, rect] of spanRects) {
         const isInCorrectDirection = direction === 'down'
           ? rect.top > currentRect.bottom - 5
           : rect.bottom < currentRect.top + 5;
@@ -1300,6 +1291,38 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return pages;
   }, [state.viewMode, state.currentPage, state.totalPages, scrollBasedVisiblePages, idlePages, forceRenderPages]);
 
+  const pageArraysByDocument = useMemo(() => {
+    const arrays = new Map<string, number[]>();
+    for (const doc of state.documents) {
+      const numPages = documentPages.get(doc.id) || 0;
+      if (numPages > 0) {
+        const arr: number[] = [];
+        for (let i = 1; i <= numPages; i++) {
+          arr.push(i);
+        }
+        arrays.set(doc.id, arr);
+      }
+    }
+    return arrays;
+  }, [state.documents, documentPages]);
+
+  const currentPageInfo = useMemo(() => {
+    if (state.viewMode !== 'paginated' || state.totalPages === 0) return null;
+    const offsets = memoizedDocumentOffsets;
+    for (const [docIndex, doc] of state.documents.entries()) {
+      const offset = offsets.get(doc.id);
+      if (offset && state.currentPage >= offset.startPage && state.currentPage <= offset.endPage) {
+        return {
+          document: doc,
+          documentIndex: docIndex,
+          localPage: state.currentPage - offset.startPage + 1,
+          offset: offset
+        };
+      }
+    }
+    return null;
+  }, [state.viewMode, state.currentPage, state.totalPages, state.documents, memoizedDocumentOffsets]);
+
   /**
    * Encontra qual documento contém uma determinada página global
    */
@@ -1766,6 +1789,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * Effect para capturar seleção de texto (mouse e teclado)
    */
   useEffect(() => {
+    const debouncedTextSelection = () => {
+      if (textSelectionDebounceRef.current) {
+        clearTimeout(textSelectionDebounceRef.current);
+      }
+      textSelectionDebounceRef.current = setTimeout(() => {
+        handleTextSelection();
+      }, 150);
+    };
+
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Shift' || e.key.startsWith('Arrow')) {
         const selection = window.getSelection();
@@ -1774,18 +1806,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           const scrollContainer = scrollContainerRef.current;
           if (scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode)) {
             startedInsidePdfRef.current = true;
-            handleTextSelection();
+            debouncedTextSelection();
           }
         }
       }
     };
 
-    document.addEventListener('mouseup', handleTextSelection);
+    document.addEventListener('mouseup', debouncedTextSelection);
     document.addEventListener('keyup', handleKeyUp);
 
     return () => {
-      document.removeEventListener('mouseup', handleTextSelection);
+      document.removeEventListener('mouseup', debouncedTextSelection);
       document.removeEventListener('keyup', handleKeyUp);
+      if (textSelectionDebounceRef.current) {
+        clearTimeout(textSelectionDebounceRef.current);
+      }
     };
   }, [handleTextSelection]);
 
@@ -1875,9 +1910,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [state.viewMode]);
 
   /**
-   * Effect para navegação por teclado
+   * Effect para navegação por teclado com throttle para evitar navegação excessiva
    */
   useEffect(() => {
+    let lastNavigationTime = 0;
+    const NAVIGATION_THROTTLE_MS = 150;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
@@ -1894,24 +1932,36 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
+      const now = Date.now();
+      const isNavigationKey = ['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown'].includes(e.key);
+
+      if (isNavigationKey && e.repeat && now - lastNavigationTime < NAVIGATION_THROTTLE_MS) {
+        e.preventDefault();
+        return;
+      }
+
       switch (e.key) {
         case 'ArrowUp':
         case 'ArrowDown':
           break;
         case 'ArrowLeft':
           e.preventDefault();
+          lastNavigationTime = now;
           handlePreviousPage();
           break;
         case 'ArrowRight':
           e.preventDefault();
+          lastNavigationTime = now;
           handleNextPage();
           break;
         case 'PageUp':
           e.preventDefault();
+          lastNavigationTime = now;
           handlePreviousPage();
           break;
         case 'PageDown':
           e.preventDefault();
+          lastNavigationTime = now;
           handleNextPage();
           break;
         case 'Home':
@@ -1968,12 +2018,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     renderFallbackTimeoutRef.current = setTimeout(() => {
-      const distanceFromCurrent = Math.abs(state.currentPage - state.currentPage);
-      const isInImmediateRange = distanceFromCurrent <= 2;
       const isInIdlePages = idlePages.has(state.currentPage);
       const isInVisitedPages = visitedPages.has(state.currentPage);
+      const isInScrollBased = scrollBasedVisiblePages.has(state.currentPage);
 
-      if (!isInImmediateRange && !isInIdlePages && !isInVisitedPages) {
+      if (!isInIdlePages && !isInVisitedPages && !isInScrollBased) {
         setForceRenderPages(prev => {
           const newSet = new Set(prev);
           newSet.add(state.currentPage);
@@ -1987,7 +2036,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         clearTimeout(renderFallbackTimeoutRef.current);
       }
     };
-  }, [state.currentPage, state.viewMode, idlePages, visitedPages]);
+  }, [state.currentPage, state.viewMode, idlePages, visitedPages, scrollBasedVisiblePages]);
 
   /**
    * Effect para scroll instantâneo até página quando highlightedPage muda (navegação manual explícita)
@@ -2637,9 +2686,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                 const offset = memoizedDocumentOffsets.get(doc.id);
 
                 if (state.viewMode === 'paginated') {
-                  const pageInfo = findDocumentByGlobalPage(state.currentPage);
-                  if (pageInfo) {
-                    if (pageInfo.document.id !== doc.id) {
+                  if (currentPageInfo) {
+                    if (currentPageInfo.document.id !== doc.id) {
                       return null;
                     }
                   } else if (docIndex !== 0) {
@@ -2698,13 +2746,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                       {state.viewMode === 'paginated' ? (
                         // Modo Paginado: Renderiza apenas a página que pertence a este documento
                         (() => {
-                          const pageInfo = findDocumentByGlobalPage(state.currentPage);
-                          const localPageNum = pageInfo ? pageInfo.localPage : state.currentPage;
+                          const localPageNum = currentPageInfo ? currentPageInfo.localPage : state.currentPage;
 
-                          if (pageInfo && pageInfo.document.id !== doc.id) {
+                          if (currentPageInfo && currentPageInfo.document.id !== doc.id) {
                             return null;
                           }
-                          if (!pageInfo && docIndex !== 0) {
+                          if (!currentPageInfo && docIndex !== 0) {
                             return null;
                           }
 
@@ -2762,14 +2809,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                       ) : (
                         // Modo Contínuo Ultra-Performance: Renderização Mínima
                         (() => {
-                          // Se o documento ainda não carregou, não renderiza páginas
-                          if (numPages === 0 || !offset) {
+                          const pageArray = pageArraysByDocument.get(doc.id);
+                          if (!pageArray || !offset) {
                             return null;
                           }
 
                           return (
                             <div className="flex flex-col items-center space-y-4">
-                              {Array.from({ length: numPages }, (_, i) => i + 1).map((localPageNum) => {
+                              {pageArray.map((localPageNum) => {
                                 const globalPageNum = offset.startPage + localPageNum - 1;
                                 const shouldRenderCanvas = pagesToRender.has(globalPageNum);
 
