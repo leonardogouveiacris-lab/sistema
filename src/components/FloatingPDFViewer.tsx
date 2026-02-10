@@ -192,7 +192,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
   }, [state.displayZoom]);
 
-  const { selectionsByPage, clearSelection: clearSelectionOverlay } = useSelectionOverlay(scrollContainerRef);
+  const {
+    selectionsByPage,
+    selectionMode,
+    canWriteProgrammaticSelection,
+    applySelectionSafely,
+    registerContextCommit,
+    clearSelection: clearSelectionOverlay
+  } = useSelectionOverlay(scrollContainerRef);
 
   /**
    * Effect para limpar caches antigos de bookmarks na montagem
@@ -582,6 +589,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return Array.from(spans).filter(span => span.textContent?.trim()) as HTMLElement[];
     };
 
+
+    const applyRangeWithOverlayGuard = (range: Range, source: 'caret-click' | 'caret-arrow' | 'caret-shift-arrow' | 'caret-shift-click' | 'caret-triple-click') => {
+      if (!canWriteProgrammaticSelection) {
+        return false;
+      }
+      return applySelectionSafely(range, source);
+    };
+
     const getCaretPosition = (): number => {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return 0;
@@ -596,28 +611,24 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const textNode = element.firstChild;
       if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
       const range = document.createRange();
-      const sel = window.getSelection();
       const maxPos = Math.min(position, textNode.textContent?.length || 0);
       range.setStart(textNode, maxPos);
       range.collapse(true);
-      sel?.removeAllRanges();
-      sel?.addRange(range);
+      applyRangeWithOverlayGuard(range, 'caret-click');
     };
 
     const createSelectionBetween = (
       startSpan: HTMLElement,
       startOffset: number,
       endSpan: HTMLElement,
-      endOffset: number
+      endOffset: number,
+      source: 'caret-shift-click' | 'caret-shift-arrow' = 'caret-shift-click'
     ) => {
       const spans = getAllTextSpans();
       const startIndex = spans.indexOf(startSpan);
       const endIndex = spans.indexOf(endSpan);
 
       if (startIndex === -1 || endIndex === -1) return;
-
-      const sel = window.getSelection();
-      if (!sel) return;
 
       const range = document.createRange();
 
@@ -644,8 +655,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       range.setStart(startNode, maxStartOffset);
       range.setEnd(endNode, maxEndOffset);
 
-      sel.removeAllRanges();
-      sel.addRange(range);
+      applyRangeWithOverlayGuard(range, source);
     };
 
     const getClickOffset = (span: HTMLElement, clientX: number): number => {
@@ -689,11 +699,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
 
       const range = document.createRange();
-      const sel = window.getSelection();
       range.setStart(textNode, wordStart);
       range.setEnd(textNode, wordEnd);
-      sel?.removeAllRanges();
-      sel?.addRange(range);
+      applyRangeWithOverlayGuard(range, 'caret-click');
 
       startedInsidePdfRef.current = true;
     };
@@ -728,11 +736,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       if (!firstNode || !lastNode) return;
 
       const range = document.createRange();
-      const sel = window.getSelection();
       range.setStart(firstNode, 0);
       range.setEnd(lastNode, lastNode.textContent?.length || 0);
-      sel?.removeAllRanges();
-      sel?.addRange(range);
+      applyRangeWithOverlayGuard(range, 'caret-click');
 
       startedInsidePdfRef.current = true;
     };
@@ -861,7 +867,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           const nextSpan = spans[currentIndex + 1];
           activateCaret(nextSpan, isShift);
           if (isShift && selectionAnchor) {
-            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, nextSpan, 0);
+            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, nextSpan, 0, 'caret-shift-arrow');
             currentFocus = { span: nextSpan, offset: 0 };
           } else {
             setCaretPosition(nextSpan, 0);
@@ -871,7 +877,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         } else if (focusPos < textLength) {
           const newPos = focusPos + 1;
           if (isShift && selectionAnchor) {
-            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, currentSpan, newPos);
+            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, currentSpan, newPos, 'caret-shift-arrow');
             currentFocus = { span: currentSpan, offset: newPos };
           } else {
             setCaretPosition(currentSpan, newPos);
@@ -896,7 +902,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           const prevLength = prevSpan.textContent?.length || 0;
           activateCaret(prevSpan, isShift);
           if (isShift && selectionAnchor) {
-            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, prevSpan, prevLength);
+            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, prevSpan, prevLength, 'caret-shift-arrow');
             currentFocus = { span: prevSpan, offset: prevLength };
           } else {
             setCaretPosition(prevSpan, prevLength);
@@ -906,7 +912,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         } else if (focusPos > 0) {
           const newPos = focusPos - 1;
           if (isShift && selectionAnchor) {
-            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, currentSpan, newPos);
+            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, currentSpan, newPos, 'caret-shift-arrow');
             currentFocus = { span: currentSpan, offset: newPos };
           } else {
             setCaretPosition(currentSpan, newPos);
@@ -925,7 +931,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           const newPos = Math.min(focusPos, nextSpan.textContent?.length || 0);
           activateCaret(nextSpan, isShift);
           if (isShift && selectionAnchor) {
-            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, nextSpan, newPos);
+            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, nextSpan, newPos, 'caret-shift-arrow');
             currentFocus = { span: nextSpan, offset: newPos };
           } else {
             setCaretPosition(nextSpan, newPos);
@@ -944,7 +950,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           const newPos = Math.min(focusPos, prevSpan.textContent?.length || 0);
           activateCaret(prevSpan, isShift);
           if (isShift && selectionAnchor) {
-            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, prevSpan, newPos);
+            createSelectionBetween(selectionAnchor.span, selectionAnchor.offset, prevSpan, newPos, 'caret-shift-arrow');
             currentFocus = { span: prevSpan, offset: newPos };
           } else {
             setCaretPosition(prevSpan, newPos);
@@ -971,7 +977,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       document.removeEventListener('keydown', handleKeyDown, true);
       deactivateCaret();
     };
-  }, []);
+  }, [applySelectionSafely, canWriteProgrammaticSelection]);
 
   /**
    * Effect para detectar seleção de texto com pointer events
@@ -1497,6 +1503,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * CORREÇÃO: Filtra seleções de fora do container PDF
    */
   const handleTextSelection = useCallback(() => {
+    if (selectionMode === 'native-drag') {
+      return;
+    }
+
     const selection = window.getSelection();
     const selectedText = extractTextFromSelection(selection);
 
@@ -1575,6 +1585,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           'FloatingPDFViewer.handleTextSelection'
         );
         const rect = range.getBoundingClientRect();
+        registerContextCommit();
         setSelectedText(selectedText, {
           x: rect.left,
           y: rect.top,
@@ -1637,6 +1648,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         pageNumber: actualPageNumber
       };
 
+      registerContextCommit();
       setSelectedText(selectedText, position);
 
       if (PDF_DEBUG) {
@@ -1668,10 +1680,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         undefined,
         error
       );
+      registerContextCommit();
       setSelectedText(selectedText);
       startedInsidePdfRef.current = false;
     }
-  }, [setSelectedText, state.currentPage, state.zoom]);
+  }, [registerContextCommit, selectionMode, setSelectedText, state.currentPage, state.zoom]);
 
   const getCommentFieldForCurrentMode = useCallback((): InsertionField => {
     const formMode = state.formMode;
@@ -1873,7 +1886,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         clearTimeout(textSelectionDebounceRef.current);
       }
       textSelectionDebounceRef.current = setTimeout(() => {
-        handleTextSelection();
+        if (selectionMode !== 'native-drag') {
+          handleTextSelection();
+        }
       }, 150);
     };
 
@@ -1901,7 +1916,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         clearTimeout(textSelectionDebounceRef.current);
       }
     };
-  }, [handleTextSelection]);
+  }, [handleTextSelection, selectionMode]);
 
   /**
    * Wrappers para navegação de página com bloqueio durante rotação

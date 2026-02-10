@@ -3,13 +3,17 @@ import {
   SelectionRect,
   TextMetrics,
   RangeSignature,
+  areRangesEqual,
+  getRangeSignature,
   areMapsEqual,
   getTextMetricsFromTextLayer,
   selectWordAtPoint,
   calculatePageRects,
-  applyRangeToSelection,
+  createHysteresisState,
+  shouldHoldSelection,
   logSelectionEvent,
-  incrementDroppedEvents
+  incrementDroppedEvents,
+  incrementProgrammaticBlocks
 } from './selectionEngine';
 
 export type { SelectionRect };
@@ -17,8 +21,22 @@ export type { SelectionRect };
 export interface SelectionOverlayResult {
   selectionsByPage: Map<number, SelectionRect[]>;
   hasSelection: boolean;
+  selectionMode: SelectionMode;
+  canWriteProgrammaticSelection: boolean;
+  applySelectionSafely: (range: Range, source: SelectionProgrammaticSource) => boolean;
+  registerContextCommit: () => void;
   clearSelection: () => void;
 }
+
+type SelectionMode = 'idle' | 'native-drag' | 'programmatic-click' | 'keyboard-extend';
+type SelectionProgrammaticSource =
+  | 'double-click-word'
+  | 'caret-click'
+  | 'caret-arrow'
+  | 'caret-shift-arrow'
+  | 'caret-shift-click'
+  | 'caret-triple-click'
+  | 'clear-selection';
 
 const DRAG_THROTTLE_MS = 16;
 
@@ -38,18 +56,114 @@ export function useSelectionOverlay(
   const lastSelectionTextRef = useRef('');
   const isKeyboardSelectingRef = useRef(false);
   const currentTextMetricsRef = useRef<TextMetrics | null>(null);
+  const activeTextLayerRef = useRef<Element | null>(null);
+  const selectionModeRef = useRef<SelectionMode>('idle');
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>('idle');
 
   const isProgrammaticSelectionRef = useRef(false);
   const selectionEpochRef = useRef(0);
   const lastAppliedRangeRef = useRef<RangeSignature | null>(null);
+  const handledProgrammaticEpochRef = useRef<number | null>(null);
+  const currentProgrammaticEpochRef = useRef<number | null>(null);
+  const pendingProgrammaticResetRef = useRef<number | null>(null);
 
   const selectionUpdateTokenRef = useRef(0);
   const dragUpdateThrottleRef = useRef<number>(0);
+  const dragSessionIdRef = useRef(0);
+
+  const dragStatsRef = useRef({
+    selectionChangeEvents: 0,
+    overlayUpdates: 0,
+    contextCommits: 0,
+    droppedByProgrammatic: 0,
+    droppedByStaleEpoch: 0,
+    droppedByKeyboardGuard: 0,
+    droppedByGapHysteresis: 0
+  });
+
+  const lastValidRangeRef = useRef<RangeSignature | null>(null);
+  const lastValidCaretRef = useRef<{ x: number; y: number } | null>(null);
+  const gapHysteresisRef = useRef(createHysteresisState());
 
   const rafCoalesceRef = useRef<{
     pending: boolean;
     forceUpdate: boolean;
   }>({ pending: false, forceUpdate: false });
+
+  const updateSelectionMode = useCallback((nextMode: SelectionMode) => {
+    if (selectionModeRef.current === nextMode) {
+      return;
+    }
+    selectionModeRef.current = nextMode;
+    setSelectionMode(nextMode);
+    logSelectionEvent('selection-mode:update', { mode: nextMode });
+  }, []);
+
+  const printDragSessionStats = useCallback((sessionId: number) => {
+    logSelectionEvent('drag-session:summary', {
+      dragSessionId: sessionId,
+      ...dragStatsRef.current
+    });
+  }, []);
+
+  const beginProgrammaticSelection = useCallback(() => {
+    const epoch = ++selectionEpochRef.current;
+    currentProgrammaticEpochRef.current = epoch;
+    isProgrammaticSelectionRef.current = true;
+
+    if (pendingProgrammaticResetRef.current !== null) {
+      cancelAnimationFrame(pendingProgrammaticResetRef.current);
+      pendingProgrammaticResetRef.current = null;
+    }
+
+    return epoch;
+  }, []);
+
+  const endProgrammaticSelection = useCallback((epoch: number) => {
+    pendingProgrammaticResetRef.current = requestAnimationFrame(() => {
+      if (currentProgrammaticEpochRef.current !== epoch) {
+        return;
+      }
+      isProgrammaticSelectionRef.current = false;
+      currentProgrammaticEpochRef.current = null;
+      pendingProgrammaticResetRef.current = null;
+    });
+  }, []);
+
+  const applySelectionSafely = useCallback((range: Range, source: SelectionProgrammaticSource): boolean => {
+    if (selectionModeRef.current === 'native-drag') {
+      incrementProgrammaticBlocks();
+      dragStatsRef.current.droppedByProgrammatic += 1;
+      logSelectionEvent('apply-selection:blocked-native-drag', { source });
+      return false;
+    }
+
+    const newSignature = getRangeSignature(range);
+    if (areRangesEqual(lastAppliedRangeRef.current, newSignature)) {
+      logSelectionEvent('apply-selection:identical-skip', { source });
+      return false;
+    }
+
+    const selection = window.getSelection();
+    if (!selection) {
+      return false;
+    }
+
+    const epoch = beginProgrammaticSelection();
+    handledProgrammaticEpochRef.current = null;
+    updateSelectionMode(source.includes('arrow') ? 'keyboard-extend' : 'programmatic-click');
+
+    try {
+      selection.removeAllRanges();
+      selection.addRange(range);
+      lastAppliedRangeRef.current = newSignature;
+      lastValidRangeRef.current = newSignature;
+      logSelectionEvent('apply-selection:success', { source, epoch });
+      return true;
+    } finally {
+      endProgrammaticSelection(epoch);
+    }
+  }, [beginProgrammaticSelection, endProgrammaticSelection, updateSelectionMode]);
 
   const clearOverlay = useCallback(() => {
     if (lastRectsMapRef.current.size === 0 && !hasActiveSelectionRef.current) {
@@ -61,6 +175,10 @@ export function useSelectionOverlay(
     lastSelectionTextRef.current = '';
     setSelectionsByPage(new Map());
     setHasSelection(false);
+  }, []);
+
+  const registerContextCommit = useCallback(() => {
+    dragStatsRef.current.contextCommits += 1;
   }, []);
 
   const flushOverlayUpdate = useCallback((pageRectsMap: Map<number, SelectionRect[]>, selectionText: string) => {
@@ -75,6 +193,7 @@ export function useSelectionOverlay(
     lastSelectionTextRef.current = selectionText;
     setSelectionsByPage(new Map(pageRectsMap));
     setHasSelection(true);
+    dragStatsRef.current.overlayUpdates += 1;
     logSelectionEvent('overlay:update', { pages: pageRectsMap.size, rects: Array.from(pageRectsMap.values()).flat().length });
   }, []);
 
@@ -82,7 +201,7 @@ export function useSelectionOverlay(
     const selection = document.getSelection();
     const selectionText = selection?.toString() || '';
 
-    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    if (!selection || selection.rangeCount === 0) {
       if (isMouseDownRef.current && isDraggingRef.current && lastRectsMapRef.current.size > 0) {
         return;
       }
@@ -95,12 +214,38 @@ export function useSelectionOverlay(
       return;
     }
 
+    if (selection.isCollapsed) {
+      if (isDraggingRef.current && lastValidRangeRef.current) {
+        const lastCaret = lastValidCaretRef.current;
+        logSelectionEvent('overlay:drag-freeze-collapsed-gap', {
+          lastCaretX: lastCaret?.x,
+          lastCaretY: lastCaret?.y,
+          tolerancePx: 6
+        });
+        return;
+      }
+
+      if (lastRectsMapRef.current.size > 0 && !isMouseDownRef.current) {
+        clearOverlay();
+      }
+      return;
+    }
+
     const container = containerRef.current;
     if (!container) {
       return;
     }
 
     const range = selection.getRangeAt(0);
+    const signature = getRangeSignature(range);
+    if (isDraggingRef.current && areRangesEqual(lastValidRangeRef.current, signature)) {
+      logSelectionEvent('overlay:drag-identical-range-skip');
+      return;
+    }
+
+    if (isDraggingRef.current) {
+      lastValidRangeRef.current = signature;
+    }
     const pageRectsMap = calculatePageRects(container, range, clearOverlay);
 
     if (pageRectsMap.size > 0) {
@@ -141,18 +286,53 @@ export function useSelectionOverlay(
   }, [calculateSelectionRects]);
 
   const handleSelectionChange = useCallback(() => {
+    dragStatsRef.current.selectionChangeEvents += 1;
+
+    const programmaticEpoch = currentProgrammaticEpochRef.current;
+    if (isProgrammaticSelectionRef.current && programmaticEpoch !== null) {
+      if (handledProgrammaticEpochRef.current === programmaticEpoch) {
+        incrementProgrammaticBlocks();
+        dragStatsRef.current.droppedByProgrammatic += 1;
+        logSelectionEvent('selectionchange:blocked-programmatic-repeat', { epoch: programmaticEpoch });
+        return;
+      }
+      handledProgrammaticEpochRef.current = programmaticEpoch;
+      incrementProgrammaticBlocks();
+      dragStatsRef.current.droppedByProgrammatic += 1;
+      logSelectionEvent('selectionchange:blocked-programmatic', { epoch: programmaticEpoch });
+      return;
+    }
+
+    const latestEpoch = selectionEpochRef.current;
+    if (handledProgrammaticEpochRef.current !== null && handledProgrammaticEpochRef.current < latestEpoch - 1) {
+      dragStatsRef.current.droppedByStaleEpoch += 1;
+      logSelectionEvent('selectionchange:blocked-stale-epoch', {
+        handledEpoch: handledProgrammaticEpochRef.current,
+        latestEpoch
+      });
+      return;
+    }
+
     if (isProgrammaticSelectionRef.current) {
-      logSelectionEvent('selectionchange:blocked-programmatic');
+      incrementProgrammaticBlocks();
+      dragStatsRef.current.droppedByProgrammatic += 1;
+      logSelectionEvent('selectionchange:blocked-programmatic-fallback');
       return;
     }
 
     if (isKeyboardSelectingRef.current) {
+      dragStatsRef.current.droppedByKeyboardGuard += 1;
       logSelectionEvent('selectionchange:blocked-keyboard');
       return;
     }
 
+    if (isDraggingRef.current) {
+      logSelectionEvent('selectionchange:blocked-native-drag');
+      return;
+    }
+
     logSelectionEvent('selectionchange:process', { isDragging: isDraggingRef.current });
-    scheduleRafUpdate(isDraggingRef.current);
+    scheduleRafUpdate(false);
   }, [scheduleRafUpdate]);
 
   const clearSelection = useCallback(() => {
@@ -162,25 +342,23 @@ export function useSelectionOverlay(
     }
 
     selectionUpdateTokenRef.current++;
-    selectionEpochRef.current++;
+    const epoch = beginProgrammaticSelection();
     lastAppliedRangeRef.current = null;
 
     const selection = window.getSelection();
     if (selection) {
-      isProgrammaticSelectionRef.current = true;
-      try {
-        selection.removeAllRanges();
-      } finally {
-        requestAnimationFrame(() => {
-          isProgrammaticSelectionRef.current = false;
-        });
-      }
+      selection.removeAllRanges();
     }
 
+    endProgrammaticSelection(epoch);
+
     isDraggingRef.current = false;
+    activeTextLayerRef.current = null;
+    gapHysteresisRef.current = createHysteresisState();
+    updateSelectionMode('idle');
     clearOverlay();
     logSelectionEvent('selection:cleared');
-  }, [clearOverlay]);
+  }, [beginProgrammaticSelection, clearOverlay, endProgrammaticSelection, updateSelectionMode]);
 
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
@@ -193,9 +371,24 @@ export function useSelectionOverlay(
 
       if (textLayer) {
         currentTextMetricsRef.current = getTextMetricsFromTextLayer(textLayer);
+        activeTextLayerRef.current = textLayer;
         isDraggingRef.current = true;
+        dragSessionIdRef.current += 1;
+        dragStatsRef.current = {
+          selectionChangeEvents: 0,
+          overlayUpdates: 0,
+          contextCommits: 0,
+          droppedByProgrammatic: 0,
+          droppedByStaleEpoch: 0,
+          droppedByKeyboardGuard: 0,
+          droppedByGapHysteresis: 0
+        };
+        gapHysteresisRef.current = createHysteresisState();
+        updateSelectionMode('native-drag');
+        lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
         logSelectionEvent('mousedown:text-layer', { x: e.clientX, y: e.clientY });
       } else {
+        updateSelectionMode('idle');
         logSelectionEvent('mousedown:outside');
       }
 
@@ -213,11 +406,29 @@ export function useSelectionOverlay(
     const handleMouseMove = (e: MouseEvent) => {
       if (!isMouseDownRef.current || !isDraggingRef.current) return;
 
+      const textLayer = activeTextLayerRef.current;
+      if (textLayer) {
+        const hysteresisResult = shouldHoldSelection(
+          e.clientX,
+          e.clientY,
+          textLayer,
+          gapHysteresisRef.current,
+          80
+        );
+        gapHysteresisRef.current = hysteresisResult.updatedHysteresis;
+
+        if (hysteresisResult.hold) {
+          dragStatsRef.current.droppedByGapHysteresis += 1;
+          return;
+        }
+      }
+
       const now = performance.now();
       if (now - dragUpdateThrottleRef.current < DRAG_THROTTLE_MS) {
         return;
       }
       dragUpdateThrottleRef.current = now;
+      lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
 
       scheduleRafUpdate(true);
     };
@@ -229,6 +440,10 @@ export function useSelectionOverlay(
 
       if (wasDragging) {
         logSelectionEvent('mouseup:end-drag');
+        printDragSessionStats(dragSessionIdRef.current);
+        updateSelectionMode('idle');
+        activeTextLayerRef.current = null;
+        gapHysteresisRef.current = createHysteresisState();
         scheduleRafUpdate(true);
       }
     };
@@ -247,12 +462,7 @@ export function useSelectionOverlay(
       const range = selectWordAtPoint(e.clientX, e.clientY, textLayer, metrics);
 
       if (range) {
-        const applied = applyRangeToSelection(
-          range,
-          isProgrammaticSelectionRef,
-          lastAppliedRangeRef,
-          selectionEpochRef
-        );
+        const applied = applySelectionSafely(range, 'double-click-word');
 
         if (applied) {
           logSelectionEvent('dblclick:word-selected');
@@ -264,12 +474,14 @@ export function useSelectionOverlay(
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         isKeyboardSelectingRef.current = true;
+        updateSelectionMode('keyboard-extend');
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (isKeyboardSelectingRef.current) {
         isKeyboardSelectingRef.current = false;
+        updateSelectionMode('idle');
         logSelectionEvent('keyup:keyboard-selection-end');
         scheduleRafUpdate(true);
       }
@@ -294,7 +506,7 @@ export function useSelectionOverlay(
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [clearSelection, scheduleRafUpdate]);
+  }, [applySelectionSafely, clearSelection, printDragSessionStats, scheduleRafUpdate, updateSelectionMode]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
@@ -305,12 +517,19 @@ export function useSelectionOverlay(
         cancelAnimationFrame(pendingRafRef.current);
         pendingRafRef.current = null;
       }
+      if (pendingProgrammaticResetRef.current !== null) {
+        cancelAnimationFrame(pendingProgrammaticResetRef.current);
+      }
     };
   }, [handleSelectionChange]);
 
   return {
     selectionsByPage,
     hasSelection,
+    selectionMode,
+    canWriteProgrammaticSelection: selectionMode !== 'native-drag',
+    applySelectionSafely,
+    registerContextCommit,
     clearSelection
   };
 }

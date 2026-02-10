@@ -846,11 +846,21 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    * Define texto selecionado com posição opcional
    */
   const setSelectedText = useCallback((text: string, position?: SelectionPosition) => {
-    setState(prev => ({
-      ...prev,
-      selectedText: text,
-      selectionPosition: position || null
-    }));
+    setState(prev => {
+      const nextPosition = position || null;
+      const sameText = prev.selectedText === text;
+      const samePosition = JSON.stringify(prev.selectionPosition) === JSON.stringify(nextPosition);
+
+      if (sameText && samePosition) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        selectedText: text,
+        selectionPosition: nextPosition
+      };
+    });
 
     if (text) {
       logger.info(`Texto selecionado (${text.length} caracteres)`, 'PDFViewerContext.setSelectedText', { hasPosition: !!position });
