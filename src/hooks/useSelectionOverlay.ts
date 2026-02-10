@@ -167,6 +167,138 @@ function hasCaretIndexChanged(prev: CaretInfo | null, current: CaretInfo | null)
   return prev.spanIndex !== current.spanIndex || prev.offset !== current.offset;
 }
 
+function isWordChar(char: string): boolean {
+  return /[\p{L}\p{N}]/u.test(char);
+}
+
+function selectWordAtPoint(x: number, y: number, textLayer: Element, metrics: TextMetrics): boolean {
+  const caretInfo = getSnappedCaretInfoFromPoint(x, y, textLayer, metrics);
+  if (!caretInfo || !caretInfo.node) return false;
+
+  const textNode = caretInfo.node.nodeType === Node.TEXT_NODE
+    ? caretInfo.node
+    : caretInfo.node.firstChild;
+
+  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return false;
+
+  const text = textNode.textContent || '';
+  let offset = Math.min(caretInfo.offset, text.length);
+
+  if (offset > 0 && offset === text.length) {
+    offset--;
+  }
+
+  if (text.length === 0 || !isWordChar(text[offset])) {
+    if (offset > 0 && isWordChar(text[offset - 1])) {
+      offset--;
+    } else {
+      return false;
+    }
+  }
+
+  let startOffset = offset;
+  let endOffset = offset;
+
+  while (startOffset > 0 && isWordChar(text[startOffset - 1])) {
+    startOffset--;
+  }
+
+  while (endOffset < text.length && isWordChar(text[endOffset])) {
+    endOffset++;
+  }
+
+  const spans = Array.from(textLayer.querySelectorAll('span[role="presentation"], span:not([role])'));
+  const currentSpanIndex = spans.findIndex(s => s.contains(textNode));
+
+  if (currentSpanIndex < 0) return false;
+
+  const currentSpan = spans[currentSpanIndex] as HTMLElement;
+  const currentRect = currentSpan.getBoundingClientRect();
+  const tolerance = metrics.lineHeight * 0.5;
+
+  let finalStartNode: Node = textNode;
+  let finalStartOffset = startOffset;
+  let finalEndNode: Node = textNode;
+  let finalEndOffset = endOffset;
+
+  if (startOffset === 0) {
+    for (let i = currentSpanIndex - 1; i >= 0; i--) {
+      const prevSpan = spans[i] as HTMLElement;
+      const prevRect = prevSpan.getBoundingClientRect();
+
+      if (Math.abs(prevRect.top - currentRect.top) > tolerance) break;
+
+      const prevText = prevSpan.textContent || '';
+      if (prevText.length === 0) continue;
+
+      const gapBetweenSpans = currentRect.left - prevRect.right;
+      if (gapBetweenSpans > metrics.averageCharWidth * 1.5) break;
+
+      const lastChar = prevText[prevText.length - 1];
+      if (!isWordChar(lastChar)) break;
+
+      const prevTextNode = prevSpan.firstChild;
+      if (!prevTextNode || prevTextNode.nodeType !== Node.TEXT_NODE) break;
+
+      let prevStartOffset = prevText.length - 1;
+      while (prevStartOffset > 0 && isWordChar(prevText[prevStartOffset - 1])) {
+        prevStartOffset--;
+      }
+
+      finalStartNode = prevTextNode;
+      finalStartOffset = prevStartOffset;
+
+      if (prevStartOffset > 0) break;
+    }
+  }
+
+  if (endOffset === text.length) {
+    let lastSpanRect = currentRect;
+
+    for (let i = currentSpanIndex + 1; i < spans.length; i++) {
+      const nextSpan = spans[i] as HTMLElement;
+      const nextRect = nextSpan.getBoundingClientRect();
+
+      if (Math.abs(nextRect.top - currentRect.top) > tolerance) break;
+
+      const nextText = nextSpan.textContent || '';
+      if (nextText.length === 0) continue;
+
+      const gapBetweenSpans = nextRect.left - lastSpanRect.right;
+      if (gapBetweenSpans > metrics.averageCharWidth * 1.5) break;
+
+      const firstChar = nextText[0];
+      if (!isWordChar(firstChar)) break;
+
+      const nextTextNode = nextSpan.firstChild;
+      if (!nextTextNode || nextTextNode.nodeType !== Node.TEXT_NODE) break;
+
+      let nextEndOffset = 1;
+      while (nextEndOffset < nextText.length && isWordChar(nextText[nextEndOffset])) {
+        nextEndOffset++;
+      }
+
+      finalEndNode = nextTextNode;
+      finalEndOffset = nextEndOffset;
+      lastSpanRect = nextRect;
+
+      if (nextEndOffset < nextText.length) break;
+    }
+  }
+
+  const selection = window.getSelection();
+  if (!selection) return false;
+
+  const range = document.createRange();
+  range.setStart(finalStartNode, finalStartOffset);
+  range.setEnd(finalEndNode, finalEndOffset);
+
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  return true;
+}
+
 export function useSelectionOverlay(
   containerRef: React.RefObject<HTMLElement | null>
 ): SelectionOverlayResult {
@@ -423,14 +555,20 @@ export function useSelectionOverlay(
 
       if (!textLayer) return;
 
+      e.preventDefault();
+
       const metrics = getTextMetricsFromTextLayer(textLayer);
       currentTextMetricsRef.current = metrics;
 
-      setTimeout(() => {
-        requestAnimationFrame(() => {
-          calculateSelectionRects();
-        });
-      }, 10);
+      const selected = selectWordAtPoint(e.clientX, e.clientY, textLayer, metrics);
+
+      if (selected) {
+        setTimeout(() => {
+          requestAnimationFrame(() => {
+            calculateSelectionRects();
+          });
+        }, 10);
+      }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
