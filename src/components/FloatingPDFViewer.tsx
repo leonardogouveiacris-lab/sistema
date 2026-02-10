@@ -666,6 +666,77 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return text.length;
     };
 
+    const selectWord = (span: HTMLElement, offset: number) => {
+      const text = span.textContent || '';
+      if (!text) return;
+
+      let wordStart = offset;
+      let wordEnd = offset;
+
+      while (wordStart > 0 && /\w/.test(text[wordStart - 1])) {
+        wordStart--;
+      }
+      while (wordEnd < text.length && /\w/.test(text[wordEnd])) {
+        wordEnd++;
+      }
+
+      if (wordStart === wordEnd) {
+        wordStart = Math.max(0, offset - 1);
+        wordEnd = Math.min(text.length, offset + 1);
+      }
+
+      const textNode = span.firstChild;
+      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
+
+      const range = document.createRange();
+      const sel = window.getSelection();
+      range.setStart(textNode, wordStart);
+      range.setEnd(textNode, wordEnd);
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+
+      startedInsidePdfRef.current = true;
+    };
+
+    const selectSentence = (span: HTMLElement) => {
+      const pageNumber = getPageNumber(span);
+      if (!pageNumber) return;
+
+      const spans = getSpansForPage(pageNumber);
+      if (spans.length === 0) return;
+
+      const spanRect = span.getBoundingClientRect();
+      const lineThreshold = spanRect.height * 0.5;
+
+      const lineSpans: HTMLElement[] = [];
+      for (const s of spans) {
+        const rect = s.getBoundingClientRect();
+        if (Math.abs(rect.top - spanRect.top) < lineThreshold) {
+          lineSpans.push(s);
+        }
+      }
+
+      lineSpans.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+
+      if (lineSpans.length === 0) return;
+
+      const firstSpan = lineSpans[0];
+      const lastSpan = lineSpans[lineSpans.length - 1];
+      const firstNode = firstSpan.firstChild;
+      const lastNode = lastSpan.firstChild;
+
+      if (!firstNode || !lastNode) return;
+
+      const range = document.createRange();
+      const sel = window.getSelection();
+      range.setStart(firstNode, 0);
+      range.setEnd(lastNode, lastNode.textContent?.length || 0);
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+
+      startedInsidePdfRef.current = true;
+    };
+
     const handleClick = (e: MouseEvent) => {
       const scrollContainer = scrollContainerRef.current;
       if (!scrollContainer) return;
@@ -674,12 +745,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const isInScrollContainer = scrollContainer.contains(target);
       if (!isInScrollContainer) return;
 
-      if (e.detail >= 2) {
+      const textLayerSpan = target.closest('.textLayer > span, .textLayer span[role="presentation"]') as HTMLElement;
+
+      if (e.detail === 2 && textLayerSpan && textLayerSpan.textContent?.trim()) {
+        const clickOffset = getClickOffset(textLayerSpan, e.clientX);
+        selectWord(textLayerSpan, clickOffset);
         deactivateCaret();
         return;
       }
 
-      const textLayerSpan = target.closest('.textLayer > span, .textLayer span[role="presentation"]') as HTMLElement;
+      if (e.detail >= 3 && textLayerSpan && textLayerSpan.textContent?.trim()) {
+        selectSentence(textLayerSpan);
+        deactivateCaret();
+        return;
+      }
 
       if (textLayerSpan && textLayerSpan.textContent?.trim()) {
         const clickOffset = getClickOffset(textLayerSpan, e.clientX);
