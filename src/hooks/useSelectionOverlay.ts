@@ -2,24 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   SelectionRect,
   TextMetrics,
-  SpanInfo,
   RangeSignature,
-  CaretInfo,
-  HysteresisState,
   areMapsEqual,
-  areRangesEqual,
-  getRangeSignature,
   getTextMetricsFromTextLayer,
-  getSnappedCaretInfo,
   selectWordAtPoint,
   calculatePageRects,
   applyRangeToSelection,
-  createSelectionRange,
-  createHysteresisState,
-  shouldHoldSelection,
   logSelectionEvent,
-  incrementDroppedEvents,
-  incrementProgrammaticBlocks
+  incrementDroppedEvents
 } from './selectionEngine';
 
 export type { SelectionRect };
@@ -30,14 +20,7 @@ export interface SelectionOverlayResult {
   clearSelection: () => void;
 }
 
-interface DragState {
-  isDragging: boolean;
-  lastMouseX: number;
-  lastMouseY: number;
-}
-
 const DRAG_THROTTLE_MS = 16;
-const HYSTERESIS_THRESHOLD_MS = 60;
 
 export function useSelectionOverlay(
   containerRef: React.RefObject<HTMLElement | null>
@@ -50,6 +33,7 @@ export function useSelectionOverlay(
   const pendingRafRef = useRef<number | null>(null);
   const lastRectsMapRef = useRef<Map<number, SelectionRect[]>>(new Map());
   const isMouseDownRef = useRef(false);
+  const isDraggingRef = useRef(false);
   const hasActiveSelectionRef = useRef(false);
   const lastSelectionTextRef = useRef('');
   const isKeyboardSelectingRef = useRef(false);
@@ -60,16 +44,8 @@ export function useSelectionOverlay(
   const lastAppliedRangeRef = useRef<RangeSignature | null>(null);
 
   const selectionUpdateTokenRef = useRef(0);
-  const dragStateRef = useRef<DragState>({
-    isDragging: false,
-    lastMouseX: 0,
-    lastMouseY: 0
-  });
-  const lastValidCaretRef = useRef<CaretInfo | null>(null);
-  const anchorCaretRef = useRef<{ node: Node; offset: number } | null>(null);
   const dragUpdateThrottleRef = useRef<number>(0);
 
-  const hysteresisRef = useRef<HysteresisState>(createHysteresisState());
   const rafCoalesceRef = useRef<{
     pending: boolean;
     forceUpdate: boolean;
@@ -83,7 +59,6 @@ export function useSelectionOverlay(
     lastRectsMapRef.current = new Map();
     hasActiveSelectionRef.current = false;
     lastSelectionTextRef.current = '';
-    hysteresisRef.current = createHysteresisState();
     setSelectionsByPage(new Map());
     setHasSelection(false);
   }, []);
@@ -108,7 +83,7 @@ export function useSelectionOverlay(
     const selectionText = selection?.toString() || '';
 
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-      if (isMouseDownRef.current && dragStateRef.current.isDragging && lastRectsMapRef.current.size > 0) {
+      if (isMouseDownRef.current && isDraggingRef.current && lastRectsMapRef.current.size > 0) {
         return;
       }
       if (hasActiveSelectionRef.current && lastRectsMapRef.current.size > 0 && !forceUpdate) {
@@ -165,72 +140,9 @@ export function useSelectionOverlay(
     });
   }, [calculateSelectionRects]);
 
-  const updateSelectionDuringDrag = useCallback((x: number, y: number) => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const pageEl = document.elementFromPoint(x, y)?.closest('[data-global-page]');
-    if (!pageEl) return;
-
-    const textLayer = pageEl.querySelector('.textLayer') ||
-                      pageEl.querySelector('.react-pdf__Page__textContent');
-    if (!textLayer) return;
-
-    const metrics = currentTextMetricsRef.current || getTextMetricsFromTextLayer(textLayer);
-    const anchorY = anchorCaretRef.current ? dragStateRef.current.lastMouseY : y;
-
-    const { hold, updatedHysteresis } = shouldHoldSelection(
-      x, y, textLayer, hysteresisRef.current, HYSTERESIS_THRESHOLD_MS
-    );
-    hysteresisRef.current = updatedHysteresis;
-
-    if (hold && lastValidCaretRef.current) {
-      return;
-    }
-
-    const caretInfo = getSnappedCaretInfo(
-      x, y, textLayer, metrics, anchorY,
-      lastValidCaretRef.current?.spanInfo
-    );
-
-    if (!caretInfo || !textLayer.contains(caretInfo.node)) {
-      return;
-    }
-
-    lastValidCaretRef.current = caretInfo;
-    hysteresisRef.current.lastValidX = x;
-    hysteresisRef.current.lastValidY = y;
-    hysteresisRef.current.lastValidTime = performance.now();
-    hysteresisRef.current.isInGap = false;
-
-    if (!anchorCaretRef.current) {
-      anchorCaretRef.current = { node: caretInfo.node, offset: caretInfo.offset };
-    }
-
-    const anchor = anchorCaretRef.current;
-    const range = createSelectionRange(anchor.node, anchor.offset, caretInfo.node, caretInfo.offset);
-
-    const applied = applyRangeToSelection(
-      range,
-      isProgrammaticSelectionRef,
-      lastAppliedRangeRef,
-      selectionEpochRef
-    );
-
-    if (applied) {
-      scheduleRafUpdate(true);
-    }
-  }, [containerRef, scheduleRafUpdate]);
-
   const handleSelectionChange = useCallback(() => {
     if (isProgrammaticSelectionRef.current) {
-      incrementProgrammaticBlocks();
       logSelectionEvent('selectionchange:blocked-programmatic');
-      return;
-    }
-
-    if (dragStateRef.current.isDragging && isMouseDownRef.current) {
-      logSelectionEvent('selectionchange:blocked-dragging');
       return;
     }
 
@@ -239,8 +151,8 @@ export function useSelectionOverlay(
       return;
     }
 
-    logSelectionEvent('selectionchange:process');
-    scheduleRafUpdate(false);
+    logSelectionEvent('selectionchange:process', { isDragging: isDraggingRef.current });
+    scheduleRafUpdate(isDraggingRef.current);
   }, [scheduleRafUpdate]);
 
   const clearSelection = useCallback(() => {
@@ -265,12 +177,7 @@ export function useSelectionOverlay(
       }
     }
 
-    dragStateRef.current = {
-      isDragging: false,
-      lastMouseX: 0,
-      lastMouseY: 0
-    };
-    hysteresisRef.current = createHysteresisState();
+    isDraggingRef.current = false;
     clearOverlay();
     logSelectionEvent('selection:cleared');
   }, [clearOverlay]);
@@ -286,34 +193,9 @@ export function useSelectionOverlay(
 
       if (textLayer) {
         currentTextMetricsRef.current = getTextMetricsFromTextLayer(textLayer);
-        dragStateRef.current = {
-          isDragging: true,
-          lastMouseX: e.clientX,
-          lastMouseY: e.clientY
-        };
-
-        const caretInfo = getSnappedCaretInfo(
-          e.clientX, e.clientY, textLayer, currentTextMetricsRef.current, e.clientY, null
-        );
-        if (caretInfo) {
-          anchorCaretRef.current = { node: caretInfo.node, offset: caretInfo.offset };
-          lastValidCaretRef.current = caretInfo;
-          hysteresisRef.current = {
-            lastValidX: e.clientX,
-            lastValidY: e.clientY,
-            lastValidTime: performance.now(),
-            isInGap: false,
-            gapEntryTime: 0
-          };
-        } else {
-          anchorCaretRef.current = null;
-          lastValidCaretRef.current = null;
-        }
-
+        isDraggingRef.current = true;
         logSelectionEvent('mousedown:text-layer', { x: e.clientX, y: e.clientY });
       } else {
-        anchorCaretRef.current = null;
-        lastValidCaretRef.current = null;
         logSelectionEvent('mousedown:outside');
       }
 
@@ -329,10 +211,7 @@ export function useSelectionOverlay(
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isMouseDownRef.current || !dragStateRef.current.isDragging) return;
-
-      dragStateRef.current.lastMouseX = e.clientX;
-      dragStateRef.current.lastMouseY = e.clientY;
+      if (!isMouseDownRef.current || !isDraggingRef.current) return;
 
       const now = performance.now();
       if (now - dragUpdateThrottleRef.current < DRAG_THROTTLE_MS) {
@@ -340,16 +219,13 @@ export function useSelectionOverlay(
       }
       dragUpdateThrottleRef.current = now;
 
-      updateSelectionDuringDrag(e.clientX, e.clientY);
+      scheduleRafUpdate(true);
     };
 
     const handleMouseUp = () => {
-      const wasDragging = dragStateRef.current.isDragging;
+      const wasDragging = isDraggingRef.current;
       isMouseDownRef.current = false;
-      dragStateRef.current.isDragging = false;
-      anchorCaretRef.current = null;
-      lastValidCaretRef.current = null;
-      hysteresisRef.current = createHysteresisState();
+      isDraggingRef.current = false;
 
       if (wasDragging) {
         logSelectionEvent('mouseup:end-drag');
@@ -418,7 +294,7 @@ export function useSelectionOverlay(
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [clearSelection, scheduleRafUpdate, updateSelectionDuringDrag]);
+  }, [clearSelection, scheduleRafUpdate]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
