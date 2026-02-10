@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Trash2, ArrowRight, Square, ChevronDown } from 'lucide-react';
+import { MessageCircle, X, Trash2, ArrowRight, Square, Palette, CornerDownRight } from 'lucide-react';
 import { PDFComment, CommentColor, COMMENT_COLORS, ConnectorType } from '../../types/PDFComment';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
@@ -26,12 +26,14 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [content, setContent] = useState(comment.content);
   const [showConnectorDropdown, setShowConnectorDropdown] = useState(false);
+  const [showColorDropdown, setShowColorDropdown] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const balloonRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const connectorDropdownRef = useRef<HTMLDivElement>(null);
+  const colorDropdownRef = useRef<HTMLDivElement>(null);
 
   const isSelected = state.selectedCommentId === comment.id;
 
@@ -46,16 +48,19 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (connectorDropdownRef.current && !connectorDropdownRef.current.contains(e.target as Node)) {
         setShowConnectorDropdown(false);
+      }
+      if (colorDropdownRef.current && !colorDropdownRef.current.contains(e.target as Node)) {
+        setShowColorDropdown(false);
       }
     };
 
-    if (showConnectorDropdown) {
+    if (showConnectorDropdown || showColorDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showConnectorDropdown]);
+  }, [showConnectorDropdown, showColorDropdown]);
 
   const handleIconClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -101,13 +106,13 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     } catch (error) {
       console.error('Erro ao excluir comentário:', error);
     }
-    setShowMenu(false);
   };
 
   const handleColorChange = async (color: CommentColor) => {
     try {
       await PDFCommentsService.updateComment(comment.id, { color });
       updateComment(comment.id, { color });
+      setShowColorDropdown(false);
     } catch (error) {
       console.error('Erro ao mudar cor:', error);
     }
@@ -263,18 +268,17 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
             </div>
           )}
 
-          <div className="px-3 py-2 border-t border-gray-200 flex items-center justify-between gap-2">
-            <div className="relative" ref={dropdownRef}>
+          <div className="px-3 py-2 border-t border-gray-200 flex items-center justify-center gap-3">
+            <div className="relative" ref={connectorDropdownRef}>
               <button
                 onClick={() => setShowConnectorDropdown(!showConnectorDropdown)}
-                className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded transition-colors border border-gray-200"
+                className={`p-1.5 rounded transition-colors ${showConnectorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                title="Adicionar conector"
               >
-                <ArrowRight size={12} />
-                <span>Ferramentas</span>
-                <ChevronDown size={12} />
+                <CornerDownRight size={16} />
               </button>
               {showConnectorDropdown && (
-                <div className="absolute bottom-full left-0 mb-1 bg-white rounded-lg shadow-xl border py-1 min-w-[140px] z-[100]">
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-white rounded-lg shadow-xl border py-1 min-w-[120px] z-[100]">
                   <button
                     onClick={handleStartArrow}
                     className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
@@ -293,17 +297,30 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-1">
-              {COLOR_OPTIONS.map(color => (
-                <button
-                  key={color}
-                  onClick={() => handleColorChange(color)}
-                  className={`w-5 h-5 rounded-full ${COMMENT_COLORS[color].bg} ${COMMENT_COLORS[color].border} border hover:scale-110 transition-transform ${
-                    comment.color === color ? 'ring-2 ring-blue-500 ring-offset-1' : ''
-                  }`}
-                  title={color}
-                />
-              ))}
+            <div className="relative" ref={colorDropdownRef}>
+              <button
+                onClick={() => setShowColorDropdown(!showColorDropdown)}
+                className={`p-1.5 rounded transition-colors ${showColorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                title="Mudar cor"
+              >
+                <Palette size={16} />
+              </button>
+              {showColorDropdown && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-white rounded-lg shadow-xl border p-2 z-[100]">
+                  <div className="flex gap-1">
+                    {COLOR_OPTIONS.map(color => (
+                      <button
+                        key={color}
+                        onClick={() => handleColorChange(color)}
+                        className={`w-6 h-6 rounded-full ${COMMENT_COLORS[color].bg} ${COMMENT_COLORS[color].border} border-2 hover:scale-110 transition-transform ${
+                          comment.color === color ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+                        }`}
+                        title={color}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
@@ -311,7 +328,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
               className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
               title="Excluir comentário"
             >
-              <Trash2 size={14} />
+              <Trash2 size={16} />
             </button>
           </div>
         </div>
