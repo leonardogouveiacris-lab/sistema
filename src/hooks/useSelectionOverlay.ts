@@ -545,6 +545,8 @@ export function useSelectionOverlay(
     lastMouseX: 0,
     lastMouseY: 0
   });
+  const lastDragUpdateTimeRef = useRef(0);
+  const dragThrottleIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearOverlay = useCallback(() => {
     if (lastRectsMapRef.current.size === 0 && !hasActiveSelectionRef.current) {
@@ -680,6 +682,29 @@ export function useSelectionOverlay(
       return;
     }
 
+    const isDragging = dragStateRef.current.isDragging && isMouseDownRef.current;
+    const now = performance.now();
+    const DRAG_THROTTLE_MS = 80;
+
+    if (isDragging) {
+      const timeSinceLastUpdate = now - lastDragUpdateTimeRef.current;
+
+      if (timeSinceLastUpdate < DRAG_THROTTLE_MS) {
+        if (dragThrottleIntervalRef.current === null) {
+          dragThrottleIntervalRef.current = setTimeout(() => {
+            dragThrottleIntervalRef.current = null;
+            if (dragStateRef.current.isDragging && isMouseDownRef.current) {
+              lastDragUpdateTimeRef.current = performance.now();
+              calculateSelectionRects(true);
+            }
+          }, DRAG_THROTTLE_MS - timeSinceLastUpdate);
+        }
+        return;
+      }
+
+      lastDragUpdateTimeRef.current = now;
+    }
+
     selectionUpdateTokenRef.current++;
     const currentToken = selectionUpdateTokenRef.current;
 
@@ -691,7 +716,7 @@ export function useSelectionOverlay(
       if (selectionUpdateTokenRef.current !== currentToken) {
         return;
       }
-      calculateSelectionRects(isMouseDownRef.current);
+      calculateSelectionRects(isDragging);
       pendingRafRef.current = null;
     });
   }, [calculateSelectionRects]);
@@ -700,6 +725,10 @@ export function useSelectionOverlay(
     if (pendingRafRef.current !== null) {
       cancelAnimationFrame(pendingRafRef.current);
       pendingRafRef.current = null;
+    }
+    if (dragThrottleIntervalRef.current !== null) {
+      clearTimeout(dragThrottleIntervalRef.current);
+      dragThrottleIntervalRef.current = null;
     }
     selectionUpdateTokenRef.current++;
     lastAppliedRangeRef.current = null;
@@ -866,6 +895,10 @@ export function useSelectionOverlay(
       if (pendingRafRef.current !== null) {
         cancelAnimationFrame(pendingRafRef.current);
         pendingRafRef.current = null;
+      }
+      if (dragThrottleIntervalRef.current !== null) {
+        clearTimeout(dragThrottleIntervalRef.current);
+        dragThrottleIntervalRef.current = null;
       }
     };
   }, [handleSelectionChange]);
