@@ -113,8 +113,6 @@ function findNearestTextSpan(x: number, y: number, textLayer: Element, metrics: 
     if (span.textContent?.trim() === '') return;
 
     const rect = span.getBoundingClientRect();
-    const spanCenterX = rect.left + rect.width / 2;
-    const spanCenterY = rect.top + rect.height / 2;
 
     let distance: number;
 
@@ -137,11 +135,6 @@ function findNearestTextSpan(x: number, y: number, textLayer: Element, metrics: 
   return nearestSpan;
 }
 
-/**
- * Em PDFs/textLayers, caretRangeFromPoint pode "teleportar" em whitespace grande.
- * Este helper tenta primeiro o caret direto; se falhar (ou cair fora), faz snap para o span mais próximo
- * e re-testa em um ponto garantidamente dentro do span.
- */
 function getSnappedCaretInfoFromPoint(
   x: number,
   y: number,
@@ -160,11 +153,6 @@ function getSnappedCaretInfoFromPoint(
   const insideY = Math.min(Math.max(y, r.top + 1), r.bottom - 1);
 
   return getCaretInfoFromPoint(insideX, insideY, textLayer) || direct;
-}
-
-function hasCaretIndexChanged(prev: CaretInfo | null, current: CaretInfo | null): boolean {
-  if (!prev || !current) return true;
-  return prev.spanIndex !== current.spanIndex || prev.offset !== current.offset;
 }
 
 function isWordChar(char: string): boolean {
@@ -222,6 +210,8 @@ function selectWordAtPoint(x: number, y: number, textLayer: Element, metrics: Te
   let finalEndOffset = endOffset;
 
   if (startOffset === 0) {
+    let referenceRect = currentRect;
+
     for (let i = currentSpanIndex - 1; i >= 0; i--) {
       const prevSpan = spans[i] as HTMLElement;
       const prevRect = prevSpan.getBoundingClientRect();
@@ -231,7 +221,7 @@ function selectWordAtPoint(x: number, y: number, textLayer: Element, metrics: Te
       const prevText = prevSpan.textContent || '';
       if (prevText.length === 0) continue;
 
-      const gapBetweenSpans = currentRect.left - prevRect.right;
+      const gapBetweenSpans = referenceRect.left - prevRect.right;
       if (gapBetweenSpans > metrics.averageCharWidth * 1.5) break;
 
       const lastChar = prevText[prevText.length - 1];
@@ -247,6 +237,7 @@ function selectWordAtPoint(x: number, y: number, textLayer: Element, metrics: Te
 
       finalStartNode = prevTextNode;
       finalStartOffset = prevStartOffset;
+      referenceRect = prevRect;
 
       if (prevStartOffset > 0) break;
     }
@@ -312,31 +303,25 @@ export function useSelectionOverlay(
   const hasActiveSelectionRef = useRef(false);
   const lastSelectionTextRef = useRef('');
   const isKeyboardSelectingRef = useRef(false);
-  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
-  const currentMousePosRef = useRef<{ x: number; y: number } | null>(null);
-  const lastValidRectsRef = useRef<Map<number, SelectionRect[]>>(new Map());
-  const startCaretInfoRef = useRef<CaretInfo | null>(null);
-  const lastCaretInfoRef = useRef<CaretInfo | null>(null);
   const currentTextMetricsRef = useRef<TextMetrics | null>(null);
-  const selectionStartedRef = useRef(false);
-  const initialClickPosRef = useRef<{ x: number; y: number } | null>(null);
+  const selectionThrottleRef = useRef<number | null>(null);
+  const lastCalculationTimeRef = useRef(0);
 
   const clearOverlay = useCallback(() => {
     lastRectsMapRef.current = new Map();
     hasActiveSelectionRef.current = false;
     lastSelectionTextRef.current = '';
-    lastValidRectsRef.current = new Map();
-    dragStartPosRef.current = null;
-    currentMousePosRef.current = null;
-    startCaretInfoRef.current = null;
-    lastCaretInfoRef.current = null;
-    selectionStartedRef.current = false;
-    initialClickPosRef.current = null;
     setSelectionsByPage(new Map());
     setHasSelection(false);
   }, []);
 
   const calculateSelectionRects = useCallback(() => {
+    const now = performance.now();
+    if (now - lastCalculationTimeRef.current < 16) {
+      return;
+    }
+    lastCalculationTimeRef.current = now;
+
     const selection = document.getSelection();
     const selectionText = selection?.toString() || '';
 
@@ -446,7 +431,6 @@ export function useSelectionOverlay(
 
     if (pageRectsMap.size > 0) {
       lastRectsMapRef.current = pageRectsMap;
-      lastValidRectsRef.current = new Map(pageRectsMap);
       hasActiveSelectionRef.current = true;
       lastSelectionTextRef.current = selectionText;
       setSelectionsByPage(new Map(pageRectsMap));
@@ -459,10 +443,16 @@ export function useSelectionOverlay(
       cancelAnimationFrame(rafRef.current);
     }
 
-    calculateSelectionRects();
+    if (selectionThrottleRef.current !== null) {
+      cancelAnimationFrame(selectionThrottleRef.current);
+    }
+
+    selectionThrottleRef.current = requestAnimationFrame(() => {
+      calculateSelectionRects();
+      selectionThrottleRef.current = null;
+    });
 
     rafRef.current = requestAnimationFrame(() => {
-      calculateSelectionRects();
       rafRef.current = null;
     });
   }, [calculateSelectionRects]);
@@ -478,18 +468,12 @@ export function useSelectionOverlay(
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
       isMouseDownRef.current = true;
-      dragStartPosRef.current = { x: e.clientX, y: e.clientY };
-      currentMousePosRef.current = { x: e.clientX, y: e.clientY };
-      initialClickPosRef.current = { x: e.clientX, y: e.clientY };
-      lastValidRectsRef.current = new Map();
-      selectionStartedRef.current = false;
 
       const target = e.target as HTMLElement;
       const textLayer = target.closest('.textLayer') || target.closest('.react-pdf__Page__textContent');
 
       if (textLayer) {
         currentTextMetricsRef.current = getTextMetricsFromTextLayer(textLayer);
-        startCaretInfoRef.current = getCaretInfoFromPoint(e.clientX, e.clientY, textLayer);
       }
 
       if (hasActiveSelectionRef.current) {
@@ -503,46 +487,8 @@ export function useSelectionOverlay(
       }
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isMouseDownRef.current) return;
-
-      currentMousePosRef.current = { x: e.clientX, y: e.clientY };
-
-      const target = e.target as HTMLElement;
-      const textLayer = target.closest('.textLayer') || target.closest('.react-pdf__Page__textContent');
-
-      if (!textLayer || !currentTextMetricsRef.current) return;
-
-      const metrics = currentTextMetricsRef.current;
-      const initialPos = initialClickPosRef.current;
-
-      if (!selectionStartedRef.current && initialPos) {
-        const dx = Math.abs(e.clientX - initialPos.x);
-        const dy = Math.abs(e.clientY - initialPos.y);
-
-        // ajuste leve pra evitar "hipersensibilidade" em PDF
-        const minDragForChar = Math.max(metrics.averageCharWidth * 0.5, metrics.fontSize * 0.25);
-        const minDragForLine = metrics.lineHeight * 0.3;
-
-        const currentCaret = getSnappedCaretInfoFromPoint(e.clientX, e.clientY, textLayer, metrics);
-        const caretChanged = hasCaretIndexChanged(startCaretInfoRef.current, currentCaret);
-
-        if (caretChanged || dx >= minDragForChar || dy >= minDragForLine) {
-          selectionStartedRef.current = true;
-          lastCaretInfoRef.current = currentCaret;
-        }
-      } else if (selectionStartedRef.current) {
-        const currentCaret = getSnappedCaretInfoFromPoint(e.clientX, e.clientY, textLayer, metrics);
-        lastCaretInfoRef.current = currentCaret;
-      }
-    };
-
     const handleMouseUp = () => {
       isMouseDownRef.current = false;
-      dragStartPosRef.current = null;
-      currentMousePosRef.current = null;
-      initialClickPosRef.current = null;
-      selectionStartedRef.current = false;
 
       requestAnimationFrame(() => {
         calculateSelectionRects();
@@ -591,7 +537,6 @@ export function useSelectionOverlay(
     };
 
     document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('dblclick', handleDoubleClick);
     document.addEventListener('keydown', handleKeyDown);
@@ -599,13 +544,12 @@ export function useSelectionOverlay(
 
     return () => {
       document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('dblclick', handleDoubleClick);
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [containerRef, clearSelection, calculateSelectionRects]);
+  }, [clearSelection, calculateSelectionRects]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
@@ -614,6 +558,9 @@ export function useSelectionOverlay(
       document.removeEventListener('selectionchange', handleSelectionChange);
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
+      }
+      if (selectionThrottleRef.current !== null) {
+        cancelAnimationFrame(selectionThrottleRef.current);
       }
     };
   }, [handleSelectionChange]);
