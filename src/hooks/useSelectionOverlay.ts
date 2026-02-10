@@ -58,6 +58,7 @@ interface DragState {
   isDragging: boolean;
   lastValidNode: Node | null;
   lastValidOffset: number;
+  lastValidSpan: SpanInfo | null;
   lastMouseX: number;
   lastMouseY: number;
 }
@@ -153,12 +154,12 @@ function findBestSpanForPoint(
   y: number,
   spans: SpanInfo[],
   metrics: TextMetrics,
-  anchorY: number
+  anchorY: number,
+  lastValidSpan?: SpanInfo | null
 ): SpanInfo | null {
   if (spans.length === 0) return null;
 
   const isDraggingDown = y > anchorY;
-  const isDraggingUp = y < anchorY;
 
   for (const info of spans) {
     if (x >= info.rect.left && x <= info.rect.right &&
@@ -190,54 +191,45 @@ function findBestSpanForPoint(
   const sortedLines = Array.from(lineGroups.entries()).sort((a, b) => a[0] - b[0]);
 
   let targetLine: SpanInfo[] | null = null;
-  let minVerticalDist = Infinity;
+  let targetLineIndex = -1;
 
-  for (const [lineY, lineSpans] of sortedLines) {
-    const firstSpan = lineSpans[0];
+  for (let i = 0; i < sortedLines.length; i++) {
+    const [, lineSpans] = sortedLines[i];
     const lineTop = Math.min(...lineSpans.map(s => s.rect.top));
     const lineBottom = Math.max(...lineSpans.map(s => s.rect.bottom));
 
     if (y >= lineTop && y <= lineBottom) {
       targetLine = lineSpans;
+      targetLineIndex = i;
       break;
-    }
-
-    let dist: number;
-    if (y < lineTop) {
-      dist = lineTop - y;
-      if (isDraggingUp && dist < minVerticalDist) {
-        minVerticalDist = dist;
-        targetLine = lineSpans;
-      } else if (!isDraggingUp && !isDraggingDown && dist < minVerticalDist) {
-        minVerticalDist = dist;
-        targetLine = lineSpans;
-      }
-    } else {
-      dist = y - lineBottom;
-      if (isDraggingDown && dist < minVerticalDist) {
-        minVerticalDist = dist;
-        targetLine = lineSpans;
-      } else if (!isDraggingUp && !isDraggingDown && dist < minVerticalDist) {
-        minVerticalDist = dist;
-        targetLine = lineSpans;
-      }
     }
   }
 
   if (!targetLine && sortedLines.length > 0) {
-    for (const [lineY, lineSpans] of sortedLines) {
+    for (let i = 0; i < sortedLines.length; i++) {
+      const [, lineSpans] = sortedLines[i];
       const lineTop = Math.min(...lineSpans.map(s => s.rect.top));
       const lineBottom = Math.max(...lineSpans.map(s => s.rect.bottom));
 
-      const dist = y < lineTop ? lineTop - y : y - lineBottom;
-      if (dist < minVerticalDist) {
-        minVerticalDist = dist;
+      if (y < lineTop) {
+        if (isDraggingDown && i > 0) {
+          targetLine = sortedLines[i - 1][1];
+          targetLineIndex = i - 1;
+        } else {
+          targetLine = lineSpans;
+          targetLineIndex = i;
+        }
+        break;
+      }
+
+      if (i === sortedLines.length - 1 && y > lineBottom) {
         targetLine = lineSpans;
+        targetLineIndex = i;
       }
     }
   }
 
-  if (!targetLine) return null;
+  if (!targetLine) return lastValidSpan || null;
 
   targetLine.sort((a, b) => a.rect.left - b.rect.left);
 
@@ -247,23 +239,45 @@ function findBestSpanForPoint(
     }
   }
 
-  if (x < targetLine[0].rect.left) {
-    return isDraggingUp ? targetLine[targetLine.length - 1] : targetLine[0];
-  }
+  if (lastValidSpan) {
+    const lastSpanInTargetLine = targetLine.find(s => s.span === lastValidSpan.span);
+    if (lastSpanInTargetLine) {
+      const lastSpanIndex = targetLine.indexOf(lastSpanInTargetLine);
 
-  if (x > targetLine[targetLine.length - 1].rect.right) {
-    return isDraggingDown ? targetLine[0] : targetLine[targetLine.length - 1];
+      for (let i = 0; i < targetLine.length; i++) {
+        const span = targetLine[i];
+        const nextSpan = targetLine[i + 1];
+
+        if (nextSpan && x > span.rect.right && x < nextSpan.rect.left) {
+          if (lastSpanIndex <= i) {
+            return span;
+          } else {
+            return nextSpan;
+          }
+        }
+      }
+    }
   }
 
   let closestSpan = targetLine[0];
   let minDist = Infinity;
 
   for (const info of targetLine) {
-    const dist = Math.min(Math.abs(x - info.rect.left), Math.abs(x - info.rect.right));
+    const distLeft = Math.abs(x - info.rect.left);
+    const distRight = Math.abs(x - info.rect.right);
+    const dist = Math.min(distLeft, distRight);
     if (dist < minDist) {
       minDist = dist;
       closestSpan = info;
     }
+  }
+
+  if (x < targetLine[0].rect.left) {
+    return targetLine[0];
+  }
+
+  if (x > targetLine[targetLine.length - 1].rect.right) {
+    return targetLine[targetLine.length - 1];
   }
 
   return closestSpan;
@@ -274,17 +288,40 @@ function getSnappedCaretInfo(
   y: number,
   textLayer: Element,
   metrics: TextMetrics,
-  anchorY: number
-): { node: Node; offset: number } | null {
+  anchorY: number,
+  lastValidSpan?: SpanInfo | null
+): { node: Node; offset: number; spanInfo?: SpanInfo } | null {
   const direct = getCaretInfoFromPoint(x, y);
   if (direct && textLayer.contains(direct.node)) {
+    const parentSpan = (direct.node.parentElement?.closest('span[role="presentation"], span:not([role])') ||
+      direct.node.parentElement) as HTMLElement | null;
+    if (parentSpan) {
+      const rect = parentSpan.getBoundingClientRect();
+      const textNode = parentSpan.firstChild?.nodeType === Node.TEXT_NODE ? parentSpan.firstChild : null;
+      return {
+        node: direct.node,
+        offset: direct.offset,
+        spanInfo: { span: parentSpan, rect, textNode }
+      };
+    }
     return direct;
   }
 
   const spans = getSpansWithInfo(textLayer);
-  const bestSpan = findBestSpanForPoint(x, y, spans, metrics, anchorY);
+  const bestSpan = findBestSpanForPoint(x, y, spans, metrics, anchorY, lastValidSpan);
 
-  if (!bestSpan) return direct;
+  if (!bestSpan) {
+    if (lastValidSpan && textLayer.contains(lastValidSpan.span)) {
+      const r = lastValidSpan.rect;
+      const clampedX = x < r.left ? r.left + 1 : r.right - 1;
+      const clampedY = r.top + r.height / 2;
+      const snapped = getCaretInfoFromPoint(clampedX, clampedY);
+      if (snapped && textLayer.contains(snapped.node)) {
+        return { ...snapped, spanInfo: lastValidSpan };
+      }
+    }
+    return direct ? { ...direct } : null;
+  }
 
   const r = bestSpan.rect;
   const clampedX = Math.min(Math.max(x, r.left + 1), r.right - 1);
@@ -292,7 +329,7 @@ function getSnappedCaretInfo(
 
   const snapped = getCaretInfoFromPoint(clampedX, clampedY);
   if (snapped && textLayer.contains(snapped.node)) {
-    return snapped;
+    return { ...snapped, spanInfo: bestSpan };
   }
 
   if (bestSpan.textNode) {
@@ -301,10 +338,10 @@ function getSnappedCaretInfo(
     let offset = Math.round((x - r.left) / charWidth);
     offset = Math.max(0, Math.min(offset, text.length));
 
-    return { node: bestSpan.textNode, offset };
+    return { node: bestSpan.textNode, offset, spanInfo: bestSpan };
   }
 
-  return direct;
+  return direct ? { ...direct } : null;
 }
 
 function isWordChar(char: string): boolean {
@@ -312,7 +349,7 @@ function isWordChar(char: string): boolean {
 }
 
 function selectWordAtPoint(x: number, y: number, textLayer: Element, metrics: TextMetrics): boolean {
-  const caretInfo = getSnappedCaretInfo(x, y, textLayer, metrics, y);
+  const caretInfo = getSnappedCaretInfo(x, y, textLayer, metrics, y, null);
   if (!caretInfo || !caretInfo.node) return false;
 
   const textNode = caretInfo.node.nodeType === Node.TEXT_NODE
@@ -499,6 +536,7 @@ export function useSelectionOverlay(
     isDragging: false,
     lastValidNode: null,
     lastValidOffset: 0,
+    lastValidSpan: null,
     lastMouseX: 0,
     lastMouseY: 0
   });
@@ -663,6 +701,7 @@ export function useSelectionOverlay(
       isDragging: false,
       lastValidNode: null,
       lastValidOffset: 0,
+      lastValidSpan: null,
       lastMouseX: 0,
       lastMouseY: 0
     };
@@ -686,7 +725,8 @@ export function useSelectionOverlay(
           e.clientY,
           textLayer,
           currentTextMetricsRef.current,
-          e.clientY
+          e.clientY,
+          null
         );
 
         if (caretInfo) {
@@ -699,6 +739,7 @@ export function useSelectionOverlay(
             isDragging: true,
             lastValidNode: caretInfo.node,
             lastValidOffset: caretInfo.offset,
+            lastValidSpan: caretInfo.spanInfo || null,
             lastMouseX: e.clientX,
             lastMouseY: e.clientY
           };
@@ -760,7 +801,8 @@ export function useSelectionOverlay(
         e.clientY,
         targetTextLayer,
         metrics,
-        dragStateRef.current.anchorY
+        dragStateRef.current.anchorY,
+        dragStateRef.current.lastValidSpan
       );
 
       let focusNode: Node;
@@ -771,6 +813,9 @@ export function useSelectionOverlay(
         focusOffset = caretInfo.offset;
         dragStateRef.current.lastValidNode = focusNode;
         dragStateRef.current.lastValidOffset = focusOffset;
+        if (caretInfo.spanInfo) {
+          dragStateRef.current.lastValidSpan = caretInfo.spanInfo;
+        }
       } else if (dragStateRef.current.lastValidNode) {
         focusNode = dragStateRef.current.lastValidNode;
         focusOffset = dragStateRef.current.lastValidOffset;
