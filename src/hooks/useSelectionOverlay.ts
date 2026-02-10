@@ -37,6 +37,37 @@ function areMapsEqual(
   return true;
 }
 
+function calculateTotalArea(rects: SelectionRect[]): number {
+  return rects.reduce((sum, r) => sum + r.width * r.height, 0);
+}
+
+function calculateMapArea(map: Map<number, SelectionRect[]>): number {
+  let total = 0;
+  for (const rects of map.values()) {
+    total += calculateTotalArea(rects);
+  }
+  return total;
+}
+
+function getBoundingBox(map: Map<number, SelectionRect[]>): { minX: number; minY: number; maxX: number; maxY: number; minPage: number; maxPage: number } | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minPage = Infinity, maxPage = -Infinity;
+
+  for (const [page, rects] of map) {
+    minPage = Math.min(minPage, page);
+    maxPage = Math.max(maxPage, page);
+    for (const r of rects) {
+      minX = Math.min(minX, r.x);
+      minY = Math.min(minY, r.y);
+      maxX = Math.max(maxX, r.x + r.width);
+      maxY = Math.max(maxY, r.y + r.height);
+    }
+  }
+
+  if (minX === Infinity) return null;
+  return { minX, minY, maxX, maxY, minPage, maxPage };
+}
+
 export interface SelectionOverlayResult {
   selectionsByPage: Map<number, SelectionRect[]>;
   hasSelection: boolean;
@@ -464,6 +495,29 @@ export function useSelectionOverlay(
       const hasChanged = !areMapsEqual(lastRectsMapRef.current, pageRectsMap);
 
       if (hasChanged) {
+        if (isMouseDownRef.current && lastRectsMapRef.current.size > 0) {
+          const oldBox = getBoundingBox(lastRectsMapRef.current);
+          const newBox = getBoundingBox(pageRectsMap);
+          const oldArea = calculateMapArea(lastRectsMapRef.current);
+          const newArea = calculateMapArea(pageRectsMap);
+
+          if (oldBox && newBox) {
+            const isExpanding =
+              newBox.minPage <= oldBox.minPage &&
+              newBox.maxPage >= oldBox.maxPage &&
+              newArea >= oldArea * 0.7;
+
+            const isSameRegion =
+              newBox.minPage === oldBox.minPage &&
+              newBox.maxPage === oldBox.maxPage &&
+              Math.abs(newArea - oldArea) < oldArea * 0.5;
+
+            if (!isExpanding && !isSameRegion && newArea < oldArea * 0.7) {
+              return;
+            }
+          }
+        }
+
         lastRectsMapRef.current = pageRectsMap;
         hasActiveSelectionRef.current = true;
         lastSelectionTextRef.current = selectionText;
