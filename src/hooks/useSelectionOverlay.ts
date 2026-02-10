@@ -69,6 +69,32 @@ interface SpanInfo {
   textNode: Node | null;
 }
 
+interface RangeSignature {
+  startContainer: Node;
+  startOffset: number;
+  endContainer: Node;
+  endOffset: number;
+}
+
+function areRangesEqual(a: RangeSignature | null, b: RangeSignature | null): boolean {
+  if (!a || !b) return false;
+  return (
+    a.startContainer === b.startContainer &&
+    a.startOffset === b.startOffset &&
+    a.endContainer === b.endContainer &&
+    a.endOffset === b.endOffset
+  );
+}
+
+function getRangeSignature(range: Range): RangeSignature {
+  return {
+    startContainer: range.startContainer,
+    startOffset: range.startOffset,
+    endContainer: range.endContainer,
+    endOffset: range.endOffset
+  };
+}
+
 function getTextMetricsFromTextLayer(textLayer: Element): TextMetrics {
   const spans = textLayer.querySelectorAll('span[role="presentation"], span:not([role])');
   let totalHeight = 0;
@@ -348,7 +374,14 @@ function isWordChar(char: string): boolean {
   return /[\p{L}\p{N}]/u.test(char);
 }
 
-function selectWordAtPoint(x: number, y: number, textLayer: Element, metrics: TextMetrics): boolean {
+function selectWordAtPoint(
+  x: number,
+  y: number,
+  textLayer: Element,
+  metrics: TextMetrics,
+  isProgrammaticRef?: React.MutableRefObject<boolean>,
+  lastAppliedRangeRef?: React.MutableRefObject<RangeSignature | null>
+): boolean {
   const caretInfo = getSnappedCaretInfo(x, y, textLayer, metrics, y, null);
   if (!caretInfo || !caretInfo.node) return false;
 
@@ -473,8 +506,27 @@ function selectWordAtPoint(x: number, y: number, textLayer: Element, metrics: Te
   range.setStart(finalStartNode, finalStartOffset);
   range.setEnd(finalEndNode, finalEndOffset);
 
-  selection.removeAllRanges();
-  selection.addRange(range);
+  const newSignature = getRangeSignature(range);
+  if (lastAppliedRangeRef && areRangesEqual(lastAppliedRangeRef.current, newSignature)) {
+    return true;
+  }
+
+  if (isProgrammaticRef) {
+    isProgrammaticRef.current = true;
+  }
+  try {
+    selection.removeAllRanges();
+    selection.addRange(range);
+    if (lastAppliedRangeRef) {
+      lastAppliedRangeRef.current = newSignature;
+    }
+  } finally {
+    if (isProgrammaticRef) {
+      queueMicrotask(() => {
+        isProgrammaticRef.current = false;
+      });
+    }
+  }
 
   return true;
 }
@@ -483,7 +535,9 @@ function createSelectionFromPoints(
   anchorNode: Node,
   anchorOffset: number,
   focusNode: Node,
-  focusOffset: number
+  focusOffset: number,
+  isProgrammaticRef?: React.MutableRefObject<boolean>,
+  lastAppliedRangeRef?: React.MutableRefObject<RangeSignature | null>
 ): boolean {
   const selection = window.getSelection();
   if (!selection) return false;
@@ -505,10 +559,32 @@ function createSelectionFromPoints(
       range.setEnd(anchorNode, anchorOffset);
     }
 
-    selection.removeAllRanges();
-    selection.addRange(range);
+    const newSignature = getRangeSignature(range);
+    if (lastAppliedRangeRef && areRangesEqual(lastAppliedRangeRef.current, newSignature)) {
+      return true;
+    }
+
+    if (isProgrammaticRef) {
+      isProgrammaticRef.current = true;
+    }
+    try {
+      selection.removeAllRanges();
+      selection.addRange(range);
+      if (lastAppliedRangeRef) {
+        lastAppliedRangeRef.current = newSignature;
+      }
+    } finally {
+      if (isProgrammaticRef) {
+        queueMicrotask(() => {
+          isProgrammaticRef.current = false;
+        });
+      }
+    }
     return true;
   } catch {
+    if (isProgrammaticRef) {
+      isProgrammaticRef.current = false;
+    }
     return false;
   }
 }
@@ -520,13 +596,16 @@ export function useSelectionOverlay(
     new Map()
   );
   const [hasSelection, setHasSelection] = useState(false);
-  const rafRef = useRef<number | null>(null);
+  const pendingRafRef = useRef<number | null>(null);
   const lastRectsMapRef = useRef<Map<number, SelectionRect[]>>(new Map());
   const isMouseDownRef = useRef(false);
   const hasActiveSelectionRef = useRef(false);
   const lastSelectionTextRef = useRef('');
   const isKeyboardSelectingRef = useRef(false);
   const currentTextMetricsRef = useRef<TextMetrics | null>(null);
+  const isProgrammaticSelectionRef = useRef(false);
+  const lastAppliedRangeRef = useRef<RangeSignature | null>(null);
+  const selectionUpdateTokenRef = useRef(0);
   const dragStateRef = useRef<DragState>({
     anchorX: 0,
     anchorY: 0,
@@ -673,21 +752,38 @@ export function useSelectionOverlay(
   }, [containerRef, clearOverlay]);
 
   const handleSelectionChange = useCallback(() => {
+    if (isProgrammaticSelectionRef.current) {
+      return;
+    }
+
     if (dragStateRef.current.isDragging) {
       return;
     }
 
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
+    selectionUpdateTokenRef.current++;
+    const currentToken = selectionUpdateTokenRef.current;
+
+    if (pendingRafRef.current !== null) {
+      cancelAnimationFrame(pendingRafRef.current);
     }
 
-    rafRef.current = requestAnimationFrame(() => {
+    pendingRafRef.current = requestAnimationFrame(() => {
+      if (selectionUpdateTokenRef.current !== currentToken) {
+        return;
+      }
       calculateSelectionRects();
-      rafRef.current = null;
+      pendingRafRef.current = null;
     });
   }, [calculateSelectionRects]);
 
   const clearSelection = useCallback(() => {
+    if (pendingRafRef.current !== null) {
+      cancelAnimationFrame(pendingRafRef.current);
+      pendingRafRef.current = null;
+    }
+    selectionUpdateTokenRef.current++;
+    lastAppliedRangeRef.current = null;
+
     const selection = window.getSelection();
     if (selection) {
       selection.removeAllRanges();
@@ -827,16 +923,24 @@ export function useSelectionOverlay(
         dragStateRef.current.anchorNode,
         dragStateRef.current.anchorOffset,
         focusNode,
-        focusOffset
+        focusOffset,
+        isProgrammaticSelectionRef,
+        lastAppliedRangeRef
       );
 
       if (success) {
-        if (rafRef.current !== null) {
-          cancelAnimationFrame(rafRef.current);
+        selectionUpdateTokenRef.current++;
+        const currentToken = selectionUpdateTokenRef.current;
+
+        if (pendingRafRef.current !== null) {
+          cancelAnimationFrame(pendingRafRef.current);
         }
-        rafRef.current = requestAnimationFrame(() => {
+        pendingRafRef.current = requestAnimationFrame(() => {
+          if (selectionUpdateTokenRef.current !== currentToken) {
+            return;
+          }
           calculateSelectionRects(true);
-          rafRef.current = null;
+          pendingRafRef.current = null;
         });
       }
     };
@@ -847,8 +951,18 @@ export function useSelectionOverlay(
       dragStateRef.current.isDragging = false;
 
       if (wasDragging) {
-        requestAnimationFrame(() => {
+        selectionUpdateTokenRef.current++;
+        const currentToken = selectionUpdateTokenRef.current;
+
+        if (pendingRafRef.current !== null) {
+          cancelAnimationFrame(pendingRafRef.current);
+        }
+        pendingRafRef.current = requestAnimationFrame(() => {
+          if (selectionUpdateTokenRef.current !== currentToken) {
+            return;
+          }
           calculateSelectionRects(true);
+          pendingRafRef.current = null;
         });
       }
     };
@@ -864,14 +978,29 @@ export function useSelectionOverlay(
       const metrics = getTextMetricsFromTextLayer(textLayer);
       currentTextMetricsRef.current = metrics;
 
-      const selected = selectWordAtPoint(e.clientX, e.clientY, textLayer, metrics);
+      const selected = selectWordAtPoint(
+        e.clientX,
+        e.clientY,
+        textLayer,
+        metrics,
+        isProgrammaticSelectionRef,
+        lastAppliedRangeRef
+      );
 
       if (selected) {
-        setTimeout(() => {
-          requestAnimationFrame(() => {
-            calculateSelectionRects(true);
-          });
-        }, 10);
+        selectionUpdateTokenRef.current++;
+        const currentToken = selectionUpdateTokenRef.current;
+
+        if (pendingRafRef.current !== null) {
+          cancelAnimationFrame(pendingRafRef.current);
+        }
+        pendingRafRef.current = requestAnimationFrame(() => {
+          if (selectionUpdateTokenRef.current !== currentToken) {
+            return;
+          }
+          calculateSelectionRects(true);
+          pendingRafRef.current = null;
+        });
       }
     };
 
@@ -884,8 +1013,19 @@ export function useSelectionOverlay(
     const handleKeyUp = (e: KeyboardEvent) => {
       if (isKeyboardSelectingRef.current) {
         isKeyboardSelectingRef.current = false;
-        requestAnimationFrame(() => {
+
+        selectionUpdateTokenRef.current++;
+        const currentToken = selectionUpdateTokenRef.current;
+
+        if (pendingRafRef.current !== null) {
+          cancelAnimationFrame(pendingRafRef.current);
+        }
+        pendingRafRef.current = requestAnimationFrame(() => {
+          if (selectionUpdateTokenRef.current !== currentToken) {
+            return;
+          }
           calculateSelectionRects(true);
+          pendingRafRef.current = null;
         });
       }
 
@@ -916,8 +1056,9 @@ export function useSelectionOverlay(
 
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange);
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
+      if (pendingRafRef.current !== null) {
+        cancelAnimationFrame(pendingRafRef.current);
+        pendingRafRef.current = null;
       }
     };
   }, [handleSelectionChange]);
