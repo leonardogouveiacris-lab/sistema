@@ -502,17 +502,24 @@ export function useSelectionOverlay(
           const newArea = calculateMapArea(pageRectsMap);
 
           if (oldBox && newBox) {
-            const isExpanding =
-              newBox.minPage <= oldBox.minPage &&
-              newBox.maxPage >= oldBox.maxPage &&
-              newArea >= oldArea * 0.7;
+            const expandingUp = newBox.minY < oldBox.minY - 5;
+            const expandingDown = newBox.maxY > oldBox.maxY + 5;
+            const expandingLeft = newBox.minX < oldBox.minX - 5;
+            const expandingRight = newBox.maxX > oldBox.maxX + 5;
+            const expandingPages = newBox.minPage < oldBox.minPage || newBox.maxPage > oldBox.maxPage;
 
-            const isSameRegion =
-              newBox.minPage === oldBox.minPage &&
-              newBox.maxPage === oldBox.maxPage &&
-              Math.abs(newArea - oldArea) < oldArea * 0.5;
+            const isExpandingBoundingBox = expandingUp || expandingDown || expandingLeft || expandingRight || expandingPages;
 
-            if (!isExpanding && !isSameRegion && newArea < oldArea * 0.7) {
+            const isSamePage = newBox.minPage === oldBox.minPage && newBox.maxPage === oldBox.maxPage;
+
+            const positionChanged = isSamePage && (
+              Math.abs(newBox.minY - oldBox.minY) > 20 ||
+              Math.abs(newBox.maxY - oldBox.maxY) > 20
+            );
+
+            if (isExpandingBoundingBox || positionChanged) {
+              // Allow update - selection is expanding or moving significantly
+            } else if (newArea < oldArea * 0.5) {
               return;
             }
           }
