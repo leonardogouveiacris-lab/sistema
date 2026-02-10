@@ -27,13 +27,21 @@
 .textLayer {
   user-select: text;
   -webkit-user-select: text;
-  cursor: text;
+  cursor: default;
   pointer-events: auto;
   background: transparent;
 }
 
 .textLayer > span,
-.textLayer span[role="presentation"] {
+.react-pdf__Page__textContent > span {
+  user-select: text;
+  -webkit-user-select: text;
+  pointer-events: auto !important;
+  cursor: default !important;
+}
+
+.textLayer span[role="presentation"],
+.react-pdf__Page__textContent span[role="presentation"] {
   user-select: text;
   -webkit-user-select: text;
   pointer-events: auto !important;
@@ -65,17 +73,23 @@
   -webkit-user-select: text !important;
   pointer-events: auto;
   background: transparent;
+  cursor: default;
 }
 
 .react-pdf__Page__textContent > span {
   pointer-events: auto !important;
-  cursor: text !important;
+  cursor: default !important;
 }
 
 .textLayer .endOfContent,
 .textLayer .endOfContent.active,
-.textLayer.selecting .endOfContent {
+.textLayer.selecting .endOfContent,
+.react-pdf__Page__textContent .endOfContent,
+.react-pdf__Page__textContent .endOfContent.active,
+.react-pdf__Page__textContent.selecting .endOfContent {
   display: none !important;
+  cursor: default !important;
+  pointer-events: none !important;
 }
 
 .textLayer ::selection,

@@ -194,6 +194,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   const {
     selectionsByPage,
+    hasSelection,
     selectionMode,
     canWriteProgrammaticSelection,
     applySelectionSafely,
@@ -1886,7 +1887,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         clearTimeout(textSelectionDebounceRef.current);
       }
       textSelectionDebounceRef.current = setTimeout(() => {
-        if (selectionMode !== 'native-drag') {
+        const hasTextSelected = (window.getSelection()?.toString() || '').trim().length >= 3;
+        if (selectionMode !== 'native-drag' || hasTextSelected) {
           handleTextSelection();
         }
       }, 150);
@@ -1917,6 +1919,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     };
   }, [handleTextSelection, selectionMode]);
+
+  useEffect(() => {
+    if (!hasSelection || selectionMode === 'native-drag') {
+      return;
+    }
+
+    handleTextSelection();
+  }, [hasSelection, handleTextSelection, selectionMode]);
 
   /**
    * Wrappers para navegação de página com bloqueio durante rotação
