@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, MoreHorizontal, Trash2, Palette, ArrowRight, Square } from 'lucide-react';
+import { MessageCircle, X, Trash2, ArrowRight, Square, ChevronDown } from 'lucide-react';
 import { PDFComment, CommentColor, COMMENT_COLORS, ConnectorType } from '../../types/PDFComment';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
@@ -25,14 +25,13 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const [isExpanded, setIsExpanded] = useState(!comment.isMinimized);
   const [isEditing, setIsEditing] = useState(false);
   const [content, setContent] = useState(comment.content);
-  const [showMenu, setShowMenu] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showConnectorDropdown, setShowConnectorDropdown] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const balloonRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isSelected = state.selectedCommentId === comment.id;
 
@@ -47,17 +46,16 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
-        setShowColorPicker(false);
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowConnectorDropdown(false);
       }
     };
 
-    if (showMenu || showColorPicker) {
+    if (showConnectorDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showMenu, showColorPicker]);
+  }, [showConnectorDropdown]);
 
   const handleIconClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -113,18 +111,16 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     } catch (error) {
       console.error('Erro ao mudar cor:', error);
     }
-    setShowColorPicker(false);
-    setShowMenu(false);
   };
 
   const handleStartArrow = () => {
     onStartDrawConnector(comment.id, 'arrow');
-    setShowMenu(false);
+    setShowConnectorDropdown(false);
   };
 
   const handleStartHighlightBox = () => {
     onStartDrawConnector(comment.id, 'highlightbox');
-    setShowMenu(false);
+    setShowConnectorDropdown(false);
   };
 
   const handleDragStart = (e: React.MouseEvent) => {
@@ -221,69 +217,12 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
         >
           <div className={`px-3 py-2 ${colorConfig.bg} flex items-center justify-between rounded-t-lg`}>
             <span className="text-xs text-gray-600">{formattedDate}</span>
-            <div className="flex items-center gap-1">
-              <div className="relative" ref={menuRef}>
-                <button
-                  onClick={() => setShowMenu(!showMenu)}
-                  className="p-1 hover:bg-white/50 rounded transition-colors"
-                >
-                  <MoreHorizontal size={16} className="text-gray-600" />
-                </button>
-
-                {showMenu && (
-                  <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border py-1 min-w-[160px] z-[100]">
-                    <button
-                      onClick={() => { setShowColorPicker(!showColorPicker); }}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    >
-                      <Palette size={14} />
-                      Mudar cor
-                    </button>
-                    {showColorPicker && (
-                      <div className="px-3 py-2 flex gap-1 flex-wrap border-t">
-                        {COLOR_OPTIONS.map(color => (
-                          <button
-                            key={color}
-                            onClick={() => handleColorChange(color)}
-                            className={`w-6 h-6 rounded-full ${COMMENT_COLORS[color].bg} ${COMMENT_COLORS[color].border} border-2 hover:scale-110 transition-transform ${
-                              comment.color === color ? 'ring-2 ring-blue-500' : ''
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    <button
-                      onClick={handleStartArrow}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    >
-                      <ArrowRight size={14} />
-                      Adicionar seta
-                    </button>
-                    <button
-                      onClick={handleStartHighlightBox}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    >
-                      <Square size={14} />
-                      Adicionar destaque
-                    </button>
-                    <div className="border-t my-1" />
-                    <button
-                      onClick={handleDelete}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
-                    >
-                      <Trash2 size={14} />
-                      Excluir
-                    </button>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={handleClose}
-                className="p-1 hover:bg-white/50 rounded transition-colors"
-              >
-                <X size={16} className="text-gray-600" />
-              </button>
-            </div>
+            <button
+              onClick={handleClose}
+              className="p-1 hover:bg-white/50 rounded transition-colors"
+            >
+              <X size={16} className="text-gray-600" />
+            </button>
           </div>
 
           <div className="p-3">
@@ -323,6 +262,58 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
               </button>
             </div>
           )}
+
+          <div className="px-3 py-2 border-t border-gray-200 flex items-center justify-between gap-2">
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setShowConnectorDropdown(!showConnectorDropdown)}
+                className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded transition-colors border border-gray-200"
+              >
+                <ArrowRight size={12} />
+                <span>Ferramentas</span>
+                <ChevronDown size={12} />
+              </button>
+              {showConnectorDropdown && (
+                <div className="absolute bottom-full left-0 mb-1 bg-white rounded-lg shadow-xl border py-1 min-w-[140px] z-[100]">
+                  <button
+                    onClick={handleStartArrow}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                  >
+                    <ArrowRight size={14} />
+                    Seta
+                  </button>
+                  <button
+                    onClick={handleStartHighlightBox}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                  >
+                    <Square size={14} />
+                    Destaque
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1">
+              {COLOR_OPTIONS.map(color => (
+                <button
+                  key={color}
+                  onClick={() => handleColorChange(color)}
+                  className={`w-5 h-5 rounded-full ${COMMENT_COLORS[color].bg} ${COMMENT_COLORS[color].border} border hover:scale-110 transition-transform ${
+                    comment.color === color ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+                  }`}
+                  title={color}
+                />
+              ))}
+            </div>
+
+            <button
+              onClick={handleDelete}
+              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+              title="Excluir comentário"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
       )}
     </div>
