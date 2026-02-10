@@ -28,7 +28,7 @@
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
-  pointer-events: none;
+  pointer-events: auto;
   background: transparent;
 }
 
@@ -63,7 +63,7 @@
 .react-pdf__Page__textContent {
   user-select: text !important;
   -webkit-user-select: text !important;
-  pointer-events: none;
+  pointer-events: auto;
   background: transparent;
 }
 

@@ -37,37 +37,6 @@ function areMapsEqual(
   return true;
 }
 
-function calculateTotalArea(rects: SelectionRect[]): number {
-  return rects.reduce((sum, r) => sum + r.width * r.height, 0);
-}
-
-function calculateMapArea(map: Map<number, SelectionRect[]>): number {
-  let total = 0;
-  for (const rects of map.values()) {
-    total += calculateTotalArea(rects);
-  }
-  return total;
-}
-
-function getBoundingBox(map: Map<number, SelectionRect[]>): { minX: number; minY: number; maxX: number; maxY: number; minPage: number; maxPage: number } | null {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  let minPage = Infinity, maxPage = -Infinity;
-
-  for (const [page, rects] of map) {
-    minPage = Math.min(minPage, page);
-    maxPage = Math.max(maxPage, page);
-    for (const r of rects) {
-      minX = Math.min(minX, r.x);
-      minY = Math.min(minY, r.y);
-      maxX = Math.max(maxX, r.x + r.width);
-      maxY = Math.max(maxY, r.y + r.height);
-    }
-  }
-
-  if (minX === Infinity) return null;
-  return { minX, minY, maxX, maxY, minPage, maxPage };
-}
-
 export interface SelectionOverlayResult {
   selectionsByPage: Map<number, SelectionRect[]>;
   hasSelection: boolean;
@@ -80,10 +49,13 @@ interface TextMetrics {
   averageCharWidth: number;
 }
 
-interface CaretInfo {
-  node: Node | null;
-  offset: number;
-  spanIndex: number;
+interface DragState {
+  anchorX: number;
+  anchorY: number;
+  anchorNode: Node | null;
+  anchorOffset: number;
+  anchorTextLayer: Element | null;
+  isDragging: boolean;
 }
 
 function getTextMetricsFromTextLayer(textLayer: Element): TextMetrics {
@@ -126,7 +98,7 @@ function getTextMetricsFromTextLayer(textLayer: Element): TextMetrics {
   };
 }
 
-function getCaretInfoFromPoint(x: number, y: number, textLayer: Element): CaretInfo | null {
+function getCaretInfoFromPoint(x: number, y: number): { node: Node; offset: number } | null {
   let caretRange: Range | null = null;
 
   if (document.caretRangeFromPoint) {
@@ -142,22 +114,9 @@ function getCaretInfoFromPoint(x: number, y: number, textLayer: Element): CaretI
 
   if (!caretRange) return null;
 
-  const container = caretRange.startContainer;
-  const offset = caretRange.startOffset;
-
-  const parentElement = container.nodeType === Node.TEXT_NODE
-    ? container.parentElement
-    : container as Element;
-
-  if (!parentElement || !textLayer.contains(parentElement)) return null;
-
-  const spans = Array.from(textLayer.querySelectorAll('span[role="presentation"], span:not([role])'));
-  const spanIndex = spans.findIndex((s) => s.contains(container));
-
   return {
-    node: container,
-    offset,
-    spanIndex
+    node: caretRange.startContainer,
+    offset: caretRange.startOffset
   };
 }
 
@@ -166,7 +125,7 @@ function findNearestTextSpan(x: number, y: number, textLayer: Element, metrics: 
   let nearestSpan: HTMLElement | null = null;
   let minDistance = Infinity;
 
-  const searchRadius = metrics.lineHeight * 2;
+  const searchRadius = metrics.lineHeight * 3;
 
   spans.forEach((span) => {
     if (!(span instanceof HTMLElement)) return;
@@ -181,7 +140,6 @@ function findNearestTextSpan(x: number, y: number, textLayer: Element, metrics: 
     } else {
       const dx = Math.max(rect.left - x, 0, x - rect.right);
       const dy = Math.max(rect.top - y, 0, y - rect.bottom);
-
       const verticalWeight = 1.5;
       distance = Math.sqrt(dx * dx + (dy * verticalWeight) * (dy * verticalWeight));
     }
@@ -195,24 +153,24 @@ function findNearestTextSpan(x: number, y: number, textLayer: Element, metrics: 
   return nearestSpan;
 }
 
-function getSnappedCaretInfoFromPoint(
+function getSnappedCaretInfo(
   x: number,
   y: number,
   textLayer: Element,
   metrics: TextMetrics
-): CaretInfo | null {
-  const direct = getCaretInfoFromPoint(x, y, textLayer);
-  if (direct && direct.spanIndex >= 0) return direct;
+): { node: Node; offset: number } | null {
+  const direct = getCaretInfoFromPoint(x, y);
+  if (direct && textLayer.contains(direct.node)) return direct;
 
   const nearestSpan = findNearestTextSpan(x, y, textLayer, metrics);
   if (!nearestSpan) return direct;
 
   const r = nearestSpan.getBoundingClientRect();
-
   const insideX = Math.min(Math.max(x, r.left + 1), r.right - 1);
   const insideY = Math.min(Math.max(y, r.top + 1), r.bottom - 1);
 
-  return getCaretInfoFromPoint(insideX, insideY, textLayer) || direct;
+  const snapped = getCaretInfoFromPoint(insideX, insideY);
+  return snapped && textLayer.contains(snapped.node) ? snapped : direct;
 }
 
 function isWordChar(char: string): boolean {
@@ -220,7 +178,7 @@ function isWordChar(char: string): boolean {
 }
 
 function selectWordAtPoint(x: number, y: number, textLayer: Element, metrics: TextMetrics): boolean {
-  const caretInfo = getSnappedCaretInfoFromPoint(x, y, textLayer, metrics);
+  const caretInfo = getSnappedCaretInfo(x, y, textLayer, metrics);
   if (!caretInfo || !caretInfo.node) return false;
 
   const textNode = caretInfo.node.nodeType === Node.TEXT_NODE
@@ -350,6 +308,35 @@ function selectWordAtPoint(x: number, y: number, textLayer: Element, metrics: Te
   return true;
 }
 
+function createSelectionFromPoints(
+  anchorNode: Node,
+  anchorOffset: number,
+  focusNode: Node,
+  focusOffset: number
+): void {
+  const selection = window.getSelection();
+  if (!selection) return;
+
+  const range = document.createRange();
+
+  const tempRange = document.createRange();
+  tempRange.setStart(anchorNode, anchorOffset);
+  tempRange.setEnd(focusNode, focusOffset);
+
+  const isForward = !tempRange.collapsed && tempRange.startContainer === anchorNode && tempRange.startOffset === anchorOffset;
+
+  if (isForward || tempRange.collapsed) {
+    range.setStart(anchorNode, anchorOffset);
+    range.setEnd(focusNode, focusOffset);
+  } else {
+    range.setStart(focusNode, focusOffset);
+    range.setEnd(anchorNode, anchorOffset);
+  }
+
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 export function useSelectionOverlay(
   containerRef: React.RefObject<HTMLElement | null>
 ): SelectionOverlayResult {
@@ -364,31 +351,39 @@ export function useSelectionOverlay(
   const lastSelectionTextRef = useRef('');
   const isKeyboardSelectingRef = useRef(false);
   const currentTextMetricsRef = useRef<TextMetrics | null>(null);
-  const lastCalculationTimeRef = useRef(0);
+  const dragStateRef = useRef<DragState>({
+    anchorX: 0,
+    anchorY: 0,
+    anchorNode: null,
+    anchorOffset: 0,
+    anchorTextLayer: null,
+    isDragging: false
+  });
+  const lastValidRectsRef = useRef<Map<number, SelectionRect[]>>(new Map());
+  const updatePendingRef = useRef(false);
 
   const clearOverlay = useCallback(() => {
     if (lastRectsMapRef.current.size === 0 && !hasActiveSelectionRef.current) {
       return;
     }
     lastRectsMapRef.current = new Map();
+    lastValidRectsRef.current = new Map();
     hasActiveSelectionRef.current = false;
     lastSelectionTextRef.current = '';
     setSelectionsByPage(new Map());
     setHasSelection(false);
   }, []);
 
-  const calculateSelectionRects = useCallback(() => {
-    const now = performance.now();
-    if (now - lastCalculationTimeRef.current < 16) {
+  const calculateSelectionRects = useCallback((forceUpdate = false) => {
+    if (updatePendingRef.current && !forceUpdate) {
       return;
     }
-    lastCalculationTimeRef.current = now;
 
     const selection = document.getSelection();
     const selectionText = selection?.toString() || '';
 
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-      if (isMouseDownRef.current) {
+      if (isMouseDownRef.current && dragStateRef.current.isDragging) {
         return;
       }
       if (hasActiveSelectionRef.current && lastRectsMapRef.current.size > 0) {
@@ -409,7 +404,7 @@ export function useSelectionOverlay(
     const clientRects = range.getClientRects();
 
     if (clientRects.length === 0) {
-      if (isMouseDownRef.current) {
+      if (isMouseDownRef.current && lastValidRectsRef.current.size > 0) {
         return;
       }
       if (hasActiveSelectionRef.current && lastRectsMapRef.current.size > 0) {
@@ -494,38 +489,9 @@ export function useSelectionOverlay(
     if (pageRectsMap.size > 0) {
       const hasChanged = !areMapsEqual(lastRectsMapRef.current, pageRectsMap);
 
-      if (hasChanged) {
-        if (isMouseDownRef.current && lastRectsMapRef.current.size > 0) {
-          const oldBox = getBoundingBox(lastRectsMapRef.current);
-          const newBox = getBoundingBox(pageRectsMap);
-          const oldArea = calculateMapArea(lastRectsMapRef.current);
-          const newArea = calculateMapArea(pageRectsMap);
-
-          if (oldBox && newBox) {
-            const expandingUp = newBox.minY < oldBox.minY - 5;
-            const expandingDown = newBox.maxY > oldBox.maxY + 5;
-            const expandingLeft = newBox.minX < oldBox.minX - 5;
-            const expandingRight = newBox.maxX > oldBox.maxX + 5;
-            const expandingPages = newBox.minPage < oldBox.minPage || newBox.maxPage > oldBox.maxPage;
-
-            const isExpandingBoundingBox = expandingUp || expandingDown || expandingLeft || expandingRight || expandingPages;
-
-            const isSamePage = newBox.minPage === oldBox.minPage && newBox.maxPage === oldBox.maxPage;
-
-            const positionChanged = isSamePage && (
-              Math.abs(newBox.minY - oldBox.minY) > 20 ||
-              Math.abs(newBox.maxY - oldBox.maxY) > 20
-            );
-
-            if (isExpandingBoundingBox || positionChanged) {
-              // Allow update - selection is expanding or moving significantly
-            } else if (newArea < oldArea * 0.5) {
-              return;
-            }
-          }
-        }
-
+      if (hasChanged || forceUpdate) {
         lastRectsMapRef.current = pageRectsMap;
+        lastValidRectsRef.current = pageRectsMap;
         hasActiveSelectionRef.current = true;
         lastSelectionTextRef.current = selectionText;
         setSelectionsByPage(new Map(pageRectsMap));
@@ -550,11 +516,21 @@ export function useSelectionOverlay(
     if (selection) {
       selection.removeAllRanges();
     }
+    dragStateRef.current = {
+      anchorX: 0,
+      anchorY: 0,
+      anchorNode: null,
+      anchorOffset: 0,
+      anchorTextLayer: null,
+      isDragging: false
+    };
     clearOverlay();
   }, [clearOverlay]);
 
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+
       isMouseDownRef.current = true;
 
       const target = e.target as HTMLElement;
@@ -562,6 +538,24 @@ export function useSelectionOverlay(
 
       if (textLayer) {
         currentTextMetricsRef.current = getTextMetricsFromTextLayer(textLayer);
+
+        const caretInfo = getSnappedCaretInfo(
+          e.clientX,
+          e.clientY,
+          textLayer,
+          currentTextMetricsRef.current
+        );
+
+        if (caretInfo) {
+          dragStateRef.current = {
+            anchorX: e.clientX,
+            anchorY: e.clientY,
+            anchorNode: caretInfo.node,
+            anchorOffset: caretInfo.offset,
+            anchorTextLayer: textLayer,
+            isDragging: true
+          };
+        }
       }
 
       if (hasActiveSelectionRef.current) {
@@ -575,12 +569,72 @@ export function useSelectionOverlay(
       }
     };
 
-    const handleMouseUp = () => {
-      isMouseDownRef.current = false;
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isMouseDownRef.current || !dragStateRef.current.isDragging) return;
+      if (!dragStateRef.current.anchorNode || !dragStateRef.current.anchorTextLayer) return;
 
-      requestAnimationFrame(() => {
-        calculateSelectionRects();
-      });
+      const container = containerRef.current;
+      if (!container) return;
+
+      const textLayers = container.querySelectorAll('.textLayer, .react-pdf__Page__textContent');
+      let targetTextLayer: Element | null = null;
+
+      for (const tl of textLayers) {
+        const rect = tl.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right &&
+            e.clientY >= rect.top && e.clientY <= rect.bottom) {
+          targetTextLayer = tl;
+          break;
+        }
+      }
+
+      if (!targetTextLayer) {
+        let minDist = Infinity;
+        for (const tl of textLayers) {
+          const rect = tl.getBoundingClientRect();
+          const dx = Math.max(rect.left - e.clientX, 0, e.clientX - rect.right);
+          const dy = Math.max(rect.top - e.clientY, 0, e.clientY - rect.bottom);
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < minDist) {
+            minDist = dist;
+            targetTextLayer = tl;
+          }
+        }
+      }
+
+      if (!targetTextLayer) return;
+
+      const metrics = currentTextMetricsRef.current || getTextMetricsFromTextLayer(targetTextLayer);
+      const caretInfo = getSnappedCaretInfo(e.clientX, e.clientY, targetTextLayer, metrics);
+
+      if (caretInfo && caretInfo.node) {
+        createSelectionFromPoints(
+          dragStateRef.current.anchorNode,
+          dragStateRef.current.anchorOffset,
+          caretInfo.node,
+          caretInfo.offset
+        );
+
+        if (rafRef.current !== null) {
+          cancelAnimationFrame(rafRef.current);
+        }
+        rafRef.current = requestAnimationFrame(() => {
+          calculateSelectionRects(true);
+          rafRef.current = null;
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      const wasDragging = dragStateRef.current.isDragging;
+      isMouseDownRef.current = false;
+      dragStateRef.current.isDragging = false;
+
+      if (wasDragging) {
+        requestAnimationFrame(() => {
+          calculateSelectionRects(true);
+        });
+      }
     };
 
     const handleDoubleClick = (e: MouseEvent) => {
@@ -599,7 +653,7 @@ export function useSelectionOverlay(
       if (selected) {
         setTimeout(() => {
           requestAnimationFrame(() => {
-            calculateSelectionRects();
+            calculateSelectionRects(true);
           });
         }, 10);
       }
@@ -615,7 +669,7 @@ export function useSelectionOverlay(
       if (isKeyboardSelectingRef.current) {
         isKeyboardSelectingRef.current = false;
         requestAnimationFrame(() => {
-          calculateSelectionRects();
+          calculateSelectionRects(true);
         });
       }
 
@@ -625,6 +679,7 @@ export function useSelectionOverlay(
     };
 
     document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('dblclick', handleDoubleClick);
     document.addEventListener('keydown', handleKeyDown);
@@ -632,12 +687,13 @@ export function useSelectionOverlay(
 
     return () => {
       document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('dblclick', handleDoubleClick);
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [clearSelection, calculateSelectionRects]);
+  }, [clearSelection, calculateSelectionRects, containerRef]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
