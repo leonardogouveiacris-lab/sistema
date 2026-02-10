@@ -50,15 +50,7 @@ interface TextMetrics {
 }
 
 interface DragState {
-  anchorX: number;
-  anchorY: number;
-  anchorNode: Node | null;
-  anchorOffset: number;
-  anchorTextLayer: Element | null;
   isDragging: boolean;
-  lastValidNode: Node | null;
-  lastValidOffset: number;
-  lastValidSpan: SpanInfo | null;
   lastMouseX: number;
   lastMouseY: number;
 }
@@ -531,64 +523,6 @@ function selectWordAtPoint(
   return true;
 }
 
-function createSelectionFromPoints(
-  anchorNode: Node,
-  anchorOffset: number,
-  focusNode: Node,
-  focusOffset: number,
-  isProgrammaticRef?: React.MutableRefObject<boolean>,
-  lastAppliedRangeRef?: React.MutableRefObject<RangeSignature | null>
-): boolean {
-  const selection = window.getSelection();
-  if (!selection) return false;
-
-  try {
-    const range = document.createRange();
-
-    const tempRange = document.createRange();
-    tempRange.setStart(anchorNode, anchorOffset);
-    tempRange.setEnd(focusNode, focusOffset);
-
-    const isForward = !tempRange.collapsed && tempRange.startContainer === anchorNode && tempRange.startOffset === anchorOffset;
-
-    if (isForward || tempRange.collapsed) {
-      range.setStart(anchorNode, anchorOffset);
-      range.setEnd(focusNode, focusOffset);
-    } else {
-      range.setStart(focusNode, focusOffset);
-      range.setEnd(anchorNode, anchorOffset);
-    }
-
-    const newSignature = getRangeSignature(range);
-    if (lastAppliedRangeRef && areRangesEqual(lastAppliedRangeRef.current, newSignature)) {
-      return true;
-    }
-
-    if (isProgrammaticRef) {
-      isProgrammaticRef.current = true;
-    }
-    try {
-      selection.removeAllRanges();
-      selection.addRange(range);
-      if (lastAppliedRangeRef) {
-        lastAppliedRangeRef.current = newSignature;
-      }
-    } finally {
-      if (isProgrammaticRef) {
-        queueMicrotask(() => {
-          isProgrammaticRef.current = false;
-        });
-      }
-    }
-    return true;
-  } catch {
-    if (isProgrammaticRef) {
-      isProgrammaticRef.current = false;
-    }
-    return false;
-  }
-}
-
 export function useSelectionOverlay(
   containerRef: React.RefObject<HTMLElement | null>
 ): SelectionOverlayResult {
@@ -607,15 +541,7 @@ export function useSelectionOverlay(
   const lastAppliedRangeRef = useRef<RangeSignature | null>(null);
   const selectionUpdateTokenRef = useRef(0);
   const dragStateRef = useRef<DragState>({
-    anchorX: 0,
-    anchorY: 0,
-    anchorNode: null,
-    anchorOffset: 0,
-    anchorTextLayer: null,
     isDragging: false,
-    lastValidNode: null,
-    lastValidOffset: 0,
-    lastValidSpan: null,
     lastMouseX: 0,
     lastMouseY: 0
   });
@@ -636,10 +562,8 @@ export function useSelectionOverlay(
     const selectionText = selection?.toString() || '';
 
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-      if (isMouseDownRef.current && dragStateRef.current.isDragging) {
-        if (dragStateRef.current.lastValidNode && lastRectsMapRef.current.size > 0) {
-          return;
-        }
+      if (isMouseDownRef.current && dragStateRef.current.isDragging && lastRectsMapRef.current.size > 0) {
+        return;
       }
       if (hasActiveSelectionRef.current && lastRectsMapRef.current.size > 0 && !forceUpdate) {
         return;
@@ -756,10 +680,6 @@ export function useSelectionOverlay(
       return;
     }
 
-    if (dragStateRef.current.isDragging) {
-      return;
-    }
-
     selectionUpdateTokenRef.current++;
     const currentToken = selectionUpdateTokenRef.current;
 
@@ -771,7 +691,7 @@ export function useSelectionOverlay(
       if (selectionUpdateTokenRef.current !== currentToken) {
         return;
       }
-      calculateSelectionRects();
+      calculateSelectionRects(isMouseDownRef.current);
       pendingRafRef.current = null;
     });
   }, [calculateSelectionRects]);
@@ -789,15 +709,7 @@ export function useSelectionOverlay(
       selection.removeAllRanges();
     }
     dragStateRef.current = {
-      anchorX: 0,
-      anchorY: 0,
-      anchorNode: null,
-      anchorOffset: 0,
-      anchorTextLayer: null,
       isDragging: false,
-      lastValidNode: null,
-      lastValidOffset: 0,
-      lastValidSpan: null,
       lastMouseX: 0,
       lastMouseY: 0
     };
@@ -815,31 +727,11 @@ export function useSelectionOverlay(
 
       if (textLayer) {
         currentTextMetricsRef.current = getTextMetricsFromTextLayer(textLayer);
-
-        const caretInfo = getSnappedCaretInfo(
-          e.clientX,
-          e.clientY,
-          textLayer,
-          currentTextMetricsRef.current,
-          e.clientY,
-          null
-        );
-
-        if (caretInfo) {
-          dragStateRef.current = {
-            anchorX: e.clientX,
-            anchorY: e.clientY,
-            anchorNode: caretInfo.node,
-            anchorOffset: caretInfo.offset,
-            anchorTextLayer: textLayer,
-            isDragging: true,
-            lastValidNode: caretInfo.node,
-            lastValidOffset: caretInfo.offset,
-            lastValidSpan: caretInfo.spanInfo || null,
-            lastMouseX: e.clientX,
-            lastMouseY: e.clientY
-          };
-        }
+        dragStateRef.current = {
+          isDragging: true,
+          lastMouseX: e.clientX,
+          lastMouseY: e.clientY
+        };
       }
 
       if (hasActiveSelectionRef.current) {
@@ -855,94 +747,9 @@ export function useSelectionOverlay(
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isMouseDownRef.current || !dragStateRef.current.isDragging) return;
-      if (!dragStateRef.current.anchorNode || !dragStateRef.current.anchorTextLayer) return;
-
-      const container = containerRef.current;
-      if (!container) return;
 
       dragStateRef.current.lastMouseX = e.clientX;
       dragStateRef.current.lastMouseY = e.clientY;
-
-      const textLayers = container.querySelectorAll('.textLayer, .react-pdf__Page__textContent');
-      let targetTextLayer: Element | null = null;
-
-      for (const tl of textLayers) {
-        const rect = tl.getBoundingClientRect();
-        if (e.clientX >= rect.left && e.clientX <= rect.right &&
-            e.clientY >= rect.top && e.clientY <= rect.bottom) {
-          targetTextLayer = tl;
-          break;
-        }
-      }
-
-      if (!targetTextLayer) {
-        let minDist = Infinity;
-        for (const tl of textLayers) {
-          const rect = tl.getBoundingClientRect();
-          const dx = Math.max(rect.left - e.clientX, 0, e.clientX - rect.right);
-          const dy = Math.max(rect.top - e.clientY, 0, e.clientY - rect.bottom);
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < minDist) {
-            minDist = dist;
-            targetTextLayer = tl;
-          }
-        }
-      }
-
-      if (!targetTextLayer) return;
-
-      const metrics = currentTextMetricsRef.current || getTextMetricsFromTextLayer(targetTextLayer);
-      const caretInfo = getSnappedCaretInfo(
-        e.clientX,
-        e.clientY,
-        targetTextLayer,
-        metrics,
-        dragStateRef.current.anchorY,
-        dragStateRef.current.lastValidSpan
-      );
-
-      let focusNode: Node;
-      let focusOffset: number;
-
-      if (caretInfo && caretInfo.node) {
-        focusNode = caretInfo.node;
-        focusOffset = caretInfo.offset;
-        dragStateRef.current.lastValidNode = focusNode;
-        dragStateRef.current.lastValidOffset = focusOffset;
-        if (caretInfo.spanInfo) {
-          dragStateRef.current.lastValidSpan = caretInfo.spanInfo;
-        }
-      } else if (dragStateRef.current.lastValidNode) {
-        focusNode = dragStateRef.current.lastValidNode;
-        focusOffset = dragStateRef.current.lastValidOffset;
-      } else {
-        return;
-      }
-
-      const success = createSelectionFromPoints(
-        dragStateRef.current.anchorNode,
-        dragStateRef.current.anchorOffset,
-        focusNode,
-        focusOffset,
-        isProgrammaticSelectionRef,
-        lastAppliedRangeRef
-      );
-
-      if (success) {
-        selectionUpdateTokenRef.current++;
-        const currentToken = selectionUpdateTokenRef.current;
-
-        if (pendingRafRef.current !== null) {
-          cancelAnimationFrame(pendingRafRef.current);
-        }
-        pendingRafRef.current = requestAnimationFrame(() => {
-          if (selectionUpdateTokenRef.current !== currentToken) {
-            return;
-          }
-          calculateSelectionRects(true);
-          pendingRafRef.current = null;
-        });
-      }
     };
 
     const handleMouseUp = () => {
