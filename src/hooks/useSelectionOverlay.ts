@@ -162,71 +162,6 @@ function getSnappedCaretInfoFromPoint(
   return getCaretInfoFromPoint(insideX, insideY, textLayer) || direct;
 }
 
-function findLineSpans(targetSpan: HTMLElement, textLayer: Element, metrics: TextMetrics): HTMLElement[] {
-  const spans = textLayer.querySelectorAll('span[role="presentation"], span:not([role])');
-  if (spans.length === 0) return [targetSpan];
-
-  const targetRect = targetSpan.getBoundingClientRect();
-  const targetCenterY = targetRect.top + targetRect.height / 2;
-
-  const tolerance = metrics.lineHeight * 0.5;
-
-  const lineSpans: HTMLElement[] = [];
-
-  spans.forEach((span) => {
-    if (!(span instanceof HTMLElement)) return;
-    if (span.textContent?.trim() === '') return;
-
-    const spanRect = span.getBoundingClientRect();
-    const spanCenterY = spanRect.top + spanRect.height / 2;
-
-    if (Math.abs(spanCenterY - targetCenterY) <= tolerance) {
-      lineSpans.push(span);
-    }
-  });
-
-  lineSpans.sort((a, b) => {
-    const rectA = a.getBoundingClientRect();
-    const rectB = b.getBoundingClientRect();
-    return rectA.left - rectB.left;
-  });
-
-  return lineSpans.length > 0 ? lineSpans : [targetSpan];
-}
-
-function selectFullLine(targetSpan: HTMLElement): void {
-  const textLayer = targetSpan.closest('.textLayer') || targetSpan.closest('.react-pdf__Page__textContent');
-  if (!textLayer) return;
-
-  const metrics = getTextMetricsFromTextLayer(textLayer);
-  const lineSpans = findLineSpans(targetSpan, textLayer, metrics);
-  if (lineSpans.length <= 1) return;
-
-  const firstSpan = lineSpans[0];
-  const lastSpan = lineSpans[lineSpans.length - 1];
-
-  const selection = window.getSelection();
-  if (!selection) return;
-
-  const range = document.createRange();
-
-  if (firstSpan.firstChild) {
-    range.setStart(firstSpan.firstChild, 0);
-  } else {
-    range.setStart(firstSpan, 0);
-  }
-
-  if (lastSpan.lastChild) {
-    const textNode = lastSpan.lastChild;
-    range.setEnd(textNode, textNode.textContent?.length || 0);
-  } else {
-    range.setEnd(lastSpan, lastSpan.childNodes.length);
-  }
-
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
 function hasCaretIndexChanged(prev: CaretInfo | null, current: CaretInfo | null): boolean {
   if (!prev || !current) return true;
   return prev.spanIndex !== current.spanIndex || prev.offset !== current.offset;
@@ -378,45 +313,6 @@ export function useSelectionOverlay(
     });
 
     if (pageRectsMap.size > 0) {
-      const startPos = dragStartPosRef.current;
-      const currentPos = currentMousePosRef.current;
-      const metrics = currentTextMetricsRef.current;
-
-      if (isMouseDownRef.current && startPos && currentPos && lastValidRectsRef.current.size > 0 && metrics) {
-        const isDraggingDown = currentPos.y > startPos.y;
-
-        let currentMinY = Infinity;
-        let currentMaxY = -Infinity;
-        let lastMinY = Infinity;
-        let lastMaxY = -Infinity;
-
-        pageRectsMap.forEach((rects) => {
-          rects.forEach((rect) => {
-            currentMinY = Math.min(currentMinY, rect.y);
-            currentMaxY = Math.max(currentMaxY, rect.y + rect.height);
-          });
-        });
-
-        lastValidRectsRef.current.forEach((rects) => {
-          rects.forEach((rect) => {
-            lastMinY = Math.min(lastMinY, rect.y);
-            lastMaxY = Math.max(lastMaxY, rect.y + rect.height);
-          });
-        });
-
-        const verticalJumpThreshold = metrics.lineHeight * 0.8;
-        const largeJumpThreshold = metrics.lineHeight * 3;
-
-        const jumpedUp = isDraggingDown && currentMinY < lastMinY - verticalJumpThreshold;
-        const jumpedDown = !isDraggingDown && currentMaxY > lastMaxY + verticalJumpThreshold;
-        const largeJump = Math.abs(currentMinY - lastMinY) > largeJumpThreshold ||
-                          Math.abs(currentMaxY - lastMaxY) > largeJumpThreshold;
-
-        if (jumpedUp || jumpedDown || (largeJump && (jumpedUp || jumpedDown))) {
-          return;
-        }
-      }
-
       lastRectsMapRef.current = pageRectsMap;
       lastValidRectsRef.current = new Map(pageRectsMap);
       hasActiveSelectionRef.current = true;
@@ -530,18 +426,7 @@ export function useSelectionOverlay(
       const metrics = getTextMetricsFromTextLayer(textLayer);
       currentTextMetricsRef.current = metrics;
 
-      let clickedSpan = target.closest('span[role="presentation"]') ||
-                        target.closest('.textLayer > span') ||
-                        target.closest('.react-pdf__Page__textContent > span');
-
-      if (!(clickedSpan instanceof HTMLElement)) {
-        clickedSpan = findNearestTextSpan(e.clientX, e.clientY, textLayer, metrics);
-      }
-
-      if (!(clickedSpan instanceof HTMLElement)) return;
-
       setTimeout(() => {
-        selectFullLine(clickedSpan as HTMLElement);
         requestAnimationFrame(() => {
           calculateSelectionRects();
         });
