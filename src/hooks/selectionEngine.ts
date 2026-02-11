@@ -204,26 +204,27 @@ export function getCaretInfoFromPoint(x: number, y: number): CaretInfo | null {
   };
 }
 
-function getPreciseOffsetInTextNode(textNode: Node, clickX: number): number {
+function refineOffsetAtPoint(textNode: Node, baseOffset: number, clickX: number): number {
   const text = textNode.textContent || '';
   if (text.length === 0) return 0;
 
   const range = document.createRange();
+  const checkStart = Math.max(0, baseOffset - 1);
+  const checkEnd = Math.min(text.length - 1, baseOffset + 1);
 
-  for (let i = 0; i < text.length; i++) {
+  for (let i = checkStart; i <= checkEnd; i++) {
     range.setStart(textNode, i);
     range.setEnd(textNode, i + 1);
-    const charRect = range.getBoundingClientRect();
+    const cr = range.getBoundingClientRect();
+    if (cr.width <= 0) continue;
 
-    if (clickX < charRect.left) return i;
-
-    if (clickX >= charRect.left && clickX < charRect.right) {
-      const midpoint = charRect.left + charRect.width * 0.5;
-      return clickX >= midpoint ? i + 1 : i;
+    if (clickX >= cr.left && clickX < cr.right) {
+      const mid = cr.left + cr.width * 0.5;
+      return clickX >= mid ? i + 1 : i;
     }
   }
 
-  return text.length;
+  return baseOffset;
 }
 
 export function getSpansWithInfo(textLayer: Element): SpanInfo[] {
@@ -400,9 +401,10 @@ export function getSnappedCaretInfo(
       const spanInfo = { span: parentSpan, rect, textNode };
 
       if (textNode && textNode.textContent) {
+        const refined = refineOffsetAtPoint(textNode, direct.offset, x);
         return {
           node: textNode,
-          offset: getPreciseOffsetInTextNode(textNode, x),
+          offset: refined,
           spanInfo
         };
       }
@@ -436,17 +438,27 @@ export function getSnappedCaretInfo(
   const clampedX = Math.min(Math.max(x, r.left), r.right);
   const clampedY = r.top + r.height / 2;
 
-  if (bestSpan.textNode) {
-    return {
-      node: bestSpan.textNode,
-      offset: getPreciseOffsetInTextNode(bestSpan.textNode, x),
-      spanInfo: bestSpan
-    };
-  }
-
   const snapped = getCaretInfoFromPoint(clampedX, clampedY);
   if (snapped && textLayer.contains(snapped.node)) {
+    const snappedTextNode = snapped.node.nodeType === Node.TEXT_NODE ? snapped.node : null;
+    if (snappedTextNode && snappedTextNode.textContent) {
+      return {
+        node: snappedTextNode,
+        offset: refineOffsetAtPoint(snappedTextNode, snapped.offset, x),
+        spanInfo: bestSpan
+      };
+    }
     return { ...snapped, spanInfo: bestSpan };
+  }
+
+  if (bestSpan.textNode) {
+    const text = bestSpan.textNode.textContent || '';
+    const charWidth = text.length > 0 ? r.width / text.length : metrics.averageCharWidth;
+    const relativeX = x - r.left;
+    let offset = Math.floor(relativeX / charWidth + 0.35);
+    offset = Math.max(0, Math.min(offset, text.length));
+
+    return { node: bestSpan.textNode, offset: refineOffsetAtPoint(bestSpan.textNode, offset, x), spanInfo: bestSpan };
   }
 
   return direct ? { ...direct } : null;
