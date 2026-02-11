@@ -412,6 +412,67 @@ export function useSelectionOverlay(
         const metrics = getTextMetricsFromTextLayer(textLayer);
         currentTextMetricsRef.current = metrics;
         activeTextLayerRef.current = textLayer;
+
+        const clickedCaret = getSnappedCaretInfo(
+          e.clientX,
+          e.clientY,
+          textLayer,
+          metrics,
+          e.clientY,
+          null
+        );
+
+        if (e.shiftKey && clickedCaret) {
+          let anchorNode: Node | null = null;
+          let anchorOffset: number = 0;
+          let anchorY: number = e.clientY;
+
+          if (dragAnchorRef.current) {
+            anchorNode = dragAnchorRef.current.node;
+            anchorOffset = dragAnchorRef.current.offset;
+            anchorY = dragAnchorRef.current.anchorY;
+          } else {
+            const selection = window.getSelection();
+            if (selection && selection.anchorNode && textLayer.contains(selection.anchorNode)) {
+              anchorNode = selection.anchorNode;
+              anchorOffset = selection.anchorOffset;
+            }
+          }
+
+          if (anchorNode) {
+            e.preventDefault();
+            logSelectionEvent('mousedown:shift-click-extend', { x: e.clientX, y: e.clientY });
+
+            const extendedRange = createSelectionRange(
+              anchorNode,
+              anchorOffset,
+              clickedCaret.node,
+              clickedCaret.offset
+            );
+
+            if (!dragAnchorRef.current) {
+              dragAnchorRef.current = {
+                node: anchorNode,
+                offset: anchorOffset,
+                anchorY: anchorY
+              };
+            }
+
+            dragSyntheticRangeRef.current = extendedRange;
+            lastValidRangeRef.current = extendedRange;
+            lastValidRangeSignatureRef.current = getRangeSignature(extendedRange);
+            lastValidSpanRef.current = clickedCaret.spanInfo ?? lastValidSpanRef.current;
+            lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
+
+            applySelectionSafely(extendedRange, 'caret-shift-click');
+            scheduleRafUpdate(true);
+
+            isDraggingRef.current = true;
+            updateSelectionMode('native-drag');
+            return;
+          }
+        }
+
         isDraggingRef.current = true;
         dragSessionIdRef.current += 1;
         dragStatsRef.current = {
@@ -428,26 +489,19 @@ export function useSelectionOverlay(
         };
         gapHysteresisRef.current = createHysteresisState();
         updateSelectionMode('native-drag');
-        const anchorCaret = getSnappedCaretInfo(
-          e.clientX,
-          e.clientY,
-          textLayer,
-          metrics,
-          e.clientY,
-          null
-        );
-        if (anchorCaret) {
+
+        if (clickedCaret) {
           dragAnchorRef.current = {
-            node: anchorCaret.node,
-            offset: anchorCaret.offset,
+            node: clickedCaret.node,
+            offset: clickedCaret.offset,
             anchorY: e.clientY
           };
-          lastValidSpanRef.current = anchorCaret.spanInfo ?? null;
+          lastValidSpanRef.current = clickedCaret.spanInfo ?? null;
           const initialRange = createSelectionRange(
-            anchorCaret.node,
-            anchorCaret.offset,
-            anchorCaret.node,
-            anchorCaret.offset
+            clickedCaret.node,
+            clickedCaret.offset,
+            clickedCaret.node,
+            clickedCaret.offset
           );
           dragSyntheticRangeRef.current = initialRange;
           lastValidRangeRef.current = initialRange;
@@ -471,7 +525,7 @@ export function useSelectionOverlay(
         if (!isOnSelectionOverlay && !isOnTextSelectionPopup && !isOnInlineForm) {
           clearSelection();
         }
-      } else if (hasActiveSelectionRef.current && textLayer) {
+      } else if (hasActiveSelectionRef.current && textLayer && !e.shiftKey) {
         lastAppliedRangeRef.current = null;
         lastValidRangeSignatureRef.current = null;
         clearOverlay();
