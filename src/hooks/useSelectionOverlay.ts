@@ -39,9 +39,11 @@ type SelectionProgrammaticSource =
   | 'caret-shift-arrow'
   | 'caret-shift-click'
   | 'caret-triple-click'
+  | 'mouseup-finalize'
   | 'clear-selection';
 
 const DRAG_THROTTLE_MS = 16;
+const MOUSEUP_PROTECTION_MS = 100;
 
 export function useSelectionOverlay(
   containerRef: React.RefObject<HTMLElement | null>
@@ -94,6 +96,7 @@ export function useSelectionOverlay(
   const lastValidSpanRef = useRef<SpanInfo | null>(null);
   const lastValidCaretRef = useRef<{ x: number; y: number } | null>(null);
   const gapHysteresisRef = useRef(createHysteresisState());
+  const mouseupProtectionUntilRef = useRef<number>(0);
 
   const rafCoalesceRef = useRef<{
     pending: boolean;
@@ -236,11 +239,17 @@ export function useSelectionOverlay(
 
     const selectionText = selection?.toString() || '';
 
+    const isInProtectionPeriod = Date.now() < mouseupProtectionUntilRef.current;
+
     if (!selection || selection.rangeCount === 0) {
       if (isMouseDownRef.current && isDraggingRef.current && lastRectsMapRef.current.size > 0) {
         return;
       }
       if (hasActiveSelectionRef.current && lastRectsMapRef.current.size > 0 && !forceUpdate) {
+        return;
+      }
+      if (isInProtectionPeriod && lastRectsMapRef.current.size > 0) {
+        logSelectionEvent('overlay:protected-from-clear-no-selection');
         return;
       }
       if (lastRectsMapRef.current.size > 0 && !isMouseDownRef.current) {
@@ -257,6 +266,11 @@ export function useSelectionOverlay(
           lastCaretY: lastCaret?.y,
           tolerancePx: 6
         });
+        return;
+      }
+
+      if (isInProtectionPeriod && lastRectsMapRef.current.size > 0) {
+        logSelectionEvent('overlay:protected-from-clear-collapsed');
         return;
       }
 
@@ -363,6 +377,11 @@ export function useSelectionOverlay(
 
     if (isDraggingRef.current) {
       logSelectionEvent('selectionchange:blocked-native-drag');
+      return;
+    }
+
+    if (Date.now() < mouseupProtectionUntilRef.current) {
+      logSelectionEvent('selectionchange:blocked-mouseup-protection');
       return;
     }
 
@@ -608,6 +627,8 @@ export function useSelectionOverlay(
       isDraggingRef.current = false;
 
       if (wasDragging) {
+        mouseupProtectionUntilRef.current = Date.now() + MOUSEUP_PROTECTION_MS;
+
         if (finalSyntheticRange) {
           applySelectionSafely(finalSyntheticRange, 'mouseup-finalize');
 
