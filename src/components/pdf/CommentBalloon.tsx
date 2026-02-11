@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { MessageCircle, X, Trash2, ArrowRight, Square, Palette, CornerDownRight } from 'lucide-react';
+import { MessageCircle, X, Trash2, ArrowRight, Square, Palette, Spline } from 'lucide-react';
 import { PDFComment, CommentColor, COMMENT_COLORS, ConnectorType } from '../../types/PDFComment';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
@@ -277,7 +277,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
                 className={`p-1.5 rounded transition-colors ${showConnectorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
                 title="Adicionar conector"
               >
-                <CornerDownRight size={16} />
+                <Spline size={16} />
               </button>
               {showConnectorDropdown && (
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-white rounded-lg shadow-xl border py-1 min-w-[120px] z-[100]">
