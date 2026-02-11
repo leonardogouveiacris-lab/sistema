@@ -210,30 +210,20 @@ function getPreciseOffsetInTextNode(textNode: Node, clickX: number): number {
 
   const range = document.createRange();
 
-  let lo = 0;
-  let hi = text.length;
-
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, mid + 1);
+  for (let i = 0; i < text.length; i++) {
+    range.setStart(textNode, i);
+    range.setEnd(textNode, i + 1);
     const charRect = range.getBoundingClientRect();
 
-    if (charRect.right <= clickX) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
+    if (clickX < charRect.left) return i;
+
+    if (clickX >= charRect.left && clickX < charRect.right) {
+      const midpoint = charRect.left + charRect.width * 0.5;
+      return clickX >= midpoint ? i + 1 : i;
     }
   }
 
-  if (lo >= text.length) return text.length;
-
-  range.setStart(textNode, lo);
-  range.setEnd(textNode, lo + 1);
-  const targetRect = range.getBoundingClientRect();
-
-  const threshold = targetRect.left + targetRect.width * 0.6;
-  return clickX >= threshold ? lo + 1 : lo;
+  return text.length;
 }
 
 export function getSpansWithInfo(textLayer: Element): SpanInfo[] {
