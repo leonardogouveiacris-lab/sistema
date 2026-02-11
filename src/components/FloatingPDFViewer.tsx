@@ -578,6 +578,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const TEXT_LAYER_LOCAL_SPAN_SELECTOR = ':scope > span, :scope span[role="presentation"]';
     const SHIFT_CLICK_DEBUG = true;
 
+    interface ShiftClickTrace {
+      traceId: string;
+      clickPage: number | null;
+      anchorPage: number | null;
+      spansByStage: {
+        directTarget: number;
+        activeTextLayer: number;
+        clickPage: number;
+        anchorPage: number;
+        selectionGlobal: number;
+      };
+      winnerStrategy: 'direct-target-span' | 'active-text-layer-nearest' | 'click-page-nearest' | 'anchor-page-nearest' | 'none';
+      initialOffset: number | null;
+      finalOffset: number | null;
+      failureReason: string | null;
+    }
+
     const isSelectableSpan = (span: Element): span is HTMLElement => {
       if (!(span instanceof HTMLElement)) return false;
       const textNode = span.firstChild;
@@ -635,6 +652,28 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return bestSpan;
     };
 
+    const createShiftClickTrace = (): ShiftClickTrace => ({
+      traceId: `shift-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      clickPage: null,
+      anchorPage: null,
+      spansByStage: {
+        directTarget: 0,
+        activeTextLayer: 0,
+        clickPage: 0,
+        anchorPage: 0,
+        selectionGlobal: 0
+      },
+      winnerStrategy: 'none',
+      initialOffset: null,
+      finalOffset: null,
+      failureReason: null
+    });
+
+    const logShiftClickDebug = (trace: ShiftClickTrace) => {
+      if (!SHIFT_CLICK_DEBUG) return;
+      console.debug('[FloatingPDFViewer][Shift+click]', trace);
+    };
+
 
     const applyRangeWithOverlayGuard = (range: Range, source: 'caret-click' | 'caret-arrow' | 'caret-shift-arrow' | 'caret-shift-click' | 'caret-triple-click') => {
       if (!canWriteProgrammaticSelection) {
@@ -668,9 +707,44 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       startOffset: number,
       endSpan: HTMLElement,
       endOffset: number,
-      source: 'caret-shift-click' | 'caret-shift-arrow' = 'caret-shift-click'
+      source: 'caret-shift-click' | 'caret-shift-arrow' = 'caret-shift-click',
+      trace?: ShiftClickTrace
     ) => {
       const spans = getAllTextSpans();
+
+      if (trace) {
+        trace.spansByStage.selectionGlobal = spans.length;
+      }
+
+      if (spans.length === 0) {
+        if (trace) {
+          trace.failureReason = 'global-spans-empty';
+        }
+        return false;
+      }
+
+      const getSpanCenterDistance = (candidate: HTMLElement, referenceRect: DOMRect): number => {
+        const rect = candidate.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const refCenterX = referenceRect.left + referenceRect.width / 2;
+        const refCenterY = referenceRect.top + referenceRect.height / 2;
+        return Math.hypot(centerX - refCenterX, centerY - refCenterY);
+      };
+
+      const findClosestByRectCenter = (candidates: HTMLElement[], referenceRect: DOMRect): HTMLElement | null => {
+        if (candidates.length === 0) return null;
+        let best: HTMLElement | null = null;
+        let bestDistance = Infinity;
+        for (const candidate of candidates) {
+          const distance = getSpanCenterDistance(candidate, referenceRect);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            best = candidate;
+          }
+        }
+        return best;
+      };
 
       const remapSpanToGlobalCollection = (span: HTMLElement): HTMLElement | null => {
         if (spans.includes(span)) return span;
@@ -693,37 +767,34 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             }
           }
 
-          const fallbackByDistance = findNearestSpanByCoordinates(
-            pageCandidates,
-            span.getBoundingClientRect().left,
-            span.getBoundingClientRect().top
-          );
+          const spanRect = span.getBoundingClientRect();
+          const fallbackByDistance = findClosestByRectCenter(pageCandidates, spanRect);
 
           if (fallbackByDistance) {
             return fallbackByDistance;
           }
         }
 
-        return findNearestSpanByCoordinates(
-          spans,
-          span.getBoundingClientRect().left,
-          span.getBoundingClientRect().top
-        );
+        return findClosestByRectCenter(spans, span.getBoundingClientRect());
       };
 
       const mappedStartSpan = remapSpanToGlobalCollection(startSpan);
       const mappedEndSpan = remapSpanToGlobalCollection(endSpan);
       if (!mappedStartSpan || !mappedEndSpan) {
-        logShiftClickDebug('createSelectionBetween failed to remap spans', {
-          startMapped: !!mappedStartSpan,
-          endMapped: !!mappedEndSpan
-        });
-        return;
+        if (trace) {
+          trace.failureReason = `remap-failed:start=${!!mappedStartSpan};end=${!!mappedEndSpan}`;
+        }
+        return false;
       }
 
       const startIndex = spans.indexOf(mappedStartSpan);
       const endIndex = spans.indexOf(mappedEndSpan);
-      if (startIndex === -1 || endIndex === -1) return;
+      if (startIndex === -1 || endIndex === -1) {
+        if (trace) {
+          trace.failureReason = `mapped-index-not-found:start=${startIndex};end=${endIndex}`;
+        }
+        return false;
+      }
 
       const range = document.createRange();
 
@@ -742,7 +813,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const startNode = actualStartSpan.firstChild;
       const endNode = actualEndSpan.firstChild;
 
-      if (!startNode || !endNode) return;
+      if (!startNode || !endNode) {
+        if (trace) {
+          trace.failureReason = 'missing-text-node-in-selection-range';
+        }
+        return false;
+      }
 
       const maxStartOffset = Math.min(actualStartOffset, startNode.textContent?.length || 0);
       const maxEndOffset = Math.min(actualEndOffset, endNode.textContent?.length || 0);
@@ -750,7 +826,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       range.setStart(startNode, maxStartOffset);
       range.setEnd(endNode, maxEndOffset);
 
+      if (trace) {
+        trace.initialOffset = maxStartOffset;
+        trace.finalOffset = maxEndOffset;
+      }
+
       applyRangeWithOverlayGuard(range, source);
+      return true;
     };
 
     const getClickOffset = (span: HTMLElement, clientX: number): number => {
@@ -802,66 +884,95 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const resolveNearestSpanFromPoint = (textLayer: HTMLElement, clientX: number, clientY: number): HTMLElement | null =>
       findNearestSpanByCoordinates(getVisibleSpansFromTextLayer(textLayer), clientX, clientY);
 
-    const logShiftClickDebug = (message: string, payload?: Record<string, unknown>) => {
-      if (!SHIFT_CLICK_DEBUG) return;
-      console.debug('[FloatingPDFViewer][Shift+click]', message, payload || {});
+    const inferClickPageNumber = (
+      target: HTMLElement,
+      clientX: number,
+      clientY: number,
+      selectionAnchorState: { span: HTMLElement; offset: number }
+    ): number | null => {
+      const directPageElement = target.closest('[data-global-page]');
+      if (directPageElement) {
+        return parseInt(directPageElement.getAttribute('data-global-page') || '0', 10) || null;
+      }
+
+      const scrollContainer = scrollContainerRef.current;
+      if (scrollContainer) {
+        const pages = Array.from(scrollContainer.querySelectorAll('[data-global-page]'));
+        for (const pageElement of pages) {
+          if (!(pageElement instanceof HTMLElement)) continue;
+          const rect = pageElement.getBoundingClientRect();
+          const containsPoint = clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+          if (containsPoint) {
+            return parseInt(pageElement.getAttribute('data-global-page') || '0', 10) || null;
+          }
+        }
+      }
+
+      return getPageNumber(selectionAnchorState.span);
     };
 
     const resolveShiftClickTarget = (
       target: HTMLElement,
       selectionAnchorState: { span: HTMLElement; offset: number },
       clientX: number,
-      clientY: number
+      clientY: number,
+      clickPage: number | null,
+      trace: ShiftClickTrace
     ): { span: HTMLElement; offset: number } | null => {
       const directSpan = target.closest(TEXT_SPAN_SELECTOR) as HTMLElement | null;
+      trace.spansByStage.directTarget = directSpan && isSelectableSpan(directSpan) ? 1 : 0;
       if (directSpan && isSelectableSpan(directSpan)) {
-        const resolved = { span: directSpan, offset: getClickOffsetByCoordinates(directSpan, clientX, clientY) };
-        logShiftClickDebug('resolved by direct span target', {
-          page: getPageNumber(directSpan),
-          text: (directSpan.textContent || '').slice(0, 40),
-          offset: resolved.offset
-        });
-        return resolved;
+        trace.winnerStrategy = 'direct-target-span';
+        return { span: directSpan, offset: getClickOffsetByCoordinates(directSpan, clientX, clientY) };
       }
 
       const activeTextLayer = target.closest('.textLayer') as HTMLElement | null;
+      trace.spansByStage.activeTextLayer = activeTextLayer ? getVisibleSpansFromTextLayer(activeTextLayer).length : 0;
       const nearestInActiveLayer = activeTextLayer
         ? resolveNearestSpanFromPoint(activeTextLayer, clientX, clientY)
         : null;
 
       if (nearestInActiveLayer) {
-        const resolved = {
+        trace.winnerStrategy = 'active-text-layer-nearest';
+        return {
           span: nearestInActiveLayer,
           offset: getClickOffsetByCoordinates(nearestInActiveLayer, clientX, clientY)
         };
-        logShiftClickDebug('resolved by active textLayer nearest span', {
-          page: getPageNumber(nearestInActiveLayer),
-          text: (nearestInActiveLayer.textContent || '').slice(0, 40),
-          offset: resolved.offset
-        });
-        return resolved;
+      }
+
+      if (clickPage) {
+        const clickPageSpans = getSpansForPage(clickPage);
+        trace.spansByStage.clickPage = clickPageSpans.length;
+        const clickPageFallback = findNearestSpanByCoordinates(clickPageSpans, clientX, clientY);
+        if (clickPageFallback) {
+          trace.winnerStrategy = 'click-page-nearest';
+          return {
+            span: clickPageFallback,
+            offset: getClickOffsetByCoordinates(clickPageFallback, clientX, clientY)
+          };
+        }
       }
 
       const anchorPage = getPageNumber(selectionAnchorState.span);
-      if (!anchorPage) return null;
-
-      const anchorPageSpans = getSpansForPage(anchorPage);
-      const fallbackSpan = findNearestSpanByCoordinates(anchorPageSpans, clientX, clientY);
-      if (!fallbackSpan) {
-        logShiftClickDebug('failed to resolve fallback span from anchor page', { anchorPage, anchorPageSpans: anchorPageSpans.length });
+      trace.anchorPage = anchorPage;
+      if (!anchorPage) {
+        trace.failureReason = 'anchor-page-missing';
         return null;
       }
 
-      const resolved = {
+      const anchorPageSpans = getSpansForPage(anchorPage);
+      trace.spansByStage.anchorPage = anchorPageSpans.length;
+      const fallbackSpan = findNearestSpanByCoordinates(anchorPageSpans, clientX, clientY);
+      if (!fallbackSpan) {
+        trace.failureReason = 'anchor-page-nearest-not-found';
+        return null;
+      }
+
+      trace.winnerStrategy = 'anchor-page-nearest';
+      return {
         span: fallbackSpan,
         offset: getClickOffsetByCoordinates(fallbackSpan, clientX, clientY)
       };
-      logShiftClickDebug('resolved by anchor page fallback', {
-        anchorPage,
-        text: (fallbackSpan.textContent || '').slice(0, 40),
-        offset: resolved.offset
-      });
-      return resolved;
     };
 
     const selectWord = (span: HTMLElement, offset: number) => {
@@ -943,36 +1054,44 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const textLayerSpan = target.closest(TEXT_SPAN_SELECTOR) as HTMLElement | null;
 
       if (e.shiftKey && selectionAnchor) {
-        logShiftClickDebug('shift+click detected', {
-          hasTextLayer: !!textLayer,
-          anchorPage: getPageNumber(selectionAnchor.span),
-          clickX: e.clientX,
-          clickY: e.clientY
-        });
-        const resolved = resolveShiftClickTarget(target, selectionAnchor, e.clientX, e.clientY);
+        const trace = createShiftClickTrace();
+        trace.anchorPage = getPageNumber(selectionAnchor.span);
+        const clickPage = inferClickPageNumber(target, e.clientX, e.clientY, selectionAnchor);
+        trace.clickPage = clickPage;
+
+        const resolved = resolveShiftClickTarget(target, selectionAnchor, e.clientX, e.clientY, clickPage, trace);
 
         if (resolved) {
           activateCaret(resolved.span, true);
-          createSelectionBetween(
+          const selectionApplied = createSelectionBetween(
             selectionAnchor.span,
             selectionAnchor.offset,
             resolved.span,
-            resolved.offset
+            resolved.offset,
+            'caret-shift-click',
+            trace
           );
-          currentFocus = { span: resolved.span, offset: resolved.offset };
-          logShiftClickDebug('selection applied from anchor to resolved target', {
-            anchorOffset: selectionAnchor.offset,
-            resolvedOffset: resolved.offset
-          });
+          if (selectionApplied) {
+            currentFocus = { span: resolved.span, offset: resolved.offset };
+          } else if (!trace.failureReason) {
+            trace.failureReason = 'selection-not-applied';
+          }
+          logShiftClickDebug(trace);
           return;
         }
 
-        if (textLayer) {
-          logShiftClickDebug('no resolved span but click remained inside textLayer; preserving anchor/focus');
+        if (textLayer || clickPage) {
+          if (!trace.failureReason) {
+            trace.failureReason = textLayer ? 'unresolved-inside-text-layer' : 'unresolved-inside-rendered-page';
+          }
+          logShiftClickDebug(trace);
           return;
         }
 
-        logShiftClickDebug('no resolved span and click outside textLayer; deactivating caret');
+        if (!trace.failureReason) {
+          trace.failureReason = 'unresolved-outside-text-layer-and-pages';
+        }
+        logShiftClickDebug(trace);
         deactivateCaret();
         return;
       }
