@@ -609,7 +609,19 @@ export function useSelectionOverlay(
 
       if (wasDragging) {
         if (finalSyntheticRange) {
-          applySelectionSafely(finalSyntheticRange, 'caret-shift-click');
+          applySelectionSafely(finalSyntheticRange, 'mouseup-finalize');
+
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+            const range = selection.getRangeAt(0);
+            const container = containerRef.current;
+            if (container) {
+              const pageRectsMap = calculatePageRects(container, range, clearOverlay);
+              if (pageRectsMap.size > 0) {
+                flushOverlayUpdate(pageRectsMap, range.toString());
+              }
+            }
+          }
         } else {
           dragStatsRef.current.nativeRangeFallbacks += 1;
         }
@@ -617,13 +629,11 @@ export function useSelectionOverlay(
         printDragSessionStats(dragSessionIdRef.current);
         updateSelectionMode('idle');
         activeTextLayerRef.current = null;
-        dragAnchorRef.current = null;
         dragSyntheticRangeRef.current = null;
         lastValidRangeRef.current = null;
         lastValidRangeSignatureRef.current = null;
         lastValidSpanRef.current = null;
         gapHysteresisRef.current = createHysteresisState();
-        scheduleRafUpdate(true);
       }
     };
 
@@ -685,7 +695,7 @@ export function useSelectionOverlay(
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [applySelectionSafely, clearSelection, printDragSessionStats, scheduleRafUpdate, updateSelectionMode]);
+  }, [applySelectionSafely, clearOverlay, clearSelection, containerRef, flushOverlayUpdate, printDragSessionStats, scheduleRafUpdate, updateSelectionMode]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
