@@ -574,10 +574,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return parseInt(pageEl.getAttribute('data-global-page') || '0', 10) || null;
     };
 
+    const TEXT_SPAN_SELECTOR = '.textLayer > span, .textLayer span[role="presentation"]';
+
     const isSelectableSpan = (span: Element): span is HTMLElement => {
       if (!(span instanceof HTMLElement)) return false;
       const textNode = span.firstChild;
       return !!textNode && textNode.nodeType === Node.TEXT_NODE && (textNode.textContent?.length || 0) > 0;
+    };
+
+    const getSelectableSpans = (root: ParentNode): HTMLElement[] => {
+      const spans = root.querySelectorAll(TEXT_SPAN_SELECTOR);
+      return Array.from(spans).filter(isSelectableSpan);
     };
 
     const getSpansForPage = (pageNumber: number): HTMLElement[] => {
@@ -585,25 +592,45 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       if (!scrollContainer) return [];
       const pageEl = scrollContainer.querySelector(`[data-global-page="${pageNumber}"]`);
       if (!pageEl) return [];
-      const spans = pageEl.querySelectorAll('.textLayer > span, .textLayer span[role="presentation"]');
-      return Array.from(spans).filter(isSelectableSpan);
+      return getSelectableSpans(pageEl);
     };
 
     const getAllTextSpans = (): HTMLElement[] => {
       const scrollContainer = scrollContainerRef.current;
       if (!scrollContainer) return [];
-      const spans = scrollContainer.querySelectorAll('.textLayer > span, .textLayer span[role="presentation"]');
-      return Array.from(spans).filter(isSelectableSpan);
+      return getSelectableSpans(scrollContainer);
     };
 
     const getVisibleSpansFromTextLayer = (textLayer: HTMLElement): HTMLElement[] => {
-      const spans = textLayer.querySelectorAll('span, span[role="presentation"]');
-      return Array.from(spans)
-        .filter(isSelectableSpan)
+      return getSelectableSpans(textLayer)
         .filter(span => {
           const rect = span.getBoundingClientRect();
           return rect.width > 0 && rect.height > 0;
         });
+    };
+
+    const getSpanDistanceFromPoint = (span: HTMLElement, clientX: number, clientY: number): number => {
+      const rect = span.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      return Math.abs(centerY - clientY) * 10 + Math.abs(centerX - clientX);
+    };
+
+    const findNearestSpanByCoordinates = (spans: HTMLElement[], clientX: number, clientY: number): HTMLElement | null => {
+      if (spans.length === 0) return null;
+
+      let bestSpan: HTMLElement | null = null;
+      let bestDistance = Infinity;
+
+      for (const span of spans) {
+        const distance = getSpanDistanceFromPoint(span, clientX, clientY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestSpan = span;
+        }
+      }
+
+      return bestSpan;
     };
 
 
@@ -642,22 +669,65 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       source: 'caret-shift-click' | 'caret-shift-arrow' = 'caret-shift-click'
     ) => {
       const spans = getAllTextSpans();
-      const startIndex = spans.indexOf(startSpan);
-      const endIndex = spans.indexOf(endSpan);
 
+      const remapSpanToGlobalCollection = (span: HTMLElement): HTMLElement | null => {
+        if (spans.includes(span)) return span;
+
+        const spanPageNumber = getPageNumber(span);
+        const pageCandidates = spanPageNumber
+          ? spans.filter(candidate => getPageNumber(candidate) === spanPageNumber)
+          : [];
+
+        if (pageCandidates.length > 0) {
+          const sameTextLayer = span.closest('.textLayer');
+          if (sameTextLayer) {
+            const localSpans = getSelectableSpans(sameTextLayer);
+            const localIndex = localSpans.indexOf(span);
+            if (localIndex >= 0) {
+              const pageSameLayer = pageCandidates.filter(candidate => candidate.closest('.textLayer') === sameTextLayer);
+              if (pageSameLayer[localIndex]) {
+                return pageSameLayer[localIndex];
+              }
+            }
+          }
+
+          const fallbackByDistance = findNearestSpanByCoordinates(
+            pageCandidates,
+            span.getBoundingClientRect().left,
+            span.getBoundingClientRect().top
+          );
+
+          if (fallbackByDistance) {
+            return fallbackByDistance;
+          }
+        }
+
+        return findNearestSpanByCoordinates(
+          spans,
+          span.getBoundingClientRect().left,
+          span.getBoundingClientRect().top
+        );
+      };
+
+      const mappedStartSpan = remapSpanToGlobalCollection(startSpan);
+      const mappedEndSpan = remapSpanToGlobalCollection(endSpan);
+      if (!mappedStartSpan || !mappedEndSpan) return;
+
+      const startIndex = spans.indexOf(mappedStartSpan);
+      const endIndex = spans.indexOf(mappedEndSpan);
       if (startIndex === -1 || endIndex === -1) return;
 
       const range = document.createRange();
 
-      let actualStartSpan = startSpan;
+      let actualStartSpan = mappedStartSpan;
       let actualStartOffset = startOffset;
-      let actualEndSpan = endSpan;
+      let actualEndSpan = mappedEndSpan;
       let actualEndOffset = endOffset;
 
       if (startIndex > endIndex || (startIndex === endIndex && startOffset > endOffset)) {
-        actualStartSpan = endSpan;
+        actualStartSpan = mappedEndSpan;
         actualStartOffset = endOffset;
-        actualEndSpan = startSpan;
+        actualEndSpan = mappedStartSpan;
         actualEndOffset = startOffset;
       }
 
@@ -721,26 +791,43 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return bestOffset;
     };
 
-    const resolveNearestSpanFromPoint = (textLayer: HTMLElement, clientX: number, clientY: number): HTMLElement | null => {
-      const spans = getVisibleSpansFromTextLayer(textLayer);
-      if (spans.length === 0) return null;
+    const resolveNearestSpanFromPoint = (textLayer: HTMLElement, clientX: number, clientY: number): HTMLElement | null =>
+      findNearestSpanByCoordinates(getVisibleSpansFromTextLayer(textLayer), clientX, clientY);
 
-      let bestSpan: HTMLElement | null = null;
-      let bestDistance = Infinity;
-
-      for (const span of spans) {
-        const rect = span.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        const distance = Math.abs(centerY - clientY) * 10 + Math.abs(centerX - clientX);
-
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestSpan = span;
-        }
+    const resolveShiftClickTarget = (
+      target: HTMLElement,
+      selectionAnchorState: { span: HTMLElement; offset: number },
+      clientX: number,
+      clientY: number
+    ): { span: HTMLElement; offset: number } | null => {
+      const directSpan = target.closest(TEXT_SPAN_SELECTOR) as HTMLElement | null;
+      if (directSpan && isSelectableSpan(directSpan)) {
+        return { span: directSpan, offset: getClickOffsetByCoordinates(directSpan, clientX, clientY) };
       }
 
-      return bestSpan;
+      const activeTextLayer = target.closest('.textLayer') as HTMLElement | null;
+      const nearestInActiveLayer = activeTextLayer
+        ? resolveNearestSpanFromPoint(activeTextLayer, clientX, clientY)
+        : null;
+
+      if (nearestInActiveLayer) {
+        return {
+          span: nearestInActiveLayer,
+          offset: getClickOffsetByCoordinates(nearestInActiveLayer, clientX, clientY)
+        };
+      }
+
+      const anchorPage = getPageNumber(selectionAnchorState.span);
+      if (!anchorPage) return null;
+
+      const anchorPageSpans = getSpansForPage(anchorPage);
+      const fallbackSpan = findNearestSpanByCoordinates(anchorPageSpans, clientX, clientY);
+      if (!fallbackSpan) return null;
+
+      return {
+        span: fallbackSpan,
+        offset: getClickOffsetByCoordinates(fallbackSpan, clientX, clientY)
+      };
     };
 
     const selectWord = (span: HTMLElement, offset: number) => {
@@ -819,29 +906,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       if (!isInScrollContainer) return;
 
       const textLayer = target.closest('.textLayer') as HTMLElement | null;
-      const textLayerSpan = target.closest('.textLayer > span, .textLayer span[role="presentation"]') as HTMLElement | null;
+      const textLayerSpan = target.closest(TEXT_SPAN_SELECTOR) as HTMLElement | null;
 
       if (e.shiftKey && selectionAnchor) {
-        const anchorTextLayer = selectionAnchor.span.closest('.textLayer') as HTMLElement | null;
-        const activeTextLayer = textLayer || anchorTextLayer;
-        const resolvedSpan = textLayerSpan || (activeTextLayer ? resolveNearestSpanFromPoint(activeTextLayer, e.clientX, e.clientY) : null);
+        const resolved = resolveShiftClickTarget(target, selectionAnchor, e.clientX, e.clientY);
 
-        if (resolvedSpan) {
-          const clickOffset = getClickOffsetByCoordinates(resolvedSpan, e.clientX, e.clientY);
-          activateCaret(resolvedSpan, true);
+        if (resolved) {
+          activateCaret(resolved.span, true);
           createSelectionBetween(
             selectionAnchor.span,
             selectionAnchor.offset,
-            resolvedSpan,
-            clickOffset
+            resolved.span,
+            resolved.offset
           );
-          currentFocus = { span: resolvedSpan, offset: clickOffset };
+          currentFocus = { span: resolved.span, offset: resolved.offset };
           return;
         }
 
-        if (activeTextLayer) {
+        if (textLayer) {
           return;
         }
+
+        deactivateCaret();
+        return;
       }
 
       if (e.detail === 2 && textLayerSpan && textLayerSpan.textContent?.trim()) {
