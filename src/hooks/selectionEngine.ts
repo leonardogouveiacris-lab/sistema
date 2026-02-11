@@ -375,10 +375,25 @@ export function getSnappedCaretInfo(
     if (parentSpan) {
       const rect = parentSpan.getBoundingClientRect();
       const textNode = parentSpan.firstChild?.nodeType === Node.TEXT_NODE ? parentSpan.firstChild : null;
+      const spanInfo = { span: parentSpan, rect, textNode };
+
+      if (textNode && textNode.textContent) {
+        const text = textNode.textContent;
+        const charWidth = text.length > 0 ? rect.width / text.length : metrics.averageCharWidth;
+        const relativeX = x - rect.left;
+        let correctedOffset = Math.floor(relativeX / charWidth + 0.35);
+        correctedOffset = Math.max(0, Math.min(correctedOffset, text.length));
+        return {
+          node: textNode,
+          offset: correctedOffset,
+          spanInfo
+        };
+      }
+
       return {
         node: direct.node,
         offset: direct.offset,
-        spanInfo: { span: parentSpan, rect, textNode }
+        spanInfo
       };
     }
     return direct;
