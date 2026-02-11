@@ -401,7 +401,7 @@ export function getSnappedCaretInfo(
   }
 
   const r = bestSpan.rect;
-  const clampedX = Math.min(Math.max(x, r.left + 1), r.right - 1);
+  const clampedX = Math.min(Math.max(x, r.left), r.right);
   const clampedY = r.top + r.height / 2;
 
   const snapped = getCaretInfoFromPoint(clampedX, clampedY);
@@ -412,7 +412,8 @@ export function getSnappedCaretInfo(
   if (bestSpan.textNode) {
     const text = bestSpan.textNode.textContent || '';
     const charWidth = text.length > 0 ? r.width / text.length : metrics.averageCharWidth;
-    let offset = Math.round((x - r.left) / charWidth);
+    const relativeX = x - r.left;
+    let offset = Math.floor(relativeX / charWidth + 0.35);
     offset = Math.max(0, Math.min(offset, text.length));
 
     return { node: bestSpan.textNode, offset, spanInfo: bestSpan };
