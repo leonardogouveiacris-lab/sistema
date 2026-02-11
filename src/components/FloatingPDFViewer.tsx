@@ -575,6 +575,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     const TEXT_SPAN_SELECTOR = '.textLayer > span, .textLayer span[role="presentation"]';
+    const TEXT_LAYER_LOCAL_SPAN_SELECTOR = ':scope > span, :scope span[role="presentation"]';
+    const SHIFT_CLICK_DEBUG = true;
 
     const isSelectableSpan = (span: Element): span is HTMLElement => {
       if (!(span instanceof HTMLElement)) return false;
@@ -582,8 +584,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return !!textNode && textNode.nodeType === Node.TEXT_NODE && (textNode.textContent?.length || 0) > 0;
     };
 
-    const getSelectableSpans = (root: ParentNode): HTMLElement[] => {
-      const spans = root.querySelectorAll(TEXT_SPAN_SELECTOR);
+    const getSelectableSpans = (root: ParentNode, selector = TEXT_SPAN_SELECTOR): HTMLElement[] => {
+      const spans = root.querySelectorAll(selector);
       return Array.from(spans).filter(isSelectableSpan);
     };
 
@@ -602,7 +604,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     const getVisibleSpansFromTextLayer = (textLayer: HTMLElement): HTMLElement[] => {
-      return getSelectableSpans(textLayer)
+      return getSelectableSpans(textLayer, TEXT_LAYER_LOCAL_SPAN_SELECTOR)
         .filter(span => {
           const rect = span.getBoundingClientRect();
           return rect.width > 0 && rect.height > 0;
@@ -681,7 +683,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (pageCandidates.length > 0) {
           const sameTextLayer = span.closest('.textLayer');
           if (sameTextLayer) {
-            const localSpans = getSelectableSpans(sameTextLayer);
+            const localSpans = getSelectableSpans(sameTextLayer, TEXT_LAYER_LOCAL_SPAN_SELECTOR);
             const localIndex = localSpans.indexOf(span);
             if (localIndex >= 0) {
               const pageSameLayer = pageCandidates.filter(candidate => candidate.closest('.textLayer') === sameTextLayer);
@@ -711,7 +713,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       const mappedStartSpan = remapSpanToGlobalCollection(startSpan);
       const mappedEndSpan = remapSpanToGlobalCollection(endSpan);
-      if (!mappedStartSpan || !mappedEndSpan) return;
+      if (!mappedStartSpan || !mappedEndSpan) {
+        logShiftClickDebug('createSelectionBetween failed to remap spans', {
+          startMapped: !!mappedStartSpan,
+          endMapped: !!mappedEndSpan
+        });
+        return;
+      }
 
       const startIndex = spans.indexOf(mappedStartSpan);
       const endIndex = spans.indexOf(mappedEndSpan);
@@ -794,6 +802,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const resolveNearestSpanFromPoint = (textLayer: HTMLElement, clientX: number, clientY: number): HTMLElement | null =>
       findNearestSpanByCoordinates(getVisibleSpansFromTextLayer(textLayer), clientX, clientY);
 
+    const logShiftClickDebug = (message: string, payload?: Record<string, unknown>) => {
+      if (!SHIFT_CLICK_DEBUG) return;
+      console.debug('[FloatingPDFViewer][Shift+click]', message, payload || {});
+    };
+
     const resolveShiftClickTarget = (
       target: HTMLElement,
       selectionAnchorState: { span: HTMLElement; offset: number },
@@ -802,7 +815,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     ): { span: HTMLElement; offset: number } | null => {
       const directSpan = target.closest(TEXT_SPAN_SELECTOR) as HTMLElement | null;
       if (directSpan && isSelectableSpan(directSpan)) {
-        return { span: directSpan, offset: getClickOffsetByCoordinates(directSpan, clientX, clientY) };
+        const resolved = { span: directSpan, offset: getClickOffsetByCoordinates(directSpan, clientX, clientY) };
+        logShiftClickDebug('resolved by direct span target', {
+          page: getPageNumber(directSpan),
+          text: (directSpan.textContent || '').slice(0, 40),
+          offset: resolved.offset
+        });
+        return resolved;
       }
 
       const activeTextLayer = target.closest('.textLayer') as HTMLElement | null;
@@ -811,10 +830,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         : null;
 
       if (nearestInActiveLayer) {
-        return {
+        const resolved = {
           span: nearestInActiveLayer,
           offset: getClickOffsetByCoordinates(nearestInActiveLayer, clientX, clientY)
         };
+        logShiftClickDebug('resolved by active textLayer nearest span', {
+          page: getPageNumber(nearestInActiveLayer),
+          text: (nearestInActiveLayer.textContent || '').slice(0, 40),
+          offset: resolved.offset
+        });
+        return resolved;
       }
 
       const anchorPage = getPageNumber(selectionAnchorState.span);
@@ -822,12 +847,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       const anchorPageSpans = getSpansForPage(anchorPage);
       const fallbackSpan = findNearestSpanByCoordinates(anchorPageSpans, clientX, clientY);
-      if (!fallbackSpan) return null;
+      if (!fallbackSpan) {
+        logShiftClickDebug('failed to resolve fallback span from anchor page', { anchorPage, anchorPageSpans: anchorPageSpans.length });
+        return null;
+      }
 
-      return {
+      const resolved = {
         span: fallbackSpan,
         offset: getClickOffsetByCoordinates(fallbackSpan, clientX, clientY)
       };
+      logShiftClickDebug('resolved by anchor page fallback', {
+        anchorPage,
+        text: (fallbackSpan.textContent || '').slice(0, 40),
+        offset: resolved.offset
+      });
+      return resolved;
     };
 
     const selectWord = (span: HTMLElement, offset: number) => {
@@ -909,6 +943,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const textLayerSpan = target.closest(TEXT_SPAN_SELECTOR) as HTMLElement | null;
 
       if (e.shiftKey && selectionAnchor) {
+        logShiftClickDebug('shift+click detected', {
+          hasTextLayer: !!textLayer,
+          anchorPage: getPageNumber(selectionAnchor.span),
+          clickX: e.clientX,
+          clickY: e.clientY
+        });
         const resolved = resolveShiftClickTarget(target, selectionAnchor, e.clientX, e.clientY);
 
         if (resolved) {
@@ -920,13 +960,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             resolved.offset
           );
           currentFocus = { span: resolved.span, offset: resolved.offset };
+          logShiftClickDebug('selection applied from anchor to resolved target', {
+            anchorOffset: selectionAnchor.offset,
+            resolvedOffset: resolved.offset
+          });
           return;
         }
 
         if (textLayer) {
+          logShiftClickDebug('no resolved span but click remained inside textLayer; preserving anchor/focus');
           return;
         }
 
+        logShiftClickDebug('no resolved span and click outside textLayer; deactivating caret');
         deactivateCaret();
         return;
       }
