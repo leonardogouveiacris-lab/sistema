@@ -31,40 +31,6 @@ const PDFBookmarkPanel: React.FC = () => {
     return filterBookmarks(state.bookmarks, searchQuery);
   }, [state.bookmarks, searchQuery]);
 
-  const bookmarksProgress = useMemo(() => {
-    const totalDocuments = state.documents.length;
-    const doneDocuments = state.documents.filter(doc => state.bookmarksStatusByDoc.get(doc.id) === 'done').length;
-    const loadingDocuments = state.documents.filter(doc => state.bookmarksStatusByDoc.get(doc.id) === 'loading').length;
-    const errorDocuments = state.documents.filter(doc => state.bookmarksStatusByDoc.get(doc.id) === 'error').length;
-
-    return {
-      doneDocuments,
-      totalDocuments,
-      loadingDocuments,
-      errorDocuments,
-      progressLabel: `${doneDocuments}/${totalDocuments} documentos indexados`
-    };
-  }, [state.documents, state.bookmarksStatusByDoc]);
-
-  const activeDocument = useMemo(() => {
-    const docFromVisiblePage = state.documentPageInfo.find(info =>
-      state.currentPage >= info.globalPageStart && state.currentPage <= info.globalPageEnd
-    );
-
-    if (docFromVisiblePage) {
-      return state.documents[docFromVisiblePage.documentIndex] || null;
-    }
-
-    return state.documents[state.currentDocumentIndex] || null;
-  }, [state.currentDocumentIndex, state.currentPage, state.documentPageInfo, state.documents]);
-
-  const activeDocumentBookmarkStatus = useMemo(() => {
-    if (!activeDocument) {
-      return 'idle';
-    }
-    return state.bookmarksStatusByDoc.get(activeDocument.id) || 'idle';
-  }, [activeDocument, state.bookmarksStatusByDoc]);
-
   const totalBookmarks = useMemo(() => {
     return countTotalBookmarks(state.bookmarks);
   }, [state.bookmarks]);
@@ -181,6 +147,15 @@ const PDFBookmarkPanel: React.FC = () => {
     );
   };
 
+  if (state.isLoadingBookmarks && !hasBookmarks) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8">
+        <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full mb-4"></div>
+        <p className="text-sm text-gray-600">Carregando índice do PDF...</p>
+      </div>
+    );
+  }
+
   if (state.bookmarksError && !hasBookmarks) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8">
@@ -195,18 +170,11 @@ const PDFBookmarkPanel: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8">
         <BookOpen className="text-gray-400 mb-4" size={48} />
-        <p className="text-xs text-blue-700 text-center mb-2 font-medium">
-          {bookmarksProgress.progressLabel}
-        </p>
         <p className="text-sm text-gray-600 text-center mb-2">
-          {bookmarksProgress.doneDocuments >= bookmarksProgress.totalDocuments
-            ? 'Este PDF não possui índice'
-            : 'Indexando documentos para montar o índice'}
+          Este PDF não possui índice
         </p>
         <p className="text-xs text-gray-500 text-center">
-          {bookmarksProgress.doneDocuments >= bookmarksProgress.totalDocuments
-            ? 'O documento não contém bookmarks/marcadores estruturados'
-            : 'Você já pode navegar no PDF enquanto a indexação continua em segundo plano'}
+          O documento não contém bookmarks/marcadores estruturados
         </p>
       </div>
     );
@@ -220,18 +188,10 @@ const PDFBookmarkPanel: React.FC = () => {
             Índice do Documento
           </h3>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-blue-700 font-medium">
-              {bookmarksProgress.progressLabel}
-            </span>
-            {activeDocument && (
-              <span className="text-xs text-gray-500">
-                {activeDocument.displayName}: {activeDocumentBookmarkStatus === 'loading'
-                  ? 'indexando'
-                  : activeDocumentBookmarkStatus === 'done'
-                    ? 'indexado'
-                    : activeDocumentBookmarkStatus === 'error'
-                      ? 'erro na indexação'
-                      : 'pendente'}
+            {state.isLoadingBookmarks && (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                <span className="animate-spin inline-block w-3 h-3 border border-amber-600 border-t-transparent rounded-full" />
+                atualizando índice...
               </span>
             )}
             <span className="text-xs text-gray-500">
@@ -239,13 +199,6 @@ const PDFBookmarkPanel: React.FC = () => {
             </span>
           </div>
         </div>
-
-        {bookmarksProgress.loadingDocuments > 0 && (
-          <p className="text-xs text-amber-700">
-            {bookmarksProgress.loadingDocuments} documento(s) em indexação
-            {bookmarksProgress.errorDocuments > 0 ? ` • ${bookmarksProgress.errorDocuments} com erro` : ''}
-          </p>
-        )}
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
