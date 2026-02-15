@@ -153,6 +153,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
   const textExtractionProgressRef = useRef<Map<string, { current: number; total: number }>>(new Map());
+  const textExtractionAbortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const highlightedPageRef = useRef<number | null>(state.highlightedPage);
   const isModeSwitchingRef = useRef(false);
   const pageBeforeModeSwitchRef = useRef<number>(state.currentPage);
@@ -1512,47 +1513,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return newMap;
     });
 
-    const recalcExtractionProgress = () => {
-      if (textExtractionProgressRef.current.size === 0) {
-        setTextExtractionProgress(null);
-        return;
-      }
-      let aggregateCurrent = 0;
-      let aggregateTotal = 0;
-      textExtractionProgressRef.current.forEach(value => {
-        aggregateCurrent += value.current;
-        aggregateTotal += value.total;
-      });
-      setTextExtractionProgress({ current: aggregateCurrent, total: aggregateTotal });
-    };
-
-    const updateExtractionProgress = (documentId: string, current: number, total: number) => {
-      textExtractionProgressRef.current.set(documentId, { current, total });
-      recalcExtractionProgress();
-    };
-
-    updateExtractionProgress(currentDoc.id, 0, numPages);
-
-    extractAllPagesText(
-      pdf,
-      currentDoc.id,
-      (current, total) => updateExtractionProgress(currentDoc.id, current, total)
-    ).then(() => {
-      textExtractionProgressRef.current.delete(currentDoc.id);
-      recalcExtractionProgress();
-      logger.success(
-        `Text extracted and persisted for document ${currentDoc.id}`,
-        'FloatingPDFViewer.onDocumentLoadSuccess'
-      );
-    }).catch((error) => {
-      textExtractionProgressRef.current.delete(currentDoc.id);
-      recalcExtractionProgress();
-      logger.warn(
-        `Failed to extract text for document ${currentDoc.id}`,
-        error,
-        'FloatingPDFViewer.onDocumentLoadSuccess'
-      );
-    });
+    const currentExtraction = textExtractionAbortControllersRef.current.get(currentDoc.id);
+    if (currentExtraction) {
+      currentExtraction.abort();
+      textExtractionAbortControllersRef.current.delete(currentDoc.id);
+    }
+    textExtractionProgressRef.current.delete(currentDoc.id);
+    if (textExtractionProgressRef.current.size === 0) {
+      setTextExtractionProgress(null);
+    }
 
     setDocumentPages(prev => {
       const newMap = new Map(prev);
@@ -1664,6 +1633,123 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const memoizedDocumentOffsets = useMemo(() => {
     return getDocumentOffsets();
   }, [getDocumentOffsets]);
+
+  const recalcExtractionProgress = useCallback(() => {
+    if (textExtractionProgressRef.current.size === 0) {
+      setTextExtractionProgress(null);
+      return;
+    }
+
+    let aggregateCurrent = 0;
+    let aggregateTotal = 0;
+    textExtractionProgressRef.current.forEach(value => {
+      aggregateCurrent += value.current;
+      aggregateTotal += value.total;
+    });
+
+    setTextExtractionProgress({ current: aggregateCurrent, total: aggregateTotal });
+  }, [setTextExtractionProgress]);
+
+  const updateExtractionProgress = useCallback((documentId: string, current: number, total: number) => {
+    textExtractionProgressRef.current.set(documentId, { current, total });
+    recalcExtractionProgress();
+  }, [recalcExtractionProgress]);
+
+  const abortTextExtraction = useCallback((documentId?: string) => {
+    if (documentId) {
+      const controller = textExtractionAbortControllersRef.current.get(documentId);
+      if (controller) {
+        controller.abort();
+      }
+      textExtractionAbortControllersRef.current.delete(documentId);
+      textExtractionProgressRef.current.delete(documentId);
+      recalcExtractionProgress();
+      return;
+    }
+
+    textExtractionAbortControllersRef.current.forEach(controller => controller.abort());
+    textExtractionAbortControllersRef.current.clear();
+    textExtractionProgressRef.current.clear();
+    recalcExtractionProgress();
+  }, [recalcExtractionProgress]);
+
+  const startLazyTextExtraction = useCallback(() => {
+    const shouldExtract = state.isSearchOpen || state.searchQuery.trim().length > 0;
+    if (!shouldExtract || pdfDocumentProxies.size === 0) {
+      return;
+    }
+
+    pdfDocumentProxies.forEach((pdf, documentId) => {
+      if (textExtractionAbortControllersRef.current.has(documentId)) {
+        return;
+      }
+
+      const offsets = memoizedDocumentOffsets.get(documentId);
+      const visibleLocalPages = offsets
+        ? Array.from(scrollBasedVisiblePages)
+          .filter(page => page >= offsets.startPage && page <= offsets.endPage)
+          .map(page => page - offsets.startPage + 1)
+        : [];
+
+      const currentLocalPage = offsets && state.currentPage >= offsets.startPage && state.currentPage <= offsets.endPage
+        ? state.currentPage - offsets.startPage + 1
+        : 1;
+
+      const controller = new AbortController();
+      textExtractionAbortControllersRef.current.set(documentId, controller);
+      updateExtractionProgress(documentId, 0, pdf.numPages);
+
+      extractAllPagesText(
+        pdf,
+        documentId,
+        (current, total) => updateExtractionProgress(documentId, current, total),
+        controller.signal,
+        {
+          priorityPages: [currentLocalPage, ...visibleLocalPages],
+          progressIntervalPages: 4
+        }
+      ).then(() => {
+        textExtractionAbortControllersRef.current.delete(documentId);
+        textExtractionProgressRef.current.delete(documentId);
+        recalcExtractionProgress();
+      }).catch((error) => {
+        textExtractionAbortControllersRef.current.delete(documentId);
+        textExtractionProgressRef.current.delete(documentId);
+        recalcExtractionProgress();
+
+        logger.warn(
+          `Falha na extração lazy de texto do documento ${documentId}`,
+          error,
+          'FloatingPDFViewer.startLazyTextExtraction'
+        );
+      });
+    });
+  }, [state.isSearchOpen, state.searchQuery, pdfDocumentProxies, memoizedDocumentOffsets, scrollBasedVisiblePages, state.currentPage, updateExtractionProgress, recalcExtractionProgress]);
+
+  useEffect(() => {
+    startLazyTextExtraction();
+  }, [startLazyTextExtraction]);
+
+  useEffect(() => {
+    if (!state.isOpen) {
+      abortTextExtraction();
+    }
+  }, [state.isOpen, abortTextExtraction]);
+
+  useEffect(() => {
+    const activeDocumentIds = new Set(state.documents.map(doc => doc.id));
+    Array.from(textExtractionAbortControllersRef.current.keys()).forEach(documentId => {
+      if (!activeDocumentIds.has(documentId)) {
+        abortTextExtraction(documentId);
+      }
+    });
+  }, [state.documents, abortTextExtraction]);
+
+  useEffect(() => {
+    return () => {
+      abortTextExtraction();
+    };
+  }, [abortTextExtraction]);
 
   useEffect(() => {
     if (state.documents.length === 0 || documentPages.size === 0) return;

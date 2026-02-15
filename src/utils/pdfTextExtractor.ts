@@ -110,7 +110,11 @@ export async function extractAllPagesText(
   pdfDocument: pdfjs.PDFDocumentProxy,
   documentId: string,
   onProgress?: (current: number, total: number) => void,
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
+  options?: {
+    priorityPages?: number[];
+    progressIntervalPages?: number;
+  }
 ): Promise<DocumentTextCache> {
   const existing = textCache.get(documentId);
   if (existing && existing.pages.size === pdfDocument.numPages) {
@@ -155,25 +159,39 @@ export async function extractAllPagesText(
 
   const numPages = pdfDocument.numPages;
   const YIELD_INTERVAL = 3;
+  const progressInterval = Math.max(1, options?.progressIntervalPages ?? 4);
+  const priorityPages = Array.from(new Set((options?.priorityPages || [])
+    .filter(page => Number.isInteger(page) && page >= 1 && page <= numPages)));
 
-  for (let i = 1; i <= numPages; i++) {
+  const orderedPages = [
+    ...priorityPages,
+    ...Array.from({ length: numPages }, (_, index) => index + 1)
+      .filter(page => !priorityPages.includes(page))
+  ];
+
+  let processedPages = 0;
+  let lastProgressReport = 0;
+
+  for (const pageNumber of orderedPages) {
     if (abortSignal?.aborted) {
       logger.info(
-        `Text extraction aborted for document ${documentId} at page ${i}`,
+        `Text extraction aborted for document ${documentId} at page ${pageNumber}`,
         'pdfTextExtractor.extractAllPagesText'
       );
       return cache;
     }
 
-    const pageContent = await extractPageText(pdfDocument, i);
-    cache.pages.set(i, pageContent);
+    const pageContent = await extractPageText(pdfDocument, pageNumber);
+    cache.pages.set(pageNumber, pageContent);
     textCache.set(documentId, { ...cache, pages: new Map(cache.pages) });
+    processedPages += 1;
 
-    if (onProgress) {
-      onProgress(i, numPages);
+    if (onProgress && (processedPages - lastProgressReport >= progressInterval || processedPages === numPages)) {
+      onProgress(processedPages, numPages);
+      lastProgressReport = processedPages;
     }
 
-    if (i % YIELD_INTERVAL === 0) {
+    if (processedPages % YIELD_INTERVAL === 0) {
       await yieldToMain();
     }
   }
