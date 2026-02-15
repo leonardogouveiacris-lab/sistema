@@ -97,6 +97,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     insertTextInField,
     toggleViewMode,
     setBookmarks,
+    setBookmarkStatusByDoc,
+    resetBookmarksStatusByDoc,
     setIsLoadingBookmarks,
     setBookmarksError,
     toggleBookmarkPanel,
@@ -660,13 +662,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           bookmarkExtractionLoadedRef.current.clear();
           bookmarkExtractionFailedRef.current.clear();
           bookmarkExtractionInFlightRef.current.clear();
+          resetBookmarksStatusByDoc(state.documents.map(doc => doc.id));
           setIsLoadingBookmarks(false);
           return new Map();
         }
         return prev;
       });
     }
-  }, [state.documents, setIsLoadingBookmarks]);
+  }, [state.documents, resetBookmarksStatusByDoc, setIsLoadingBookmarks]);
 
   useEffect(() => {
     heavyTaskGenerationRef.current += 1;
@@ -684,7 +687,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     bookmarkExtractionLoadedRef.current.clear();
     bookmarkExtractionFailedRef.current.clear();
     bookmarkExtractionInFlightRef.current.clear();
-  }, [state.isOpen, documentSetSignature, cancelHeavyTasks]);
+
+    resetBookmarksStatusByDoc(state.documents.map(doc => doc.id));
+  }, [state.isOpen, state.documents, documentSetSignature, cancelHeavyTasks, resetBookmarksStatusByDoc]);
+
+  useEffect(() => {
+    const hasLoadingBookmarks = Array.from(state.bookmarksStatusByDoc.values()).some(status => status === 'loading');
+    setIsLoadingBookmarks(hasLoadingBookmarks);
+  }, [state.bookmarksStatusByDoc, setIsLoadingBookmarks]);
 
   /**
    * Effect para carregar highlights quando o PDF é aberto
@@ -1732,7 +1742,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     bookmarkExtractionInFlightRef.current.add(documentId);
-    setIsLoadingBookmarks(true);
+    setBookmarkStatusByDoc(documentId, 'loading');
     startPhaseTimer(`secondary-bookmarks-${documentId}`);
 
     const documentInfo: DocumentInfo = {
@@ -1756,6 +1766,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       bookmarkExtractionLoadedRef.current.add(documentId);
+      setBookmarkStatusByDoc(documentId, 'done');
       setDocumentBookmarks(prev => {
         const newMap = new Map(prev);
         newMap.set(currentDoc.id, {
@@ -1776,6 +1787,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     } catch (error) {
       if (!signal.aborted) {
         bookmarkExtractionFailedRef.current.add(documentId);
+        setBookmarkStatusByDoc(documentId, 'error');
         logger.warn(
           `Erro ao extrair bookmarks do documento "${documentInfo.documentName}"`,
           'FloatingPDFViewer.extractBookmarksForDocument',
@@ -1799,18 +1811,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     } finally {
       bookmarkExtractionInFlightRef.current.delete(documentId);
-      const hasPendingBookmarkTasks = heavyTaskQueueRef.current.some(task => task.type === 'bookmarks');
-      const hasInFlightBookmarkTasks = Array.from(heavyTaskInFlightRef.current.values()).some(task => task.type === 'bookmarks');
-      if (!hasPendingBookmarkTasks && !hasInFlightBookmarkTasks) {
-        setIsLoadingBookmarks(false);
-      }
 
       const doneCount = bookmarkExtractionLoadedRef.current.size + bookmarkExtractionFailedRef.current.size;
       if (doneCount >= state.documents.length && bookmarkExtractionLoadedRef.current.size === 0) {
         setBookmarksError('Nenhum bookmark encontrado nos documentos');
       }
     }
-  }, [pdfDocumentProxies, state.documents, state.isOpen, setIsLoadingBookmarks, setBookmarks, setBookmarksError, startPhaseTimer, finishPhaseTimer]);
+  }, [pdfDocumentProxies, state.documents, state.isOpen, setBookmarkStatusByDoc, setBookmarks, setBookmarksError, startPhaseTimer, finishPhaseTimer]);
 
   const enqueueBookmarkExtraction = useCallback((prioritizedDocumentIds: string[]) => {
     prioritizedDocumentIds.forEach((documentId, index) => {
