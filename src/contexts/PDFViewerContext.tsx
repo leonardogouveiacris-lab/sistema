@@ -55,6 +55,7 @@ export type SidebarTab = 'bookmarks' | 'decisions' | 'verbas' | 'documentos' | '
  * Modos de visualização do PDF
  */
 export type PDFViewMode = 'paginated' | 'continuous';
+export type BookmarkLoadStatus = 'idle' | 'loading' | 'done' | 'error';
 
 /**
  * Modo de performance - otimiza renderização desabilitando features pesadas
@@ -113,6 +114,7 @@ interface PDFViewerState {
   highlightedPage: number | null;
   viewMode: PDFViewMode;
   bookmarks: PDFBookmark[];
+  bookmarksStatusByDoc: Map<string, BookmarkLoadStatus>;
   isLoadingBookmarks: boolean;
   bookmarksError: string | null;
   isBookmarkPanelVisible: boolean;
@@ -218,6 +220,8 @@ interface PDFViewerContextType {
 
   // Bookmarks
   setBookmarks: (bookmarks: PDFBookmark[]) => void;
+  setBookmarkStatusByDoc: (documentId: string, status: BookmarkLoadStatus) => void;
+  resetBookmarksStatusByDoc: (documentIds?: string[]) => void;
   setIsLoadingBookmarks: (isLoading: boolean) => void;
   setBookmarksError: (error: string | null) => void;
 
@@ -365,6 +369,7 @@ const DEFAULT_STATE: PDFViewerState = {
   highlightedPage: null,
   viewMode: 'paginated',
   bookmarks: [],
+  bookmarksStatusByDoc: new Map(),
   isLoadingBookmarks: false,
   bookmarksError: null,
   isBookmarkPanelVisible: true,
@@ -626,6 +631,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       ...prev,
       isOpen: true,
       documents,
+      bookmarksStatusByDoc: new Map(documents.map(doc => [doc.id, 'idle' as BookmarkLoadStatus])),
       currentDocumentIndex: 0,
       currentPage: 1,
       selectedText: '',
@@ -662,6 +668,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       selectedText: '',
       selectionPosition: null,
       bookmarks: [],
+      bookmarksStatusByDoc: new Map(),
       isLoadingBookmarks: false,
       bookmarksError: null,
       documentPageInfo: [],
@@ -1147,6 +1154,29 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const setBookmarks = useCallback((bookmarks: PDFBookmark[]) => {
     setState(prev => ({ ...prev, bookmarks }));
     logger.info(`Bookmarks carregados: ${bookmarks.length} items`, 'PDFViewerContext.setBookmarks');
+  }, []);
+
+  const setBookmarkStatusByDoc = useCallback((documentId: string, status: BookmarkLoadStatus) => {
+    setState(prev => {
+      const nextStatusMap = new Map(prev.bookmarksStatusByDoc);
+      nextStatusMap.set(documentId, status);
+      return { ...prev, bookmarksStatusByDoc: nextStatusMap };
+    });
+  }, []);
+
+  const resetBookmarksStatusByDoc = useCallback((documentIds?: string[]) => {
+    setState(prev => {
+      if (!documentIds || documentIds.length === 0) {
+        return { ...prev, bookmarksStatusByDoc: new Map() };
+      }
+
+      const nextStatusMap = new Map<string, BookmarkLoadStatus>();
+      documentIds.forEach(docId => {
+        nextStatusMap.set(docId, 'idle');
+      });
+
+      return { ...prev, bookmarksStatusByDoc: nextStatusMap };
+    });
   }, []);
 
   /**
@@ -2143,6 +2173,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     unregisterEditor,
     insertTextInField,
     setBookmarks,
+    setBookmarkStatusByDoc,
+    resetBookmarksStatusByDoc,
     setIsLoadingBookmarks,
     setBookmarksError,
     toggleBookmarkPanel,
@@ -2222,7 +2254,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setSidebarTab, setFormMode, startCreateDecision, startCreateVerba, startCreateDocumento, startCreateDocumentoLancamento,
     startEditDecision, startEditVerba, startEditDocumento, startEditDocumentoLancamento, cancelForm,
     registerEditor, unregisterEditor, insertTextInField,
-    setBookmarks, setIsLoadingBookmarks, setBookmarksError, toggleBookmarkPanel, setBookmarkPanelVisible, setBookmarkPanelWidth,
+    setBookmarks, setBookmarkStatusByDoc, resetBookmarksStatusByDoc, setIsLoadingBookmarks, setBookmarksError, toggleBookmarkPanel, setBookmarkPanelVisible, setBookmarkPanelWidth,
     setPageDimensions, getPageHeight, getPageWidth, setRenderRange, getEffectiveRenderRange, registerScrollContainer, getVisiblePageFromScroll,
     setHighlights, addHighlight, removeHighlight, updateHighlightColor,
     toggleHighlighter, setHighlighterActive, setSelectedHighlightColor, setHoveredHighlightId,
