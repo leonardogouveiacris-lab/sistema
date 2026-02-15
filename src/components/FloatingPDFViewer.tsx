@@ -187,6 +187,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const bookmarkExtractionInFlightRef = useRef<Set<string>>(new Set());
   const bookmarkExtractionLoadedRef = useRef<Set<string>>(new Set());
   const bookmarkExtractionFailedRef = useRef<Set<string>>(new Set());
+  const loadedDocumentRefsByGenerationRef = useRef<Set<string>>(new Set());
+  const proxyGenerationByDocumentRef = useRef<Map<string, number>>(new Map());
+  const documentSetGenerationRef = useRef(0);
+  const lastOpenDocumentSetSignatureRef = useRef<string | null>(null);
   const commentsBatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const heavyTaskQueueRef = useRef<HeavyDocumentTask[]>([]);
   const heavyTaskInFlightRef = useRef<Map<string, HeavyDocumentTask>>(new Map());
@@ -676,8 +680,36 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     cancelHeavyTasks('viewer-closed-or-document-set-changed');
 
     if (!state.isOpen) {
+      lastOpenDocumentSetSignatureRef.current = null;
+      setPdfDocumentProxies(new Map());
+      setDocumentPages(new Map());
+      setDocumentBookmarks(new Map());
+      loadedDocumentRefsByGenerationRef.current.clear();
+      proxyGenerationByDocumentRef.current.clear();
+      setBookmarks([]);
+      setIsLoadingBookmarks(false);
       return;
     }
+
+    const isNewDocumentSet = lastOpenDocumentSetSignatureRef.current !== documentSetSignature;
+    if (isNewDocumentSet) {
+      documentSetGenerationRef.current += 1;
+      setPdfDocumentProxies(new Map());
+      setDocumentPages(new Map());
+      setDocumentBookmarks(new Map());
+
+      bookmarkExtractionLoadedRef.current.clear();
+      bookmarkExtractionFailedRef.current.clear();
+      bookmarkExtractionInFlightRef.current.clear();
+      loadedDocumentRefsByGenerationRef.current.clear();
+      proxyGenerationByDocumentRef.current.clear();
+
+      setBookmarks([]);
+      setIsLoadingBookmarks(false);
+      resetBookmarksStatusByDoc(state.documents.map(doc => doc.id));
+    }
+
+    lastOpenDocumentSetSignatureRef.current = documentSetSignature;
 
     commentsLoadStartedRef.current = false;
     commentsLoadedDocsRef.current.clear();
@@ -689,7 +721,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     bookmarkExtractionInFlightRef.current.clear();
 
     resetBookmarksStatusByDoc(state.documents.map(doc => doc.id));
-  }, [state.isOpen, state.documents, documentSetSignature, cancelHeavyTasks, resetBookmarksStatusByDoc]);
+  }, [state.isOpen, state.documents, documentSetSignature, cancelHeavyTasks, resetBookmarksStatusByDoc, setBookmarks, setIsLoadingBookmarks]);
 
   useEffect(() => {
     const hasLoadingBookmarks = Array.from(state.bookmarksStatusByDoc.values()).some(status => status === 'loading');
@@ -1735,9 +1767,24 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const pdf = pdfDocumentProxies.get(documentId);
+    const proxyGeneration = proxyGenerationByDocumentRef.current.get(documentId);
+    const isProxyFresh = Boolean(pdf) && proxyGeneration === documentSetGenerationRef.current;
     const documentIndex = state.documents.findIndex(doc => doc.id === documentId);
     const currentDoc = state.documents[documentIndex];
-    if (!pdf || !currentDoc || documentIndex < 0) {
+
+    logger.info(
+      `Bookmark extraction proxy source = ${isProxyFresh ? 'fresh' : 'stale'}`,
+      'FloatingPDFViewer.extractBookmarksForDocument',
+      {
+        documentId,
+        hasProxy: Boolean(pdf),
+        proxyGeneration,
+        currentGeneration: documentSetGenerationRef.current,
+        loadedAfterOnDocumentLoadSuccess: loadedDocumentRefsByGenerationRef.current.has(documentId)
+      }
+    );
+
+    if (!pdf || !currentDoc || documentIndex < 0 || !isProxyFresh || !loadedDocumentRefsByGenerationRef.current.has(documentId)) {
       return;
     }
 
@@ -1863,6 +1910,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       newMap.set(currentDoc.id, pdf);
       return newMap;
     });
+    loadedDocumentRefsByGenerationRef.current.add(currentDoc.id);
+    proxyGenerationByDocumentRef.current.set(currentDoc.id, documentSetGenerationRef.current);
 
     const currentExtraction = textExtractionAbortControllersRef.current.get(currentDoc.id);
     if (currentExtraction) {
