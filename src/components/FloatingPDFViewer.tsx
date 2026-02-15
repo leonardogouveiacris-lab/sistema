@@ -56,6 +56,20 @@ pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 const PDF_DEBUG = false;
 const BOOKMARKS_IDLE_TIMEOUT_MS = 1000;
 const COMMENTS_BATCH_DELAY_MS = 120;
+const HEAVY_TASK_CONCURRENCY = 2;
+
+type HeavyTaskType = 'comments' | 'bookmarks';
+
+interface HeavyDocumentTask {
+  id: string;
+  type: HeavyTaskType;
+  documentId: string;
+  priority: number;
+  enqueuedAt: number;
+  controller: AbortController;
+  generation: number;
+  run: (signal: AbortSignal) => Promise<void>;
+}
 
 interface FloatingPDFViewerProps {
   processId?: string;
@@ -172,9 +186,22 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const bookmarkExtractionLoadedRef = useRef<Set<string>>(new Set());
   const bookmarkExtractionFailedRef = useRef<Set<string>>(new Set());
   const commentsBatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const heavyTaskQueueRef = useRef<HeavyDocumentTask[]>([]);
+  const heavyTaskInFlightRef = useRef<Map<string, HeavyDocumentTask>>(new Map());
+  const heavyTaskGenerationRef = useRef(0);
+  const heavyTaskMetricsRef = useRef({
+    enqueued: 0,
+    started: 0,
+    completed: 0,
+    cancelled: 0,
+    totalWaitMs: 0,
+    totalRunMs: 0,
+    maxBacklog: 0
+  });
   const INTERACTION_DEBOUNCE_MS = 200;
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
+  const documentSetSignature = useMemo(() => state.documents.map(doc => doc.id).join('|'), [state.documents]);
 
   const startPhaseTimer = useCallback((phase: string) => {
     phaseTimersRef.current.set(phase, performance.now());
@@ -200,6 +227,125 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const timeoutId = window.setTimeout(task, 0);
     return () => window.clearTimeout(timeoutId);
   }, []);
+
+  const logHeavyTaskMetrics = useCallback((reason: string) => {
+    const metrics = heavyTaskMetricsRef.current;
+    const completed = Math.max(metrics.completed, 1);
+    logger.info(
+      'Métricas do orquestrador de tarefas pesadas',
+      'FloatingPDFViewer.heavyTaskQueue',
+      {
+        reason,
+        inFlight: heavyTaskInFlightRef.current.size,
+        queued: heavyTaskQueueRef.current.length,
+        enqueued: metrics.enqueued,
+        started: metrics.started,
+        completed: metrics.completed,
+        cancelled: metrics.cancelled,
+        maxBacklog: metrics.maxBacklog,
+        avgWaitMs: Number((metrics.totalWaitMs / completed).toFixed(2)),
+        avgRunMs: Number((metrics.totalRunMs / completed).toFixed(2))
+      }
+    );
+  }, []);
+
+  const cancelHeavyTasks = useCallback((reason: string) => {
+    const pending = heavyTaskQueueRef.current.length;
+    const running = heavyTaskInFlightRef.current.size;
+
+    if (pending === 0 && running === 0) {
+      return;
+    }
+
+    heavyTaskMetricsRef.current.cancelled += pending + running;
+
+    heavyTaskQueueRef.current.forEach(task => {
+      task.controller.abort();
+    });
+
+    heavyTaskInFlightRef.current.forEach(task => {
+      task.controller.abort();
+    });
+
+    heavyTaskQueueRef.current = [];
+    heavyTaskInFlightRef.current.clear();
+
+    logHeavyTaskMetrics(reason);
+  }, [logHeavyTaskMetrics]);
+
+  const processHeavyTaskQueue = useCallback(() => {
+    while (
+      heavyTaskInFlightRef.current.size < HEAVY_TASK_CONCURRENCY &&
+      heavyTaskQueueRef.current.length > 0
+    ) {
+      heavyTaskQueueRef.current.sort((a, b) => {
+        if (b.priority !== a.priority) {
+          return b.priority - a.priority;
+        }
+        return a.enqueuedAt - b.enqueuedAt;
+      });
+
+      const nextTask = heavyTaskQueueRef.current.shift();
+      if (!nextTask || nextTask.controller.signal.aborted || nextTask.generation !== heavyTaskGenerationRef.current) {
+        continue;
+      }
+
+      const startedAt = performance.now();
+      heavyTaskMetricsRef.current.started += 1;
+      heavyTaskMetricsRef.current.totalWaitMs += startedAt - nextTask.enqueuedAt;
+      heavyTaskInFlightRef.current.set(nextTask.id, nextTask);
+
+      void nextTask.run(nextTask.controller.signal)
+        .catch(error => {
+          if (nextTask.controller.signal.aborted) {
+            return;
+          }
+          logger.warn(
+            'Falha ao executar tarefa pesada',
+            'FloatingPDFViewer.heavyTaskQueue',
+            { taskId: nextTask.id, type: nextTask.type, documentId: nextTask.documentId, error }
+          );
+        })
+        .finally(() => {
+          heavyTaskInFlightRef.current.delete(nextTask.id);
+          if (!nextTask.controller.signal.aborted) {
+            heavyTaskMetricsRef.current.completed += 1;
+            heavyTaskMetricsRef.current.totalRunMs += performance.now() - startedAt;
+          }
+
+          if (heavyTaskQueueRef.current.length === 0 && heavyTaskInFlightRef.current.size === 0) {
+            logHeavyTaskMetrics('queue-drained');
+          }
+
+          processHeavyTaskQueue();
+        });
+    }
+  }, [logHeavyTaskMetrics]);
+
+  const enqueueHeavyTask = useCallback((task: Omit<HeavyDocumentTask, 'enqueuedAt' | 'controller' | 'generation'>) => {
+    const existsInQueue = heavyTaskQueueRef.current.some(existing => existing.id === task.id);
+    const existsInFlight = heavyTaskInFlightRef.current.has(task.id);
+
+    if (existsInQueue || existsInFlight) {
+      return;
+    }
+
+    const heavyTask: HeavyDocumentTask = {
+      ...task,
+      generation: heavyTaskGenerationRef.current,
+      enqueuedAt: performance.now(),
+      controller: new AbortController()
+    };
+
+    heavyTaskQueueRef.current.push(heavyTask);
+    heavyTaskMetricsRef.current.enqueued += 1;
+    heavyTaskMetricsRef.current.maxBacklog = Math.max(
+      heavyTaskMetricsRef.current.maxBacklog,
+      heavyTaskQueueRef.current.length + heavyTaskInFlightRef.current.size
+    );
+
+    processHeavyTaskQueue();
+  }, [processHeavyTaskQueue]);
 
   useEffect(() => {
     if (!isZoomChangingRef.current) {
@@ -522,6 +668,24 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
   }, [state.documents, setIsLoadingBookmarks]);
 
+  useEffect(() => {
+    heavyTaskGenerationRef.current += 1;
+    cancelHeavyTasks('viewer-closed-or-document-set-changed');
+
+    if (!state.isOpen) {
+      return;
+    }
+
+    commentsLoadStartedRef.current = false;
+    commentsLoadedDocsRef.current.clear();
+    commentsLoadInFlightRef.current.clear();
+    commentsByDocumentRef.current.clear();
+
+    bookmarkExtractionLoadedRef.current.clear();
+    bookmarkExtractionFailedRef.current.clear();
+    bookmarkExtractionInFlightRef.current.clear();
+  }, [state.isOpen, documentSetSignature, cancelHeavyTasks]);
+
   /**
    * Effect para carregar highlights quando o PDF é aberto
    */
@@ -547,44 +711,57 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     loadHighlights();
   }, [state.isOpen, processId, state.documents.length, setHighlights]);
 
-  const loadCommentsInBatches = useCallback(async (prioritizedDocumentIds: string[]) => {
-    if (!state.isOpen || prioritizedDocumentIds.length === 0) {
+  const loadCommentsForDocument = useCallback(async (documentId: string, signal: AbortSignal) => {
+    if (!state.isOpen || commentsLoadInFlightRef.current.has(documentId) || commentsLoadedDocsRef.current.has(documentId)) {
       return;
     }
 
-    startPhaseTimer('tertiary-comments');
-    const queue = prioritizedDocumentIds.filter(id => !commentsLoadedDocsRef.current.has(id));
+    commentsLoadInFlightRef.current.add(documentId);
 
-    for (const documentId of queue) {
-      if (!state.isOpen || commentsLoadInFlightRef.current.has(documentId)) {
-        continue;
+    try {
+      const comments = await PDFCommentsService.getCommentsWithConnectorsByDocument(documentId);
+      if (signal.aborted || !state.isOpen) {
+        return;
       }
 
-      commentsLoadInFlightRef.current.add(documentId);
-      try {
-        const comments = await PDFCommentsService.getCommentsWithConnectorsByDocument(documentId);
-        commentsLoadedDocsRef.current.add(documentId);
-        commentsByDocumentRef.current.set(documentId, comments);
-        const mergedComments = Array.from(commentsByDocumentRef.current.values()).flat();
-        setComments(mergedComments);
-      } catch (error) {
+      commentsLoadedDocsRef.current.add(documentId);
+      commentsByDocumentRef.current.set(documentId, comments);
+      setComments(Array.from(commentsByDocumentRef.current.values()).flat());
+    } catch (error) {
+      if (!signal.aborted) {
         logger.warn(
           'Erro ao carregar comentários do documento (não bloqueante)',
-          'FloatingPDFViewer.loadCommentsInBatches',
+          'FloatingPDFViewer.loadCommentsForDocument',
           { documentId, error }
         );
-      } finally {
-        commentsLoadInFlightRef.current.delete(documentId);
       }
+    } finally {
+      commentsLoadInFlightRef.current.delete(documentId);
+    }
+  }, [state.isOpen, setComments]);
 
-      await new Promise(resolve => setTimeout(resolve, COMMENTS_BATCH_DELAY_MS));
+  const enqueueCommentsLoad = useCallback((prioritizedDocumentIds: string[]) => {
+    const queue = prioritizedDocumentIds.filter(id => !commentsLoadedDocsRef.current.has(id));
+    if (queue.length === 0) {
+      return;
     }
 
-    finishPhaseTimer('tertiary-comments', 'FloatingPDFViewer.loadCommentsInBatches', {
-      queuedDocuments: queue.length,
-      loadedDocuments: commentsLoadedDocsRef.current.size
+
+    queue.forEach((documentId, index) => {
+      enqueueHeavyTask({
+        id: `comments:${documentId}`,
+        type: 'comments',
+        documentId,
+        priority: 1000 - index,
+        run: async (signal) => {
+          await loadCommentsForDocument(documentId, signal);
+          if (!signal.aborted) {
+            await new Promise(resolve => setTimeout(resolve, COMMENTS_BATCH_DELAY_MS));
+          }
+        }
+      });
     });
-  }, [state.isOpen, setComments, startPhaseTimer, finishPhaseTimer]);
+  }, [enqueueHeavyTask, loadCommentsForDocument]);
 
   /**
    * Effect para gerenciar o caret piscando (como no Acrobat)
@@ -1542,8 +1719,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
   }, [state.currentPage, state.totalPages, state.viewMode]);
 
-  const extractBookmarksForDocument = useCallback(async (documentId: string) => {
-    if (bookmarkExtractionInFlightRef.current.has(documentId) || bookmarkExtractionLoadedRef.current.has(documentId)) {
+  const extractBookmarksForDocument = useCallback(async (documentId: string, signal: AbortSignal) => {
+    if (signal.aborted || bookmarkExtractionInFlightRef.current.has(documentId) || bookmarkExtractionLoadedRef.current.has(documentId)) {
       return;
     }
 
@@ -1570,6 +1747,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     try {
       const cachedBookmarks = loadBookmarksFromCache(cacheKey);
       const bookmarks = cachedBookmarks || await extractBookmarksWithDocumentInfo(pdf, documentInfo);
+      if (signal.aborted || !state.isOpen) {
+        return;
+      }
 
       if (!cachedBookmarks) {
         saveBookmarksToCache(cacheKey, bookmarks);
@@ -1594,38 +1774,60 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         fromCache: Boolean(cachedBookmarks)
       });
     } catch (error) {
-      bookmarkExtractionFailedRef.current.add(documentId);
-      logger.warn(
-        `Erro ao extrair bookmarks do documento "${documentInfo.documentName}"`,
-        'FloatingPDFViewer.extractBookmarksForDocument',
-        { documentId, error }
-      );
+      if (!signal.aborted) {
+        bookmarkExtractionFailedRef.current.add(documentId);
+        logger.warn(
+          `Erro ao extrair bookmarks do documento "${documentInfo.documentName}"`,
+          'FloatingPDFViewer.extractBookmarksForDocument',
+          { documentId, error }
+        );
 
-      setDocumentBookmarks(prev => {
-        const newMap = new Map(prev);
-        const existing = newMap.get(currentDoc.id);
-        if (!existing) {
-          newMap.set(currentDoc.id, {
-            bookmarks: [],
-            documentName: documentInfo.documentName,
-            documentIndex: documentInfo.documentIndex,
-            pageCount: pdf.numPages
-          });
-        }
-        setBookmarks(mergeBookmarksFromMultipleDocuments(newMap));
-        return newMap;
-      });
+        setDocumentBookmarks(prev => {
+          const newMap = new Map(prev);
+          const existing = newMap.get(currentDoc.id);
+          if (!existing) {
+            newMap.set(currentDoc.id, {
+              bookmarks: [],
+              documentName: documentInfo.documentName,
+              documentIndex: documentInfo.documentIndex,
+              pageCount: pdf.numPages
+            });
+          }
+          setBookmarks(mergeBookmarksFromMultipleDocuments(newMap));
+          return newMap;
+        });
+      }
     } finally {
       bookmarkExtractionInFlightRef.current.delete(documentId);
-      const doneCount = bookmarkExtractionLoadedRef.current.size + bookmarkExtractionFailedRef.current.size;
-      if (doneCount >= state.documents.length) {
+      const hasPendingBookmarkTasks = heavyTaskQueueRef.current.some(task => task.type === 'bookmarks');
+      const hasInFlightBookmarkTasks = Array.from(heavyTaskInFlightRef.current.values()).some(task => task.type === 'bookmarks');
+      if (!hasPendingBookmarkTasks && !hasInFlightBookmarkTasks) {
         setIsLoadingBookmarks(false);
-        if (bookmarkExtractionLoadedRef.current.size === 0) {
-          setBookmarksError('Nenhum bookmark encontrado nos documentos');
-        }
+      }
+
+      const doneCount = bookmarkExtractionLoadedRef.current.size + bookmarkExtractionFailedRef.current.size;
+      if (doneCount >= state.documents.length && bookmarkExtractionLoadedRef.current.size === 0) {
+        setBookmarksError('Nenhum bookmark encontrado nos documentos');
       }
     }
-  }, [pdfDocumentProxies, state.documents, setIsLoadingBookmarks, setBookmarks, setBookmarksError, startPhaseTimer, finishPhaseTimer]);
+  }, [pdfDocumentProxies, state.documents, state.isOpen, setIsLoadingBookmarks, setBookmarks, setBookmarksError, startPhaseTimer, finishPhaseTimer]);
+
+  const enqueueBookmarkExtraction = useCallback((prioritizedDocumentIds: string[]) => {
+    prioritizedDocumentIds.forEach((documentId, index) => {
+      if (bookmarkExtractionLoadedRef.current.has(documentId) || bookmarkExtractionInFlightRef.current.has(documentId)) {
+        return;
+      }
+
+      enqueueHeavyTask({
+        id: `bookmarks:${documentId}`,
+        type: 'bookmarks',
+        documentId,
+        priority: 3000 - index,
+        run: (signal) => extractBookmarksForDocument(documentId, signal)
+      });
+    });
+  }, [enqueueHeavyTask, extractBookmarksForDocument]);
+
 
   /**
    * Handler quando PDF é carregado com sucesso
@@ -1691,30 +1893,33 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [state.documents, setTextExtractionProgress, startPhaseTimer, finishPhaseTimer]);
 
   useEffect(() => {
-    if (!state.isOpen) {
-      return;
-    }
-
-    if (state.documents.length === 0 || pdfDocumentProxies.size === 0) {
+    if (!state.isOpen || state.documents.length === 0 || pdfDocumentProxies.size === 0) {
       return;
     }
 
     const activeDocument = getCurrentDocument();
+    const visibleDocumentIds = Array.from(scrollBasedVisiblePages)
+      .map(page => getDocumentByGlobalPage(page)?.id)
+      .filter((id): id is string => Boolean(id));
+    const prioritizedDocumentIds = [
+      activeDocument?.id,
+      ...visibleDocumentIds,
+      ...state.documents.map(doc => doc.id)
+    ].filter((id, index, arr): id is string => Boolean(id) && arr.indexOf(id) === index);
+
     if (state.isBookmarkPanelVisible && activeDocument?.id) {
-      extractBookmarksForDocument(activeDocument.id);
+      enqueueBookmarkExtraction([activeDocument.id, ...prioritizedDocumentIds]);
+      return;
     }
 
-
     const cancelIdle = scheduleIdleTask(() => {
-      state.documents.forEach(doc => {
-        extractBookmarksForDocument(doc.id);
-      });
+      enqueueBookmarkExtraction(prioritizedDocumentIds);
     });
 
     return () => {
       cancelIdle();
     };
-  }, [state.isOpen, state.documents, state.isBookmarkPanelVisible, pdfDocumentProxies, getCurrentDocument, extractBookmarksForDocument, scheduleIdleTask]);
+  }, [state.isOpen, state.documents, state.isBookmarkPanelVisible, pdfDocumentProxies, scrollBasedVisiblePages, getCurrentDocument, getDocumentByGlobalPage, enqueueBookmarkExtraction, scheduleIdleTask]);
 
   useEffect(() => {
     if (!state.isOpen) {
@@ -1744,7 +1949,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         ...state.documents.map(doc => doc.id)
       ].filter((id, index, arr): id is string => Boolean(id) && arr.indexOf(id) === index);
 
-      void loadCommentsInBatches(prioritizedDocumentIds);
+      enqueueCommentsLoad(prioritizedDocumentIds);
       finishPhaseTimer('tertiary-comments-after-first-paint', 'FloatingPDFViewer.commentsPostPaint', {
         prioritizedDocuments: prioritizedDocumentIds.length
       });
@@ -1761,7 +1966,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         commentsBatchTimeoutRef.current = null;
       }
     };
-  }, [state.isOpen, state.documents, scrollBasedVisiblePages, getCurrentDocument, getDocumentByGlobalPage, loadCommentsInBatches, setComments, startPhaseTimer, finishPhaseTimer]);
+  }, [state.isOpen, state.documents, scrollBasedVisiblePages, getCurrentDocument, getDocumentByGlobalPage, enqueueCommentsLoad, setComments, startPhaseTimer, finishPhaseTimer]);
 
   /**
    * Calcula o offset de página global para cada documento
