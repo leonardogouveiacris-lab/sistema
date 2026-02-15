@@ -34,7 +34,7 @@ import { Columns2 as Columns, FileText, BookOpen, Highlighter, Search, FileOutpu
 import { useResponsivePanel } from '../hooks';
 import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_CONFIG } from '../types/Highlight';
 import { PDFSidebar, PDFBookmarkPanel, TextSelectionPopup, HighlightLayer, SelectionOverlay, PDFSearchPopup, PDFSearchHighlightLayer, RotationControls, PageRangeRotationModal, MemoizedPDFPage, PageExtractionModal, CommentLayer } from './pdf';
-import { COMMENT_COLORS, CommentColor } from '../types/PDFComment';
+import { COMMENT_COLORS, CommentColor, PDFComment } from '../types/PDFComment';
 import * as PDFCommentsService from '../services/pdfComments.service';
 import { useSelectionOverlay } from '../hooks/useSelectionOverlay';
 import logger from '../utils/logger';
@@ -54,6 +54,8 @@ import { mergeRectsIntoLines } from '../utils/rectMerger';
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 const PDF_DEBUG = false;
+const BOOKMARKS_IDLE_TIMEOUT_MS = 1000;
+const COMMENTS_BATCH_DELAY_MS = 120;
 
 interface FloatingPDFViewerProps {
   processId?: string;
@@ -159,9 +161,45 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const pageBeforeModeSwitchRef = useRef<number>(state.currentPage);
   const prevViewModeRef = useRef<'continuous' | 'paginated'>(state.viewMode);
   const hasMountedRef = useRef(false);
+  const phaseTimersRef = useRef<Map<string, number>>(new Map());
+  const criticalDocStartTimesRef = useRef<Map<string, number>>(new Map());
+  const firstPaintRecordedRef = useRef(false);
+  const commentsLoadStartedRef = useRef(false);
+  const commentsLoadedDocsRef = useRef<Set<string>>(new Set());
+  const commentsLoadInFlightRef = useRef<Set<string>>(new Set());
+  const commentsByDocumentRef = useRef<Map<string, PDFComment[]>>(new Map());
+  const bookmarkExtractionInFlightRef = useRef<Set<string>>(new Set());
+  const bookmarkExtractionLoadedRef = useRef<Set<string>>(new Set());
+  const bookmarkExtractionFailedRef = useRef<Set<string>>(new Set());
+  const commentsBatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const INTERACTION_DEBOUNCE_MS = 200;
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
+
+  const startPhaseTimer = useCallback((phase: string) => {
+    phaseTimersRef.current.set(phase, performance.now());
+  }, []);
+
+  const finishPhaseTimer = useCallback((phase: string, context: string, data?: Record<string, unknown>) => {
+    const start = phaseTimersRef.current.get(phase);
+    if (start === undefined) return;
+    const durationMs = performance.now() - start;
+    logger.info(
+      `Fase "${phase}" concluída em ${durationMs.toFixed(2)}ms`,
+      context,
+      data ? { ...data, durationMs } : { durationMs }
+    );
+    phaseTimersRef.current.delete(phase);
+  }, []);
+
+  const scheduleIdleTask = useCallback((task: () => void, timeout = BOOKMARKS_IDLE_TIMEOUT_MS): (() => void) => {
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(task, { timeout });
+      return () => window.cancelIdleCallback(idleId);
+    }
+    const timeoutId = window.setTimeout(task, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   useEffect(() => {
     if (!isZoomChangingRef.current) {
@@ -473,7 +511,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       setDocumentBookmarks(prev => {
         const hasStaleEntries = Array.from(prev.keys()).some(id => !currentDocIds.has(id));
         if (hasStaleEntries || prev.size > state.documents.length) {
-          setIsLoadingBookmarks(true);
+          bookmarkExtractionLoadedRef.current.clear();
+          bookmarkExtractionFailedRef.current.clear();
+          bookmarkExtractionInFlightRef.current.clear();
+          setIsLoadingBookmarks(false);
           return new Map();
         }
         return prev;
@@ -506,34 +547,44 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     loadHighlights();
   }, [state.isOpen, processId, state.documents.length, setHighlights]);
 
-  useEffect(() => {
-    if (!state.isOpen || state.documents.length === 0) {
+  const loadCommentsInBatches = useCallback(async (prioritizedDocumentIds: string[]) => {
+    if (!state.isOpen || prioritizedDocumentIds.length === 0) {
       return;
     }
 
-    const loadComments = async () => {
-      try {
-        const commentPromises = state.documents.map(doc =>
-          PDFCommentsService.getCommentsWithConnectorsByDocument(doc.id)
-        );
-        const commentsArrays = await Promise.all(commentPromises);
-        const allComments = commentsArrays.flat();
-        setComments(allComments);
-        logger.info(
-          `Loaded ${allComments.length} comments`,
-          'FloatingPDFViewer.loadComments'
-        );
-      } catch (error) {
-        logger.error(
-          'Error loading comments',
-          'FloatingPDFViewer.loadComments',
-          { error }
-        );
-      }
-    };
+    startPhaseTimer('tertiary-comments');
+    const queue = prioritizedDocumentIds.filter(id => !commentsLoadedDocsRef.current.has(id));
 
-    loadComments();
-  }, [state.isOpen, state.documents.length, setComments]);
+    for (const documentId of queue) {
+      if (!state.isOpen || commentsLoadInFlightRef.current.has(documentId)) {
+        continue;
+      }
+
+      commentsLoadInFlightRef.current.add(documentId);
+      try {
+        const comments = await PDFCommentsService.getCommentsWithConnectorsByDocument(documentId);
+        commentsLoadedDocsRef.current.add(documentId);
+        commentsByDocumentRef.current.set(documentId, comments);
+        const mergedComments = Array.from(commentsByDocumentRef.current.values()).flat();
+        setComments(mergedComments);
+      } catch (error) {
+        logger.warn(
+          'Erro ao carregar comentários do documento (não bloqueante)',
+          'FloatingPDFViewer.loadCommentsInBatches',
+          { documentId, error }
+        );
+      } finally {
+        commentsLoadInFlightRef.current.delete(documentId);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, COMMENTS_BATCH_DELAY_MS));
+    }
+
+    finishPhaseTimer('tertiary-comments', 'FloatingPDFViewer.loadCommentsInBatches', {
+      queuedDocuments: queue.length,
+      loadedDocuments: commentsLoadedDocsRef.current.size
+    });
+  }, [state.isOpen, setComments, startPhaseTimer, finishPhaseTimer]);
 
   /**
    * Effect para gerenciar o caret piscando (como no Acrobat)
@@ -1478,10 +1529,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
       }
 
-      setIdlePages(prev => {
-        const combined = new Set([...immediatePagesToPreload, ...additionalPages]);
-        return combined;
-      });
+      const combined = new Set([...immediatePagesToPreload, ...additionalPages]);
+      setIdlePages(combined);
     });
 
     setIdlePages(immediatePagesToPreload);
@@ -1493,14 +1542,107 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
   }, [state.currentPage, state.totalPages, state.viewMode]);
 
+  const extractBookmarksForDocument = useCallback(async (documentId: string) => {
+    if (bookmarkExtractionInFlightRef.current.has(documentId) || bookmarkExtractionLoadedRef.current.has(documentId)) {
+      return;
+    }
+
+    const pdf = pdfDocumentProxies.get(documentId);
+    const documentIndex = state.documents.findIndex(doc => doc.id === documentId);
+    const currentDoc = state.documents[documentIndex];
+    if (!pdf || !currentDoc || documentIndex < 0) {
+      return;
+    }
+
+    bookmarkExtractionInFlightRef.current.add(documentId);
+    setIsLoadingBookmarks(true);
+    startPhaseTimer(`secondary-bookmarks-${documentId}`);
+
+    const documentInfo: DocumentInfo = {
+      documentId: currentDoc.id,
+      documentIndex,
+      documentName: currentDoc.displayName || currentDoc.fileName,
+      pageOffset: 0
+    };
+
+    const cacheKey = generatePDFCacheKey(currentDoc.url, pdf.numPages, currentDoc.id);
+
+    try {
+      const cachedBookmarks = loadBookmarksFromCache(cacheKey);
+      const bookmarks = cachedBookmarks || await extractBookmarksWithDocumentInfo(pdf, documentInfo);
+
+      if (!cachedBookmarks) {
+        saveBookmarksToCache(cacheKey, bookmarks);
+      }
+
+      bookmarkExtractionLoadedRef.current.add(documentId);
+      setDocumentBookmarks(prev => {
+        const newMap = new Map(prev);
+        newMap.set(currentDoc.id, {
+          bookmarks,
+          documentName: documentInfo.documentName,
+          documentIndex: documentInfo.documentIndex,
+          pageCount: pdf.numPages
+        });
+        setBookmarks(mergeBookmarksFromMultipleDocuments(newMap));
+        return newMap;
+      });
+
+      finishPhaseTimer(`secondary-bookmarks-${documentId}`, 'FloatingPDFViewer.extractBookmarksForDocument', {
+        documentId,
+        bookmarkCount: bookmarks.length,
+        fromCache: Boolean(cachedBookmarks)
+      });
+    } catch (error) {
+      bookmarkExtractionFailedRef.current.add(documentId);
+      logger.warn(
+        `Erro ao extrair bookmarks do documento "${documentInfo.documentName}"`,
+        'FloatingPDFViewer.extractBookmarksForDocument',
+        { documentId, error }
+      );
+
+      setDocumentBookmarks(prev => {
+        const newMap = new Map(prev);
+        const existing = newMap.get(currentDoc.id);
+        if (!existing) {
+          newMap.set(currentDoc.id, {
+            bookmarks: [],
+            documentName: documentInfo.documentName,
+            documentIndex: documentInfo.documentIndex,
+            pageCount: pdf.numPages
+          });
+        }
+        setBookmarks(mergeBookmarksFromMultipleDocuments(newMap));
+        return newMap;
+      });
+    } finally {
+      bookmarkExtractionInFlightRef.current.delete(documentId);
+      const doneCount = bookmarkExtractionLoadedRef.current.size + bookmarkExtractionFailedRef.current.size;
+      if (doneCount >= state.documents.length) {
+        setIsLoadingBookmarks(false);
+        if (bookmarkExtractionLoadedRef.current.size === 0) {
+          setBookmarksError('Nenhum bookmark encontrado nos documentos');
+        }
+      }
+    }
+  }, [pdfDocumentProxies, state.documents, setIsLoadingBookmarks, setBookmarks, setBookmarksError, startPhaseTimer, finishPhaseTimer]);
+
   /**
    * Handler quando PDF é carregado com sucesso
-   * Armazena o número de páginas de cada documento e calcula o total
-   * Usa cache de bookmarks quando disponível para melhor performance
+   * Fase crítica: registra metadados mínimos para liberar a primeira renderização rapidamente
    */
-  const onDocumentLoadSuccess = useCallback(async (pdf: any, documentIndex: number) => {
+  const onDocumentLoadSuccess = useCallback((pdf: any, documentIndex: number) => {
     const { numPages } = pdf;
     const currentDoc = state.documents[documentIndex];
+    if (!currentDoc) {
+      return;
+    }
+
+    criticalDocStartTimesRef.current.set(currentDoc.id, performance.now());
+    startPhaseTimer(`critical-load-${currentDoc.id}`);
+    if (!phaseTimersRef.current.has('critical-first-page')) {
+      startPhaseTimer('critical-first-page');
+    }
 
     logger.success(
       `PDF carregado: ${currentDoc?.fileName || 'desconhecido'} com ${numPages} páginas (doc ${documentIndex + 1}/${state.documents.length})`,
@@ -1529,83 +1671,97 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return newMap;
     });
 
-    setIsLoadingBookmarks(true);
-
-    const documentInfo: DocumentInfo = {
-      documentId: currentDoc.id,
-      documentIndex: documentIndex,
-      documentName: currentDoc.displayName || currentDoc.fileName,
-      pageOffset: 0
-    };
-
-    const cacheKey = generatePDFCacheKey(currentDoc.url, numPages, currentDoc.id);
-
-    try {
-      const cachedBookmarks = loadBookmarksFromCache(cacheKey);
-      let bookmarks: any[];
-
-      if (cachedBookmarks) {
-        bookmarks = cachedBookmarks;
-      } else {
-        bookmarks = await extractBookmarksWithDocumentInfo(pdf, documentInfo);
-        saveBookmarksToCache(cacheKey, bookmarks);
-      }
-
-      setDocumentBookmarks(prev => {
-        const newMap = new Map(prev);
-        newMap.set(currentDoc.id, {
-          bookmarks,
-          documentName: documentInfo.documentName,
-          documentIndex: documentInfo.documentIndex,
-          pageCount: numPages
-        });
-
-        if (newMap.size === state.documents.length) {
-          const mergedBookmarks = mergeBookmarksFromMultipleDocuments(newMap);
-          setBookmarks(mergedBookmarks);
-          setIsLoadingBookmarks(false);
-
-          logger.success(
-            `Todos os ${state.documents.length} documentos processados. Bookmarks mesclados com sucesso.`,
-            'FloatingPDFViewer.onDocumentLoadSuccess'
-          );
-        }
-
-        return newMap;
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-
-      // Registra erro mas não bloqueia outros documentos
-      logger.warn(
-        `Erro ao extrair bookmarks do documento "${documentInfo.documentName}"`,
-        error,
-        'FloatingPDFViewer.onDocumentLoadSuccess'
-      );
-
-      setDocumentBookmarks(prev => {
-        const newMap = new Map(prev);
+    setDocumentBookmarks(prev => {
+      const newMap = new Map(prev);
+      if (!newMap.has(currentDoc.id)) {
         newMap.set(currentDoc.id, {
           bookmarks: [],
-          documentName: documentInfo.documentName,
-          documentIndex: documentInfo.documentIndex,
+          documentName: currentDoc.displayName || currentDoc.fileName,
+          documentIndex,
           pageCount: numPages
         });
+      }
+      return newMap;
+    });
 
-        if (newMap.size === state.documents.length) {
-          const mergedBookmarks = mergeBookmarksFromMultipleDocuments(newMap);
-          setBookmarks(mergedBookmarks);
-          setIsLoadingBookmarks(false);
+    finishPhaseTimer(`critical-load-${currentDoc.id}`, 'FloatingPDFViewer.onDocumentLoadSuccess', {
+      documentId: currentDoc.id,
+      numPages
+    });
+  }, [state.documents, setTextExtractionProgress, startPhaseTimer, finishPhaseTimer]);
 
-          if (mergedBookmarks.length === 0) {
-            setBookmarksError('Nenhum bookmark encontrado nos documentos');
-          }
-        }
-
-        return newMap;
-      });
+  useEffect(() => {
+    if (!state.isOpen) {
+      return;
     }
-  }, [state.documents, setBookmarks, setIsLoadingBookmarks, setBookmarksError, setTextExtractionProgress]);
+
+    if (state.documents.length === 0 || pdfDocumentProxies.size === 0) {
+      return;
+    }
+
+    const activeDocument = getCurrentDocument();
+    if (state.isBookmarkPanelVisible && activeDocument?.id) {
+      extractBookmarksForDocument(activeDocument.id);
+    }
+
+
+    const cancelIdle = scheduleIdleTask(() => {
+      state.documents.forEach(doc => {
+        extractBookmarksForDocument(doc.id);
+      });
+    });
+
+    return () => {
+      cancelIdle();
+    };
+  }, [state.isOpen, state.documents, state.isBookmarkPanelVisible, pdfDocumentProxies, getCurrentDocument, extractBookmarksForDocument, scheduleIdleTask]);
+
+  useEffect(() => {
+    if (!state.isOpen) {
+      commentsLoadStartedRef.current = false;
+      commentsLoadedDocsRef.current.clear();
+      commentsLoadInFlightRef.current.clear();
+      commentsByDocumentRef.current.clear();
+      setComments([]);
+      return;
+    }
+
+    if (!firstPaintRecordedRef.current || commentsLoadStartedRef.current || state.documents.length === 0) {
+      return;
+    }
+
+    commentsLoadStartedRef.current = true;
+    startPhaseTimer('tertiary-comments-after-first-paint');
+
+    const runAfterPaint = () => {
+      const activeDocument = getCurrentDocument();
+      const visibleDocumentIds = Array.from(scrollBasedVisiblePages)
+        .map(page => getDocumentByGlobalPage(page)?.id)
+        .filter((id): id is string => Boolean(id));
+      const prioritizedDocumentIds = [
+        activeDocument?.id,
+        ...visibleDocumentIds,
+        ...state.documents.map(doc => doc.id)
+      ].filter((id, index, arr): id is string => Boolean(id) && arr.indexOf(id) === index);
+
+      void loadCommentsInBatches(prioritizedDocumentIds);
+      finishPhaseTimer('tertiary-comments-after-first-paint', 'FloatingPDFViewer.commentsPostPaint', {
+        prioritizedDocuments: prioritizedDocumentIds.length
+      });
+    };
+
+    const frameId = window.requestAnimationFrame(() => {
+      commentsBatchTimeoutRef.current = setTimeout(runAfterPaint, 0);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      if (commentsBatchTimeoutRef.current) {
+        clearTimeout(commentsBatchTimeoutRef.current);
+        commentsBatchTimeoutRef.current = null;
+      }
+    };
+  }, [state.isOpen, state.documents, scrollBasedVisiblePages, getCurrentDocument, getDocumentByGlobalPage, loadCommentsInBatches, setComments, startPhaseTimer, finishPhaseTimer]);
 
   /**
    * Calcula o offset de página global para cada documento
@@ -2607,13 +2763,32 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       internalRotation: internalRotation || 0
     });
 
+    if (!firstPaintRecordedRef.current) {
+      firstPaintRecordedRef.current = true;
+      finishPhaseTimer('critical-first-page', 'FloatingPDFViewer.onPageLoadSuccess', { pageNumber });
+    }
+
+    const ownerDocument = getDocumentByGlobalPage(pageNumber);
+    if (ownerDocument) {
+      const criticalStart = criticalDocStartTimesRef.current.get(ownerDocument.id);
+      if (criticalStart !== undefined) {
+        const criticalDuration = performance.now() - criticalStart;
+        logger.info(
+          `Primeira página renderizada para ${ownerDocument.displayName || ownerDocument.fileName} em ${criticalDuration.toFixed(2)}ms`,
+          'FloatingPDFViewer.onPageLoadSuccess',
+          { documentId: ownerDocument.id, pageNumber, criticalDuration }
+        );
+        criticalDocStartTimesRef.current.delete(ownerDocument.id);
+      }
+    }
+
     if (PDF_DEBUG) {
       logger.info(
         `Página ${pageNumber} carregada: ${Math.round(baseWidth)}x${Math.round(baseHeight)}px (base), rotação interna: ${internalRotation || 0}°`,
         'FloatingPDFViewer.onPageLoadSuccess'
       );
     }
-  }, [setPageDimensions, state.zoom]);
+  }, [setPageDimensions, state.zoom, finishPhaseTimer, getDocumentByGlobalPage]);
 
   /**
    * Effect para fallback de renderização - garante que a página atual sempre renderize
