@@ -1837,6 +1837,83 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return null;
   }, [state.viewMode, state.currentPage, state.totalPages, state.documents, memoizedDocumentOffsets]);
 
+  const documentsToMountInContinuous = useMemo(() => {
+    if (state.viewMode !== 'continuous') {
+      return new Set<number>();
+    }
+
+    const baseDocumentIndices = new Set<number>();
+    const candidatePages = new Set<number>([
+      ...Array.from(scrollBasedVisiblePages),
+      ...Array.from(pagesToRender)
+    ]);
+
+    for (let i = -1; i <= 1; i++) {
+      const page = state.currentPage + i;
+      if (page >= 1 && page <= state.totalPages) {
+        candidatePages.add(page);
+      }
+    }
+
+    candidatePages.forEach((globalPage) => {
+      for (const [docIndex, doc] of state.documents.entries()) {
+        const offset = memoizedDocumentOffsets.get(doc.id);
+        if (offset && globalPage >= offset.startPage && globalPage <= offset.endPage) {
+          baseDocumentIndices.add(docIndex);
+          break;
+        }
+      }
+    });
+
+    if (baseDocumentIndices.size === 0) {
+      for (const [docIndex, doc] of state.documents.entries()) {
+        const offset = memoizedDocumentOffsets.get(doc.id);
+        if (offset && state.currentPage >= offset.startPage && state.currentPage <= offset.endPage) {
+          baseDocumentIndices.add(docIndex);
+          break;
+        }
+      }
+    }
+
+    const expandedWindowIndices = new Set<number>();
+    baseDocumentIndices.forEach((docIndex) => {
+      for (let i = -1; i <= 1; i++) {
+        const index = docIndex + i;
+        if (index >= 0 && index < state.documents.length) {
+          expandedWindowIndices.add(index);
+        }
+      }
+    });
+
+    return expandedWindowIndices;
+  }, [state.viewMode, state.currentPage, state.totalPages, state.documents, memoizedDocumentOffsets, scrollBasedVisiblePages, pagesToRender]);
+
+  const estimatedDocumentHeights = useMemo(() => {
+    const heights = new Map<string, number>();
+
+    state.documents.forEach((doc) => {
+      const offset = memoizedDocumentOffsets.get(doc.id);
+      const loadedPages = documentPages.get(doc.id) || 0;
+      const pageCount = loadedPages || (offset ? (offset.endPage - offset.startPage + 1) : 1);
+
+      if (!offset || pageCount <= 0) {
+        heights.set(doc.id, 920);
+        return;
+      }
+
+      let totalHeight = 0;
+      for (let localPage = 1; localPage <= pageCount; localPage++) {
+        const globalPage = offset.startPage + localPage - 1;
+        totalHeight += getPageHeight(globalPage);
+      }
+
+      const gapHeight = Math.max(pageCount - 1, 0) * 8;
+      heights.set(doc.id, Math.max(920, totalHeight + gapHeight));
+    });
+
+    return heights;
+  }, [state.documents, memoizedDocumentOffsets, documentPages, getPageHeight]);
+
   /**
    * Encontra qual documento contém uma determinada página global
    */
@@ -3216,15 +3293,41 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               {state.documents.map((doc, docIndex) => {
                 const numPages = documentPages.get(doc.id) || 0;
                 const offset = memoizedDocumentOffsets.get(doc.id);
+                const shouldMountDocument = state.viewMode === 'paginated'
+                  ? (currentPageInfo ? currentPageInfo.document.id === doc.id : docIndex === 0)
+                  : (documentsToMountInContinuous.size === 0
+                    ? docIndex === 0
+                    : documentsToMountInContinuous.has(docIndex));
 
                 if (state.viewMode === 'paginated') {
-                  if (currentPageInfo) {
-                    if (currentPageInfo.document.id !== doc.id) {
-                      return null;
-                    }
-                  } else if (docIndex !== 0) {
+                  if (!shouldMountDocument) {
                     return null;
                   }
+                }
+
+                if (state.viewMode === 'continuous' && !shouldMountDocument) {
+                  return (
+                    <div key={doc.id} className="flex flex-col items-center w-full">
+                      {docIndex > 0 && (
+                        <div className="max-w-4xl mb-4 bg-white border-l-4 border-blue-400 rounded shadow-sm p-2.5">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                            <div className="text-xs font-semibold text-gray-700 truncate">
+                              {doc.displayName}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div
+                        className="bg-white shadow-lg border border-gray-200 w-full max-w-4xl rounded-sm flex items-center justify-center"
+                        style={{ height: `${estimatedDocumentHeights.get(doc.id) || 920}px` }}
+                      >
+                        <div className="text-gray-400 text-xs">
+                          Documento fora da janela ativa ({doc.displayName})
+                        </div>
+                      </div>
+                    </div>
+                  );
                 }
 
                 return (
