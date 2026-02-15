@@ -3295,7 +3295,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                 const offset = memoizedDocumentOffsets.get(doc.id);
                 const shouldMountDocument = state.viewMode === 'paginated'
                   ? (currentPageInfo ? currentPageInfo.document.id === doc.id : docIndex === 0)
-                  : documentsToMountInContinuous.has(docIndex);
+                  : (documentsToMountInContinuous.size === 0
+                    ? docIndex === 0
+                    : documentsToMountInContinuous.has(docIndex));
 
                 if (state.viewMode === 'paginated') {
                   if (!shouldMountDocument) {
