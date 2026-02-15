@@ -35,6 +35,8 @@ const PDFBookmarkPanel: React.FC = () => {
     return countTotalBookmarks(state.bookmarks);
   }, [state.bookmarks]);
 
+  const hasBookmarks = state.bookmarks.length > 0;
+
   const handleBookmarkClick = (bookmark: PDFBookmark) => {
     if (bookmark.pageNumber) {
       navigateToPageWithHighlight(bookmark.pageNumber);
@@ -145,7 +147,7 @@ const PDFBookmarkPanel: React.FC = () => {
     );
   };
 
-  if (state.isLoadingBookmarks) {
+  if (state.isLoadingBookmarks && !hasBookmarks) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8">
         <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full mb-4"></div>
@@ -154,7 +156,7 @@ const PDFBookmarkPanel: React.FC = () => {
     );
   }
 
-  if (state.bookmarksError) {
+  if (state.bookmarksError && !hasBookmarks) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8">
         <AlertCircle className="text-red-500 mb-4" size={48} />
@@ -164,7 +166,7 @@ const PDFBookmarkPanel: React.FC = () => {
     );
   }
 
-  if (state.bookmarks.length === 0) {
+  if (!hasBookmarks) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8">
         <BookOpen className="text-gray-400 mb-4" size={48} />
@@ -185,9 +187,17 @@ const PDFBookmarkPanel: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-900">
             Índice do Documento
           </h3>
-          <span className="text-xs text-gray-500">
-            {totalBookmarks} {totalBookmarks === 1 ? 'item' : 'itens'}
-          </span>
+          <div className="flex items-center gap-2">
+            {state.isLoadingBookmarks && (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                <span className="animate-spin inline-block w-3 h-3 border border-amber-600 border-t-transparent rounded-full" />
+                atualizando índice...
+              </span>
+            )}
+            <span className="text-xs text-gray-500">
+              {totalBookmarks} {totalBookmarks === 1 ? 'item' : 'itens'}
+            </span>
+          </div>
         </div>
 
         <div className="relative">
