@@ -23,7 +23,10 @@ interface PageExtractionModalProps {
 }
 
 const THUMBNAIL_SCALE = 0.18;
-const THUMBNAIL_BATCH_SIZE = 3;
+const PERFORMANCE_PAGE_THRESHOLD = 40;
+const INITIAL_THUMBNAIL_BATCH_SIZE = 20;
+const THUMBNAIL_APPEND_BATCH_SIZE = 20;
+const SCROLL_LOAD_THRESHOLD_PX = 180;
 
 const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   isOpen,
@@ -43,6 +46,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isPreviewDocumentReady, setIsPreviewDocumentReady] = useState(false);
   const [thumbnailsToRender, setThumbnailsToRender] = useState(0);
+  const [loadedThumbnailPages, setLoadedThumbnailPages] = useState<Set<number>>(new Set());
 
   const modalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -52,6 +56,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     Array.from(selectedPages).sort((a, b) => a - b),
     [selectedPages]
   );
+  const shouldUseIncrementalLoading = sortedSelectedPages.length > PERFORMANCE_PAGE_THRESHOLD;
 
   useEffect(() => {
     if (isOpen) {
@@ -62,6 +67,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       setProgress(null);
       setIsPreviewDocumentReady(false);
       setThumbnailsToRender(0);
+      setLoadedThumbnailPages(new Set());
 
       setTimeout(() => inputRef.current?.focus(), 100);
     }
@@ -76,7 +82,12 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
 
   useEffect(() => {
     setIsPreviewDocumentReady(false);
+    setLoadedThumbnailPages(new Set());
   }, [documentUrl]);
+
+  useEffect(() => {
+    setLoadedThumbnailPages(new Set());
+  }, [sortedSelectedPages]);
 
   const handlePageRangeChange = useCallback((input: string) => {
     setPageRangeInput(input);
@@ -203,32 +214,57 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     event.stopPropagation();
   }, []);
 
+  const handlePreviewScroll = useCallback(() => {
+    if (!shouldUseIncrementalLoading) {
+      return;
+    }
+
+    const container = previewContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const { scrollTop, clientHeight, scrollHeight } = container;
+    const isNearBottom = scrollTop + clientHeight >= scrollHeight - SCROLL_LOAD_THRESHOLD_PX;
+
+    if (!isNearBottom) {
+      return;
+    }
+
+    setThumbnailsToRender((current) => {
+      if (current >= sortedSelectedPages.length) {
+        return current;
+      }
+
+      return Math.min(current + THUMBNAIL_APPEND_BATCH_SIZE, sortedSelectedPages.length);
+    });
+  }, [shouldUseIncrementalLoading, sortedSelectedPages.length]);
+
+  const handleThumbnailLoad = useCallback((pageNum: number) => {
+    setLoadedThumbnailPages((current) => {
+      if (current.has(pageNum)) {
+        return current;
+      }
+
+      const updated = new Set(current);
+      updated.add(pageNum);
+      return updated;
+    });
+  }, []);
+
   useEffect(() => {
     if (!isPreviewDocumentReady) {
       setThumbnailsToRender(0);
       return;
     }
 
-    const totalVisiblePages = sortedSelectedPages.length;
-    let renderedCount = 0;
-    let animationFrameId: number;
+    if (shouldUseIncrementalLoading) {
+      setThumbnailsToRender(Math.min(INITIAL_THUMBNAIL_BATCH_SIZE, sortedSelectedPages.length));
+      return;
+    }
 
-    const renderBatch = () => {
-      renderedCount = Math.min(renderedCount + THUMBNAIL_BATCH_SIZE, totalVisiblePages);
-      setThumbnailsToRender(renderedCount);
-
-      if (renderedCount < totalVisiblePages) {
-        animationFrameId = requestAnimationFrame(renderBatch);
-      }
-    };
-
-    setThumbnailsToRender(0);
-    animationFrameId = requestAnimationFrame(renderBatch);
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [isPreviewDocumentReady, sortedSelectedPages]);
+    setThumbnailsToRender(sortedSelectedPages.length);
+  }, [isPreviewDocumentReady, shouldUseIncrementalLoading, sortedSelectedPages.length]);
 
   if (!isOpen) return null;
 
@@ -327,11 +363,17 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
               <span className="text-sm font-medium text-gray-700">
                 Preview das paginas selecionadas
               </span>
+              {shouldUseIncrementalLoading && (
+                <span className="text-xs text-amber-600 font-medium">
+                  Modo performance ativo ({PERFORMANCE_PAGE_THRESHOLD}+ paginas)
+                </span>
+              )}
             </div>
 
             <div
               ref={previewContainerRef}
               onWheel={handlePreviewWheel}
+              onScroll={handlePreviewScroll}
               className="flex-1 overflow-y-auto p-4 bg-gray-100/50"
             >
               {sortedSelectedPages.length === 0 ? (
@@ -361,6 +403,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
 
                     {sortedSelectedPages.map((pageNum, index) => {
                       const shouldRenderPage = isPreviewDocumentReady && index < thumbnailsToRender;
+                      const isPageLoaded = loadedThumbnailPages.has(pageNum);
 
                       return (
                         <div
@@ -374,6 +417,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
                                 scale={THUMBNAIL_SCALE}
                                 renderTextLayer={false}
                                 renderAnnotationLayer={false}
+                                onRenderSuccess={() => handleThumbnailLoad(pageNum)}
                                 loading={
                                   <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
                                     <span className="text-gray-400 text-xs">{pageNum}</span>
@@ -384,6 +428,12 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
                             ) : (
                               <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
                                 <span className="text-gray-400 text-xs">{pageNum}</span>
+                              </div>
+                            )}
+
+                            {shouldRenderPage && !isPageLoaded && (
+                              <div className="absolute inset-0 bg-white/70 flex items-center justify-center pointer-events-none">
+                                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                               </div>
                             )}
 
