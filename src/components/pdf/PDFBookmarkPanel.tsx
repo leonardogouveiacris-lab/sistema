@@ -27,9 +27,6 @@ interface VisibleBookmarkItem {
   bookmarkId: string;
 }
 
-const isDocumentGroupBookmark = (bookmark: PDFBookmark, level: number): boolean => {
-  return level === 0 && Boolean(bookmark.documentId) && bookmark.title === bookmark.documentName;
-};
 
 const PDFBookmarkPanel: React.FC = () => {
   const {
