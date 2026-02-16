@@ -14,6 +14,7 @@ import { PDFBookmark } from '../types/PDFBookmark';
 import { PDFHighlight, HighlightColor } from '../types/Highlight';
 import { PDFComment, PDFCommentConnector, CommentColor, ConnectorType } from '../types/PDFComment';
 import { SearchResult } from '../utils/pdfTextExtractor';
+import { countTotalBookmarks } from '../utils/pdfBookmarkExtractor';
 import { PageRotationMap } from '../services/pageRotation.service';
 import * as PageRotationService from '../services/pageRotation.service';
 import logger from '../utils/logger';
@@ -1153,7 +1154,14 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    */
   const setBookmarks = useCallback((bookmarks: PDFBookmark[]) => {
     setState(prev => ({ ...prev, bookmarks }));
-    logger.info(`Bookmarks carregados: ${bookmarks.length} items`, 'PDFViewerContext.setBookmarks');
+    const topLevel = bookmarks.length;
+    const totalRecursive = countTotalBookmarks(bookmarks);
+
+    logger.info(
+      `Bookmarks carregados: topLevel=${topLevel}, totalRecursive=${totalRecursive}`,
+      'PDFViewerContext.setBookmarks',
+      { topLevel, totalRecursive }
+    );
   }, []);
 
   const setBookmarkStatusByDoc = useCallback((documentId: string, status: BookmarkLoadStatus) => {

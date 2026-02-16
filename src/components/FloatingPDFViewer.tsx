@@ -47,7 +47,7 @@ import {
   loadBookmarksFromCache,
   clearOldBookmarkCaches
 } from '../utils/performance';
-import { extractBookmarksWithDocumentInfo, mergeBookmarksFromMultipleDocuments, DocumentInfo } from '../utils/pdfBookmarkExtractor';
+import { extractBookmarksWithDocumentInfo, mergeBookmarksFromMultipleDocuments, countTotalBookmarks, DocumentInfo } from '../utils/pdfBookmarkExtractor';
 import { mergeRectsIntoLines } from '../utils/rectMerger';
 
 // Configurar worker do PDF.js usando arquivo local
@@ -208,6 +208,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
   const documentSetSignature = useMemo(() => state.documents.map(doc => doc.id).join('|'), [state.documents]);
+  const topLevelBookmarkCount = state.bookmarks.length;
+  const totalBookmarkCount = useMemo(() => countTotalBookmarks(state.bookmarks), [state.bookmarks]);
 
   const startPhaseTimer = useCallback((phase: string) => {
     phaseTimersRef.current.set(phase, performance.now());
@@ -3315,7 +3317,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               {responsiveConfig.showToolbarLabels && <span>Índice</span>}
               {state.bookmarks.length > 0 && (
                 <span className="px-1 py-0.5 text-xs bg-gray-200 rounded-full min-w-[18px] text-center">
-                  {state.bookmarks.length}
+                  {`${topLevelBookmarkCount}/${totalBookmarkCount}`}
                 </span>
               )}
             </button>
