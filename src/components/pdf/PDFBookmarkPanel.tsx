@@ -10,12 +10,22 @@
  * - Estados de carregamento e erro
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { PDFBookmark } from '../../types/PDFBookmark';
 import { filterBookmarks, countTotalBookmarks } from '../../utils/pdfBookmarkExtractor';
 import { BookOpen, ChevronRight, ChevronDown, FileText, Search, AlertCircle } from 'lucide-react';
 import { Tooltip } from '../ui';
+import { useDebounce } from '../../hooks/useDebounce';
+
+const BOOKMARK_ROW_HEIGHT = 36;
+const BOOKMARK_OVERSCAN = 6;
+
+interface VisibleBookmarkItem {
+  bookmark: PDFBookmark;
+  level: number;
+  bookmarkId: string;
+}
 
 const PDFBookmarkPanel: React.FC = () => {
   const {
@@ -26,16 +36,46 @@ const PDFBookmarkPanel: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [expandAll, setExpandAll] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const filteredBookmarks = useMemo(() => {
-    return filterBookmarks(state.bookmarks, searchQuery);
-  }, [state.bookmarks, searchQuery]);
+    return filterBookmarks(state.bookmarks, debouncedSearchQuery);
+  }, [state.bookmarks, debouncedSearchQuery]);
 
   const totalBookmarks = useMemo(() => {
     return countTotalBookmarks(state.bookmarks);
   }, [state.bookmarks]);
 
   const hasBookmarks = state.bookmarks.length > 0;
+
+  useEffect(() => {
+    const container = listContainerRef.current;
+    if (!container) return;
+
+    const updateViewportHeight = () => {
+      setViewportHeight(container.clientHeight);
+    };
+
+    updateViewportHeight();
+
+    const resizeObserver = new ResizeObserver(updateViewportHeight);
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [hasBookmarks]);
+
+  useEffect(() => {
+    setScrollTop(0);
+    if (listContainerRef.current) {
+      listContainerRef.current.scrollTop = 0;
+    }
+  }, [debouncedSearchQuery]);
 
   const handleBookmarkClick = (bookmark: PDFBookmark) => {
     if (bookmark.pageNumber) {
@@ -76,9 +116,56 @@ const PDFBookmarkPanel: React.FC = () => {
     setExpandAll(!expandAll);
   };
 
-  const renderBookmark = (bookmark: PDFBookmark, level: number = 0, index: number, prefix: string = ''): React.ReactNode => {
+  const visibleBookmarks = useMemo(() => {
+    const flatVisible: VisibleBookmarkItem[] = [];
+
+    const collectVisibleBookmarks = (
+      bookmarks: PDFBookmark[],
+      level: number = 0,
+      prefix: string = ''
+    ) => {
+      bookmarks.forEach((bookmark, index) => {
+        const bookmarkId = `${prefix}${index}`;
+        flatVisible.push({ bookmark, level, bookmarkId });
+
+        const hasChildren = bookmark.items && bookmark.items.length > 0;
+        const isExpanded = expandAll || expandedItems.has(bookmarkId);
+
+        if (hasChildren && isExpanded) {
+          collectVisibleBookmarks(bookmark.items, level + 1, `${bookmarkId}-`);
+        }
+      });
+    };
+
+    collectVisibleBookmarks(filteredBookmarks);
+    return flatVisible;
+  }, [filteredBookmarks, expandedItems, expandAll]);
+
+  const virtualizedRange = useMemo(() => {
+    const totalItems = visibleBookmarks.length;
+
+    if (totalItems === 0) {
+      return { startIndex: 0, endIndex: 0, offsetY: 0 };
+    }
+
+    const effectiveViewportHeight = viewportHeight || totalItems * BOOKMARK_ROW_HEIGHT;
+    const visibleCount = Math.ceil(effectiveViewportHeight / BOOKMARK_ROW_HEIGHT);
+    const startIndex = Math.max(0, Math.floor(scrollTop / BOOKMARK_ROW_HEIGHT) - BOOKMARK_OVERSCAN);
+    const endIndex = Math.min(totalItems, startIndex + visibleCount + BOOKMARK_OVERSCAN * 2);
+
+    return {
+      startIndex,
+      endIndex,
+      offsetY: startIndex * BOOKMARK_ROW_HEIGHT
+    };
+  }, [visibleBookmarks.length, scrollTop, viewportHeight]);
+
+  const virtualizedBookmarks = useMemo(() => {
+    return visibleBookmarks.slice(virtualizedRange.startIndex, virtualizedRange.endIndex);
+  }, [visibleBookmarks, virtualizedRange.startIndex, virtualizedRange.endIndex]);
+
+  const renderBookmarkRow = ({ bookmark, level, bookmarkId }: VisibleBookmarkItem): React.ReactNode => {
     const hasChildren = bookmark.items && bookmark.items.length > 0;
-    const bookmarkId = `${prefix}${index}`;
     const isExpanded = expandedItems.has(bookmarkId) || expandAll;
     const isCurrentPage = bookmark.pageNumber === state.currentPage;
     const pageInfo = bookmark.pageNumber ? `p. ${bookmark.pageNumber}` : '';
@@ -89,13 +176,13 @@ const PDFBookmarkPanel: React.FC = () => {
     };
 
     return (
-      <div key={bookmarkId} className="select-none">
+      <div key={bookmarkId} className="select-none" style={{ height: BOOKMARK_ROW_HEIGHT }}>
         <div
           onClick={() => handleBookmarkClick(bookmark)}
           className={`group flex items-center space-x-2 px-2 py-2 hover:bg-gray-100 rounded cursor-pointer transition-colors ${
             isCurrentPage ? 'bg-blue-50 border-l-2 border-blue-500' : ''
           }`}
-          style={{ paddingLeft: `${8 + level * 16}px` }}
+          style={{ paddingLeft: `${8 + level * 16}px`, height: BOOKMARK_ROW_HEIGHT }}
         >
           {hasChildren && (
             <button
@@ -135,14 +222,6 @@ const PDFBookmarkPanel: React.FC = () => {
             )}
           </div>
         </div>
-
-        {hasChildren && isExpanded && (
-          <div>
-            {bookmark.items.map((child, childIndex) =>
-              renderBookmark(child, level + 1, childIndex, `${bookmarkId}-`)
-            )}
-          </div>
-        )}
       </div>
     );
   };
@@ -220,19 +299,29 @@ const PDFBookmarkPanel: React.FC = () => {
           </button>
         )}
 
-        {searchQuery && (
+        {debouncedSearchQuery && (
           <div className="text-xs text-gray-600">
             {countTotalBookmarks(filteredBookmarks)} resultado(s) encontrado(s)
           </div>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      <div
+        ref={listContainerRef}
+        className="flex-1 overflow-y-auto p-2"
+        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      >
         {filteredBookmarks.length > 0 ? (
-          <div className="space-y-0.5">
-            {filteredBookmarks.map((bookmark, index) =>
-              renderBookmark(bookmark, 0, index)
-            )}
+          <div
+            className="relative"
+            style={{ height: visibleBookmarks.length * BOOKMARK_ROW_HEIGHT }}
+          >
+            <div
+              className="absolute left-0 top-0 right-0"
+              style={{ transform: `translateY(${virtualizedRange.offsetY}px)` }}
+            >
+              {virtualizedBookmarks.map((item) => renderBookmarkRow(item))}
+            </div>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full p-8">
