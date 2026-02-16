@@ -10,8 +10,8 @@ export const SYSTEM_VERSION = '1.0.0';
 
 // Informações da aplicação
 export const APP_INFO = {
-  NAME: 'ProViewer',
-  DESCRIPTION: 'Sistema de Relatorios de Liquidacao',
+  NAME: 'Sistema de Liquidacao',
+  DESCRIPTION: 'Gestao de Processos e Relatorios',
   AUTHOR: 'CalculoPro',
   CONTACT: 'contato@calculopro.com.br'
 } as const;
