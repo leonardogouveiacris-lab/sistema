@@ -1,9 +1,3 @@
-/**
- * Utility for merging text selection rectangles into continuous line-based highlights
- *
- * This creates Acrobat-style linear highlights without gaps between words
- */
-
 interface Rect {
   x: number;
   y: number;
@@ -11,13 +5,6 @@ interface Rect {
   height: number;
 }
 
-/**
- * Merges multiple rectangles from the same line into a single continuous rectangle
- *
- * @param rects - Array of rectangles from range.getClientRects()
- * @param yTolerance - Tolerance in pixels to consider rectangles on the same line (default: 3)
- * @returns Array of merged rectangles, one per line
- */
 export function mergeRectsIntoLines(rects: Rect[], yTolerance: number = 3): Rect[] {
   if (rects.length === 0) {
     return [];
@@ -27,7 +14,6 @@ export function mergeRectsIntoLines(rects: Rect[], yTolerance: number = 3): Rect
     return [...rects];
   }
 
-  // Sort by Y first, then by X
   const sortedRects = [...rects].sort((a, b) => {
     const yDiff = a.y - b.y;
     if (Math.abs(yDiff) < yTolerance) {
@@ -39,39 +25,45 @@ export function mergeRectsIntoLines(rects: Rect[], yTolerance: number = 3): Rect
   const lines: Rect[][] = [];
   let currentLine: Rect[] = [sortedRects[0]];
 
-  // Group rectangles into lines based on Y coordinate
   for (let i = 1; i < sortedRects.length; i++) {
     const rect = sortedRects[i];
     const lastRectInLine = currentLine[currentLine.length - 1];
 
-    // Check if this rect is on the same line (Y within tolerance)
     if (Math.abs(rect.y - lastRectInLine.y) < yTolerance) {
       currentLine.push(rect);
     } else {
-      // New line
       lines.push(currentLine);
       currentLine = [rect];
     }
   }
 
-  // Don't forget the last line
   lines.push(currentLine);
 
-  // Merge each line into a single continuous rectangle
-  const mergedRects: Rect[] = lines.map(lineRects => {
-    // Find the bounds of this line
-    const minX = Math.min(...lineRects.map(r => r.x));
-    const maxX = Math.max(...lineRects.map(r => r.x + r.width));
-    const minY = Math.min(...lineRects.map(r => r.y));
-    const maxHeight = Math.max(...lineRects.map(r => r.height));
+  const mergedRects: Rect[] = new Array(lines.length);
 
-    return {
+  for (let i = 0; i < lines.length; i++) {
+    const lineRects = lines[i];
+    let minX = lineRects[0].x;
+    let maxX = lineRects[0].x + lineRects[0].width;
+    let minY = lineRects[0].y;
+    let maxHeight = lineRects[0].height;
+
+    for (let j = 1; j < lineRects.length; j++) {
+      const r = lineRects[j];
+      if (r.x < minX) minX = r.x;
+      const right = r.x + r.width;
+      if (right > maxX) maxX = right;
+      if (r.y < minY) minY = r.y;
+      if (r.height > maxHeight) maxHeight = r.height;
+    }
+
+    mergedRects[i] = {
       x: minX,
       y: minY,
       width: maxX - minX,
       height: maxHeight
     };
-  });
+  }
 
   return mergedRects;
 }

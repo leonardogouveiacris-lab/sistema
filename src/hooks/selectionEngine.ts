@@ -32,66 +32,8 @@ export interface CaretInfo {
   spanInfo?: SpanInfo;
 }
 
-export interface SelectionTelemetry {
-  eventCount: number;
-  lastEventTime: number;
-  droppedEvents: number;
-  programmaticBlocks: number;
-  hysteresisHolds: number;
-}
-
-const DEBUG_ENABLED = (() => {
-  try {
-    return typeof window !== 'undefined' &&
-      (localStorage.getItem('SELECTION_DEBUG') === 'true' ||
-       new URLSearchParams(window.location.search).get('selectionDebug') === '1');
-  } catch {
-    return false;
-  }
-})();
-
-let telemetry: SelectionTelemetry = {
-  eventCount: 0,
-  lastEventTime: 0,
-  droppedEvents: 0,
-  programmaticBlocks: 0,
-  hysteresisHolds: 0
-};
-
-export function getTelemetry(): SelectionTelemetry {
-  return { ...telemetry };
-}
-
-export function resetTelemetry(): void {
-  telemetry = {
-    eventCount: 0,
-    lastEventTime: 0,
-    droppedEvents: 0,
-    programmaticBlocks: 0,
-    hysteresisHolds: 0
-  };
-}
-
-export function logSelectionEvent(event: string, data?: Record<string, unknown>): void {
-  telemetry.eventCount++;
-  telemetry.lastEventTime = performance.now();
-
-  if (DEBUG_ENABLED) {
-    console.log(`[Selection] ${event}`, data ?? '');
-  }
-}
-
-export function incrementDroppedEvents(): void {
-  telemetry.droppedEvents++;
-}
-
-export function incrementProgrammaticBlocks(): void {
-  telemetry.programmaticBlocks++;
-}
-
-export function incrementHysteresisHolds(): void {
-  telemetry.hysteresisHolds++;
-}
+const WORD_CHAR_RE = /[\p{L}\p{N}]/u;
+const MAX_METRIC_SAMPLE_SPANS = 15;
 
 export function areRectsEqual(a: SelectionRect[], b: SelectionRect[]): boolean {
   if (a.length !== b.length) return false;
@@ -150,13 +92,14 @@ export function getTextMetricsFromTextLayer(textLayer: Element): TextMetrics {
   let validSpans = 0;
   let charCount = 0;
 
-  spans.forEach((span) => {
-    if (!(span instanceof HTMLElement)) return;
+  for (let i = 0; i < spans.length && validSpans < MAX_METRIC_SAMPLE_SPANS; i++) {
+    const span = spans[i];
+    if (!(span instanceof HTMLElement)) continue;
     const text = span.textContent || '';
-    if (text.trim() === '') return;
+    if (text.trim() === '') continue;
 
     const rect = span.getBoundingClientRect();
-    if (rect.height <= 0) return;
+    if (rect.height <= 0) continue;
 
     const computedStyle = window.getComputedStyle(span);
     const fontSize = parseFloat(computedStyle.fontSize) || 12;
@@ -169,7 +112,7 @@ export function getTextMetricsFromTextLayer(textLayer: Element): TextMetrics {
       totalCharWidth += rect.width / text.length;
       charCount++;
     }
-  });
+  }
 
   const avgHeight = validSpans > 0 ? totalHeight / validSpans : 16;
   const avgFontSize = validSpans > 0 ? totalFontSize / validSpans : 12;
@@ -222,6 +165,48 @@ export function getSpansWithInfo(textLayer: Element): SpanInfo[] {
   return result;
 }
 
+interface LineBounds {
+  centerY: number;
+  spans: SpanInfo[];
+  lineTop: number;
+  lineBottom: number;
+}
+
+function buildSortedLines(spans: SpanInfo[], tolerance: number): LineBounds[] {
+  const lineGroups = new Map<number, SpanInfo[]>();
+
+  for (const info of spans) {
+    const centerY = info.rect.top + info.rect.height / 2;
+    let foundGroup = false;
+
+    for (const [groupY, group] of lineGroups) {
+      if (Math.abs(centerY - groupY) < tolerance) {
+        group.push(info);
+        foundGroup = true;
+        break;
+      }
+    }
+
+    if (!foundGroup) {
+      lineGroups.set(centerY, [info]);
+    }
+  }
+
+  const sortedLines: LineBounds[] = [];
+  for (const [centerY, lineSpans] of lineGroups) {
+    let lineTop = Infinity;
+    let lineBottom = -Infinity;
+    for (const s of lineSpans) {
+      if (s.rect.top < lineTop) lineTop = s.rect.top;
+      if (s.rect.bottom > lineBottom) lineBottom = s.rect.bottom;
+    }
+    sortedLines.push({ centerY, spans: lineSpans, lineTop, lineBottom });
+  }
+
+  sortedLines.sort((a, b) => a.centerY - b.centerY);
+  return sortedLines;
+}
+
 export function findBestSpanForPoint(
   x: number,
   y: number,
@@ -241,66 +226,34 @@ export function findBestSpanForPoint(
     }
   }
 
-  const lineGroups = new Map<number, SpanInfo[]>();
   const tolerance = metrics.lineHeight * 0.4;
-
-  for (const info of spans) {
-    const centerY = info.rect.top + info.rect.height / 2;
-    let foundGroup = false;
-
-    for (const [groupY, group] of lineGroups) {
-      if (Math.abs(centerY - groupY) < tolerance) {
-        group.push(info);
-        foundGroup = true;
-        break;
-      }
-    }
-
-    if (!foundGroup) {
-      lineGroups.set(centerY, [info]);
-    }
-  }
-
-  const sortedLines = Array.from(lineGroups.entries()).sort((a, b) => a[0] - b[0]);
+  const sortedLines = buildSortedLines(spans, tolerance);
 
   let targetLine: SpanInfo[] | null = null;
 
   for (let i = 0; i < sortedLines.length; i++) {
-    const [, lineSpans] = sortedLines[i];
-    let lineTop = Infinity;
-    let lineBottom = -Infinity;
-    for (const s of lineSpans) {
-      if (s.rect.top < lineTop) lineTop = s.rect.top;
-      if (s.rect.bottom > lineBottom) lineBottom = s.rect.bottom;
-    }
-
-    if (y >= lineTop && y <= lineBottom) {
-      targetLine = lineSpans;
+    const line = sortedLines[i];
+    if (y >= line.lineTop && y <= line.lineBottom) {
+      targetLine = line.spans;
       break;
     }
   }
 
   if (!targetLine && sortedLines.length > 0) {
     for (let i = 0; i < sortedLines.length; i++) {
-      const [, lineSpans] = sortedLines[i];
-      let lineTop = Infinity;
-      let lineBottom = -Infinity;
-      for (const s of lineSpans) {
-        if (s.rect.top < lineTop) lineTop = s.rect.top;
-        if (s.rect.bottom > lineBottom) lineBottom = s.rect.bottom;
-      }
+      const line = sortedLines[i];
 
-      if (y < lineTop) {
+      if (y < line.lineTop) {
         if (isDraggingDown && i > 0) {
-          targetLine = sortedLines[i - 1][1];
+          targetLine = sortedLines[i - 1].spans;
         } else {
-          targetLine = lineSpans;
+          targetLine = line.spans;
         }
         break;
       }
 
-      if (i === sortedLines.length - 1 && y > lineBottom) {
-        targetLine = lineSpans;
+      if (i === sortedLines.length - 1 && y > line.lineBottom) {
+        targetLine = line.spans;
       }
     }
   }
@@ -316,10 +269,8 @@ export function findBestSpanForPoint(
   }
 
   if (lastValidSpan) {
-    const lastSpanInTargetLine = sortedTargetLine.find(s => s.span === lastValidSpan.span);
-    if (lastSpanInTargetLine) {
-      const lastSpanIndex = sortedTargetLine.indexOf(lastSpanInTargetLine);
-
+    const lastSpanIndex = sortedTargetLine.findIndex(s => s.span === lastValidSpan.span);
+    if (lastSpanIndex >= 0) {
       for (let i = 0; i < sortedTargetLine.length; i++) {
         const span = sortedTargetLine[i];
         const nextSpan = sortedTargetLine[i + 1];
@@ -437,10 +388,26 @@ export function getSnappedCaretInfo(
 }
 
 export function isWordChar(char: string): boolean {
-  return /[\p{L}\p{N}]/u.test(char);
+  return WORD_CHAR_RE.test(char);
 }
 
-export function isPointOverValidText(x: number, y: number, textLayer: Element, bufferPx: number = 3): boolean {
+export function isPointOverValidText(
+  x: number,
+  y: number,
+  textLayer: Element,
+  bufferPx: number = 3,
+  cachedSpans?: SpanInfo[]
+): boolean {
+  if (cachedSpans) {
+    for (const info of cachedSpans) {
+      if (x >= info.rect.left - bufferPx && x <= info.rect.right + bufferPx &&
+          y >= info.rect.top - bufferPx && y <= info.rect.bottom + bufferPx) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   const spans = textLayer.querySelectorAll('span[role="presentation"], span:not([role])');
 
   for (const span of spans) {
@@ -482,10 +449,11 @@ export function shouldHoldSelection(
   y: number,
   textLayer: Element,
   hysteresis: HysteresisState,
-  thresholdMs: number = 60
+  thresholdMs: number = 60,
+  cachedSpans?: SpanInfo[]
 ): { hold: boolean; updatedHysteresis: HysteresisState } {
   const now = performance.now();
-  const isOverText = isPointOverValidText(x, y, textLayer, 3);
+  const isOverText = isPointOverValidText(x, y, textLayer, 3, cachedSpans);
 
   if (isOverText) {
     return {
@@ -501,8 +469,6 @@ export function shouldHoldSelection(
   }
 
   if (!hysteresis.isInGap) {
-    incrementHysteresisHolds();
-    logSelectionEvent('hysteresis:enter-gap', { x, y });
     return {
       hold: true,
       updatedHysteresis: {
@@ -521,7 +487,6 @@ export function shouldHoldSelection(
     };
   }
 
-  logSelectionEvent('hysteresis:threshold-exceeded', { timeInGap });
   return {
     hold: false,
     updatedHysteresis: hysteresis
@@ -658,10 +623,20 @@ export function selectWordAtPoint(
   return range;
 }
 
+function findPageForNode(node: Node | null): { pageNumber: number; pageEl: Element } | null {
+  if (!node) return null;
+  const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node as Element;
+  if (!element) return null;
+  const pageEl = element.closest('[data-global-page]');
+  if (!pageEl) return null;
+  const pageNumber = parseInt(pageEl.getAttribute('data-global-page') || '0', 10);
+  if (pageNumber === 0) return null;
+  return { pageNumber, pageEl };
+}
+
 export function calculatePageRects(
   container: HTMLElement,
-  range: Range,
-  clearOverlay: () => void
+  range: Range
 ): Map<number, SelectionRect[]> {
   const clientRects = range.getClientRects();
   const pageRectsMap = new Map<number, SelectionRect[]>();
@@ -669,17 +644,6 @@ export function calculatePageRects(
   if (clientRects.length === 0) {
     return pageRectsMap;
   }
-
-  const findPageForNode = (node: Node | null): { pageNumber: number; pageEl: Element } | null => {
-    if (!node) return null;
-    const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node as Element;
-    if (!element) return null;
-    const pageEl = element.closest('[data-global-page]');
-    if (!pageEl) return null;
-    const pageNumber = parseInt(pageEl.getAttribute('data-global-page') || '0', 10);
-    if (pageNumber === 0) return null;
-    return { pageNumber, pageEl };
-  };
 
   const anchorPage = findPageForNode(range.startContainer);
   const focusPage = findPageForNode(range.endContainer);
@@ -742,40 +706,6 @@ export function calculatePageRects(
   });
 
   return pageRectsMap;
-}
-
-export function applyRangeToSelection(
-  range: Range,
-  isProgrammaticRef: React.MutableRefObject<boolean>,
-  lastAppliedRangeRef: React.MutableRefObject<RangeSignature | null>,
-  selectionEpochRef: React.MutableRefObject<number>
-): boolean {
-  const newSignature = getRangeSignature(range);
-
-  if (areRangesEqual(lastAppliedRangeRef.current, newSignature)) {
-    logSelectionEvent('apply-range:identical-skip');
-    return false;
-  }
-
-  const selection = window.getSelection();
-  if (!selection) return false;
-
-  const currentEpoch = ++selectionEpochRef.current;
-  isProgrammaticRef.current = true;
-
-  try {
-    selection.removeAllRanges();
-    selection.addRange(range);
-    lastAppliedRangeRef.current = newSignature;
-    logSelectionEvent('apply-range:success', { epoch: currentEpoch });
-    return true;
-  } finally {
-    requestAnimationFrame(() => {
-      if (selectionEpochRef.current === currentEpoch) {
-        isProgrammaticRef.current = false;
-      }
-    });
-  }
 }
 
 export function createSelectionRange(
