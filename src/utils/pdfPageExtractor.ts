@@ -69,7 +69,8 @@ export function formatPageRanges(pages: number[]): string {
 export async function extractPagesFromPDF(
   pdfUrl: string,
   pagesToExtract: number[],
-  onProgress?: (progress: ExtractionProgress) => void
+  onProgress?: (progress: ExtractionProgress) => void,
+  sourcePdfBuffer?: ArrayBuffer
 ): Promise<Uint8Array> {
   if (pagesToExtract.length === 0) {
     throw new Error('Nenhuma página selecionada para extração');
@@ -88,12 +89,14 @@ export async function extractPagesFromPDF(
     message: 'Carregando documento original...'
   });
 
-  const response = await fetch(pdfUrl);
-  if (!response.ok) {
-    throw new Error(`Erro ao carregar PDF: ${response.statusText}`);
-  }
+  const pdfBytes = sourcePdfBuffer ?? await (async () => {
+    const response = await fetch(pdfUrl);
+    if (!response.ok) {
+      throw new Error(`Erro ao carregar PDF: ${response.statusText}`);
+    }
 
-  const pdfBytes = await response.arrayBuffer();
+    return response.arrayBuffer();
+  })();
 
   onProgress?.({
     phase: 'loading',
@@ -110,6 +113,8 @@ export async function extractPagesFromPDF(
     throw new Error('Nenhuma página válida para extração');
   }
 
+  const pageIndices = validPages.map(page => page - 1);
+
   onProgress?.({
     phase: 'extracting',
     current: 0,
@@ -118,11 +123,19 @@ export async function extractPagesFromPDF(
   });
 
   const newPdf = await PDFDocument.create();
+  const copiedPages = await newPdf.copyPages(sourcePdf, pageIndices);
+  const progressBatchSize = Math.max(1, Math.floor(validPages.length / 10));
 
-  for (let i = 0; i < validPages.length; i++) {
-    const pageIndex = validPages[i] - 1;
-    const [copiedPage] = await newPdf.copyPages(sourcePdf, [pageIndex]);
-    newPdf.addPage(copiedPage);
+  for (let i = 0; i < copiedPages.length; i++) {
+    newPdf.addPage(copiedPages[i]);
+
+    const shouldUpdateProgress =
+      i === copiedPages.length - 1 ||
+      (i + 1) % progressBatchSize === 0;
+
+    if (!shouldUpdateProgress) {
+      continue;
+    }
 
     onProgress?.({
       phase: 'extracting',
