@@ -52,6 +52,7 @@ const PDFBookmarkPanel: React.FC = () => {
   }, [state.bookmarks]);
 
   const hasBookmarks = state.bookmarks.length > 0;
+  const currentDocumentId = state.documents[state.currentDocumentIndex]?.id;
 
   useEffect(() => {
     const container = listContainerRef.current;
@@ -77,6 +78,17 @@ const PDFBookmarkPanel: React.FC = () => {
       listContainerRef.current.scrollTop = 0;
     }
   }, [debouncedSearchQuery]);
+
+  useEffect(() => {
+    setSearchQuery('');
+    setExpandedItems(new Set());
+    setExpandAll(false);
+    setScrollTop(0);
+
+    if (listContainerRef.current) {
+      listContainerRef.current.scrollTop = 0;
+    }
+  }, [currentDocumentId]);
 
   const handleBookmarkClick = (bookmark: PDFBookmark) => {
     if (bookmark.pageNumber) {
@@ -205,7 +217,12 @@ const PDFBookmarkPanel: React.FC = () => {
           <FileText size={14} className={`flex-shrink-0 ${isCurrentPage ? 'text-blue-600' : 'text-gray-400'}`} />
 
           <div className="flex-1 min-w-0 flex items-center justify-between gap-2 overflow-hidden">
-            <Tooltip content={bookmark.title} className="min-w-0 flex-1 overflow-hidden">
+            <Tooltip
+              content={bookmark.title}
+              className="min-w-0 flex-1 overflow-hidden"
+              maxWidth={680}
+              tooltipClassName="bg-slate-200 border-slate-300 text-slate-800"
+            >
               <span
                 className={`block text-sm truncate ${
                   isCurrentPage ? 'text-blue-600 font-medium' : 'text-gray-700'
