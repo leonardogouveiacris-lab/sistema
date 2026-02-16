@@ -22,6 +22,7 @@ import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibil
 
 const CONTINUOUS_PAGE_GAP_PX = 16;
 
+
 /**
  * Interface para referências dos editores de texto
  * Permite inserir texto programaticamente

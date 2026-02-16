@@ -2314,14 +2314,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
       });
 
+      const isCurrentPageInDocument = state.currentPage >= offset.startPage && state.currentPage <= offset.endPage;
+      const localCurrentPage = isCurrentPageInDocument
+        ? state.currentPage - offset.startPage + 1
+        : null;
+
       if (firstVisibleLocalPage === null || lastVisibleLocalPage === null) {
-        if (state.currentPage >= offset.startPage && state.currentPage <= offset.endPage) {
-          const localCurrentPage = state.currentPage - offset.startPage + 1;
+        if (localCurrentPage !== null) {
           firstVisibleLocalPage = localCurrentPage;
           lastVisibleLocalPage = localCurrentPage;
         } else {
           firstVisibleLocalPage = 1;
           lastVisibleLocalPage = 1;
+        }
+      }
+
+      if (localCurrentPage !== null) {
+        const isCurrentNearVisibleWindow =
+          localCurrentPage >= firstVisibleLocalPage - CONTINUOUS_WINDOW_BUFFER_PAGES &&
+          localCurrentPage <= lastVisibleLocalPage + CONTINUOUS_WINDOW_BUFFER_PAGES;
+
+        if (!isCurrentNearVisibleWindow) {
+          firstVisibleLocalPage = localCurrentPage;
+          lastVisibleLocalPage = localCurrentPage;
         }
       }
 
