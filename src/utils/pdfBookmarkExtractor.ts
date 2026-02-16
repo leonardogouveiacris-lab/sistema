@@ -317,9 +317,12 @@ function applyPageOffsetToBookmarks(bookmarks: PDFBookmark[], offset: number): P
  * @returns Array unificado de bookmarks com separadores de documento
  */
 export function mergeBookmarksFromMultipleDocuments(
-  bookmarksByDocument: Map<string, { bookmarks: PDFBookmark[]; documentName: string; documentIndex: number; pageCount?: number }>
+  bookmarksByDocument: Map<string, { bookmarks: PDFBookmark[]; documentName: string; documentIndex: number; pageCount?: number }>,
+  options?: { totalDocumentCount?: number }
 ): PDFBookmark[] {
   const mergedBookmarks: PDFBookmark[] = [];
+
+  const shouldGroupByDocument = (options?.totalDocumentCount ?? bookmarksByDocument.size) > 1;
 
   const sortedEntries = Array.from(bookmarksByDocument.entries()).sort(
     (a, b) => a[1].documentIndex - b[1].documentIndex
@@ -332,24 +335,22 @@ export function mergeBookmarksFromMultipleDocuments(
       ? bookmarks
       : applyPageOffsetToBookmarks(bookmarks, cumulativeOffset);
 
-    if (adjustedBookmarks.length > 0) {
-      if (bookmarksByDocument.size > 1) {
-        const firstPageNumber = adjustedBookmarks[0]?.pageNumber || (cumulativeOffset + 1);
-        const separatorBookmark: PDFBookmark = {
-          title: documentName,
-          pageNumber: firstPageNumber,
-          dest: null,
-          items: adjustedBookmarks,
-          bold: true,
-          documentId,
-          documentIndex,
-          documentName,
-          isGlobalPage: true
-        };
-        mergedBookmarks.push(separatorBookmark);
-      } else {
-        mergedBookmarks.push(...adjustedBookmarks);
-      }
+    if (shouldGroupByDocument) {
+      const fallbackFirstPageNumber = pageCount && pageCount > 0 ? cumulativeOffset + 1 : null;
+      const separatorBookmark: PDFBookmark = {
+        title: documentName,
+        pageNumber: adjustedBookmarks[0]?.pageNumber ?? fallbackFirstPageNumber,
+        dest: null,
+        items: adjustedBookmarks,
+        bold: true,
+        documentId,
+        documentIndex,
+        documentName,
+        isGlobalPage: true
+      };
+      mergedBookmarks.push(separatorBookmark);
+    } else if (adjustedBookmarks.length > 0) {
+      mergedBookmarks.push(...adjustedBookmarks);
     }
 
     if (pageCount && pageCount > 0) {

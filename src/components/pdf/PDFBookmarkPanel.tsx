@@ -27,6 +27,7 @@ interface VisibleBookmarkItem {
   bookmarkId: string;
 }
 
+
 const PDFBookmarkPanel: React.FC = () => {
   const {
     state,

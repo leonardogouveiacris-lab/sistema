@@ -1824,7 +1824,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           documentIndex: documentInfo.documentIndex,
           pageCount: pdf.numPages
         });
-        setBookmarks(mergeBookmarksFromMultipleDocuments(newMap));
+        setBookmarks(mergeBookmarksFromMultipleDocuments(newMap, { totalDocumentCount: state.documents.length }));
         return newMap;
       });
 
@@ -1854,7 +1854,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               pageCount: pdf.numPages
             });
           }
-          setBookmarks(mergeBookmarksFromMultipleDocuments(newMap));
+          setBookmarks(mergeBookmarksFromMultipleDocuments(newMap, { totalDocumentCount: state.documents.length }));
           return newMap;
         });
       }
