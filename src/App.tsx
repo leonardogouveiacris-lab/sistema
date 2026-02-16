@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   ErrorBoundary,
   Header,
@@ -43,6 +43,7 @@ function AppContent() {
     isLoading: processesLoading,
     error: processesError,
     addProcess,
+    updateProcess,
     removeProcess,
     importBackup: importProcessBackup,
     refreshProcesses
@@ -140,6 +141,46 @@ function AppContent() {
     }
   }, [removeProcess, processes]);
 
+  const handleUpdateProcess = useCallback(async (
+    processId: string,
+    updatedData: Partial<NewProcess>
+  ): Promise<boolean> => {
+    setGlobalError('');
+
+    try {
+      const success = await updateProcess(processId, updatedData);
+
+      if (!success) {
+        throw new Error('Falha ao atualizar os dados do processo');
+      }
+
+      setSelectedProcess(prev => (
+        prev && prev.id === processId
+          ? { ...prev, ...updatedData, dataAtualizacao: new Date() }
+          : prev
+      ));
+
+      logger.success('Processo atualizado com sucesso', 'App - handleUpdateProcess', {
+        processId,
+        updatedFields: Object.keys(updatedData)
+      });
+
+      return true;
+    } catch (error) {
+      const errorMessage = getUserFriendlyMessage(error);
+      setGlobalError(errorMessage);
+
+      logger.errorWithException(
+        'Erro ao atualizar processo',
+        error as Error,
+        'App - handleUpdateProcess',
+        { processId, updatedData }
+      );
+
+      return false;
+    }
+  }, [updateProcess]);
+
   const handleSelectProcess = useCallback((process: Process) => {
     setSelectedProcess(process);
     setActiveTab(AppTabs.PROCESSO);
@@ -153,6 +194,15 @@ function AppContent() {
     setGlobalError('');
     logger.info('Retorno para lista de processos', 'App - handleBackToList');
   }, []);
+
+  useEffect(() => {
+    if (!selectedProcess) return;
+
+    const refreshedProcess = processes.find(p => p.id === selectedProcess.id);
+    if (!refreshedProcess) return;
+
+    setSelectedProcess(refreshedProcess);
+  }, [processes, selectedProcess]);
 
   const handleTabChange = useCallback((tab: string) => {
     setGlobalError('');
@@ -279,6 +329,7 @@ function AppContent() {
                 verbas={verbas}
                 documentos={documentos}
                 onBackToList={handleBackToList}
+                onUpdateProcess={handleUpdateProcess}
                 onRemoveProcess={handleRemoveProcess}
               />
             </ErrorBoundary>
@@ -329,6 +380,7 @@ function AppContent() {
     handleImportBackup,
     handleSelectProcess,
     handleBackToList,
+    handleUpdateProcess,
     handleRemoveProcess
   ]);
 
