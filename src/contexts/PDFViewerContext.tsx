@@ -237,6 +237,7 @@ interface PDFViewerContextType {
 
   // Page Dimensions
   setPageDimensions: (pageNumber: number, dimensions: { width: number; height: number; internalRotation?: number }) => void;
+  setPageDimensionsBatch: (entries: Array<[number, { width: number; height: number; internalRotation?: number }]>) => void;
   getPageHeight: (pageNumber: number) => number;
   getPageWidth: (pageNumber: number) => number;
   setRenderRange: (range: number) => void;
@@ -1411,11 +1412,60 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    */
   const setPageDimensions = useCallback((pageNumber: number, dimensions: { width: number; height: number; internalRotation?: number }) => {
     setState(prev => {
+      const existingDimensions = prev.pageDimensions.get(pageNumber);
+      if (
+        existingDimensions &&
+        existingDimensions.width === dimensions.width &&
+        existingDimensions.height === dimensions.height &&
+        (existingDimensions.internalRotation ?? 0) === (dimensions.internalRotation ?? 0)
+      ) {
+        return prev;
+      }
+
       const newDimensions = new Map(prev.pageDimensions);
       newDimensions.set(pageNumber, dimensions);
       return { ...prev, pageDimensions: newDimensions };
     });
   }, []);
+
+  const setPageDimensionsBatch = useCallback(
+    (entries: Array<[number, { width: number; height: number; internalRotation?: number }]>) => {
+      if (entries.length === 0) {
+        return;
+      }
+
+      setState(prev => {
+        let nextDimensions: Map<number, { width: number; height: number; internalRotation?: number }> | null = null;
+
+        entries.forEach(([pageNumber, dimensions]) => {
+          const baseMap = nextDimensions ?? prev.pageDimensions;
+          const existingDimensions = baseMap.get(pageNumber);
+          const hasSameDimensions =
+            existingDimensions &&
+            existingDimensions.width === dimensions.width &&
+            existingDimensions.height === dimensions.height &&
+            (existingDimensions.internalRotation ?? 0) === (dimensions.internalRotation ?? 0);
+
+          if (hasSameDimensions) {
+            return;
+          }
+
+          if (!nextDimensions) {
+            nextDimensions = new Map(prev.pageDimensions);
+          }
+
+          nextDimensions.set(pageNumber, dimensions);
+        });
+
+        if (!nextDimensions) {
+          return prev;
+        }
+
+        return { ...prev, pageDimensions: nextDimensions };
+      });
+    },
+    []
+  );
 
   const registerScrollContainer = useCallback((container: HTMLDivElement | null) => {
     scrollContainerRef.current = container;
@@ -2216,6 +2266,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setBookmarkPanelVisible,
     setBookmarkPanelWidth,
     setPageDimensions,
+    setPageDimensionsBatch,
     getPageHeight,
     getPageWidth,
     setRenderRange,
@@ -2290,7 +2341,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     startEditDecision, startEditVerba, startEditDocumento, startEditDocumentoLancamento, cancelForm,
     registerEditor, unregisterEditor, insertTextInField,
     setBookmarks, setBookmarkStatusByDoc, resetBookmarksStatusByDoc, setIsLoadingBookmarks, setBookmarksError, toggleBookmarkPanel, setBookmarkPanelVisible, setBookmarkPanelWidth,
-    setPageDimensions, getPageHeight, getPageWidth, setRenderRange, getEffectiveRenderRange, registerScrollContainer, getVisiblePageFromScroll,
+    setPageDimensions, setPageDimensionsBatch, getPageHeight, getPageWidth, setRenderRange, getEffectiveRenderRange, registerScrollContainer, getVisiblePageFromScroll,
     setHighlights, addHighlight, removeHighlight, updateHighlightColor,
     toggleHighlighter, setHighlighterActive, setSelectedHighlightColor, setHoveredHighlightId,
     getHighlightsByPage, setSelectedHighlightIds, addHighlightIdToLink, clearHighlightIdsToLink, scrollToMultipleHighlights,

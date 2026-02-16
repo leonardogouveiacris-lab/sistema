@@ -107,7 +107,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     setIsLoadingBookmarks,
     setBookmarksError,
     toggleBookmarkPanel,
-    setPageDimensions,
+    setPageDimensionsBatch,
     getPageHeight,
     getPageWidth,
     getCurrentDocument,
@@ -197,6 +197,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const documentSetGenerationRef = useRef(0);
   const lastOpenDocumentSetSignatureRef = useRef<string | null>(null);
   const commentsBatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pageDimensionsUpdateQueueRef = useRef<Map<number, { width: number; height: number; internalRotation?: number }>>(new Map());
+  const pageDimensionsBatchFrameRef = useRef<number | null>(null);
   const heavyTaskQueueRef = useRef<HeavyDocumentTask[]>([]);
   const heavyTaskInFlightRef = useRef<Map<string, HeavyDocumentTask>>(new Map());
   const heavyTaskGenerationRef = useRef(0);
@@ -233,6 +235,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   const startPhaseTimer = useCallback((phase: string) => {
     phaseTimersRef.current.set(phase, performance.now());
+  }, []);
+
+  const flushPageDimensionUpdates = useCallback(() => {
+    pageDimensionsBatchFrameRef.current = null;
+
+    if (pageDimensionsUpdateQueueRef.current.size === 0) {
+      return;
+    }
+
+    const entries = Array.from(pageDimensionsUpdateQueueRef.current.entries());
+    pageDimensionsUpdateQueueRef.current.clear();
+    setPageDimensionsBatch(entries);
+  }, [setPageDimensionsBatch]);
+
+  useEffect(() => {
+    return () => {
+      if (pageDimensionsBatchFrameRef.current !== null) {
+        window.cancelAnimationFrame(pageDimensionsBatchFrameRef.current);
+        pageDimensionsBatchFrameRef.current = null;
+      }
+
+      pageDimensionsUpdateQueueRef.current.clear();
+    };
   }, []);
 
   const finishPhaseTimer = useCallback((phase: string, context: string, data?: Record<string, unknown>) => {
@@ -3153,11 +3178,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const { width, height, rotate: internalRotation } = page;
     const baseWidth = width / state.zoom;
     const baseHeight = height / state.zoom;
-    setPageDimensions(pageNumber, {
+    pageDimensionsUpdateQueueRef.current.set(pageNumber, {
       width: baseWidth,
       height: baseHeight,
       internalRotation: internalRotation || 0
     });
+
+    if (pageDimensionsBatchFrameRef.current === null) {
+      pageDimensionsBatchFrameRef.current = window.requestAnimationFrame(flushPageDimensionUpdates);
+    }
 
     if (!firstPaintRecordedRef.current) {
       firstPaintRecordedRef.current = true;
@@ -3184,7 +3213,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         'FloatingPDFViewer.onPageLoadSuccess'
       );
     }
-  }, [setPageDimensions, state.zoom, finishPhaseTimer, getDocumentByGlobalPage]);
+  }, [state.zoom, finishPhaseTimer, getDocumentByGlobalPage, flushPageDimensionUpdates]);
 
   /**
    * Effect para fallback de renderização - garante que a página atual sempre renderize
