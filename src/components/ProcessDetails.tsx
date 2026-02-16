@@ -43,6 +43,12 @@ interface ProcessDetailsProps {
   verbas: Verba[];                             // Todas as verbas do sistema para exibir as do processo
   documentos: Documento[];                     // Todos os documentos do sistema para exibir os do processo
   onBackToList: () => void;
+  onUpdateProcess: (processId: string, data: {
+    numeroProcesso: string;
+    reclamante: string;
+    reclamada: string;
+    observacoesGerais?: string;
+  }) => Promise<boolean>;
   onRemoveProcess: (processId: string) => void;
 }
 
@@ -52,8 +58,27 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
   verbas,
   documentos,
   onBackToList,
+  onUpdateProcess,
   onRemoveProcess
 }) => {
+  const [isEditingBasicInfo, setIsEditingBasicInfo] = React.useState(false);
+  const [isSavingBasicInfo, setIsSavingBasicInfo] = React.useState(false);
+  const [editData, setEditData] = React.useState({
+    numeroProcesso: process.numeroProcesso,
+    reclamante: process.reclamante,
+    reclamada: process.reclamada,
+    observacoesGerais: process.observacoesGerais || ''
+  });
+
+  React.useEffect(() => {
+    setEditData({
+      numeroProcesso: process.numeroProcesso,
+      reclamante: process.reclamante,
+      reclamada: process.reclamada,
+      observacoesGerais: process.observacoesGerais || ''
+    });
+  }, [process]);
+
   if (!process) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -86,6 +111,48 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
   const safeDecisions = Array.isArray(decisions) ? decisions : [];
   const safeVerbas = Array.isArray(verbas) ? verbas : [];
   const safeDocumentos = Array.isArray(documentos) ? documentos : [];
+
+  const handleStartEdit = () => {
+    setEditData({
+      numeroProcesso: process.numeroProcesso,
+      reclamante: process.reclamante,
+      reclamada: process.reclamada,
+      observacoesGerais: process.observacoesGerais || ''
+    });
+    setIsEditingBasicInfo(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingBasicInfo(false);
+    setEditData({
+      numeroProcesso: process.numeroProcesso,
+      reclamante: process.reclamante,
+      reclamada: process.reclamada,
+      observacoesGerais: process.observacoesGerais || ''
+    });
+  };
+
+  const handleEditChange = (field: 'numeroProcesso' | 'reclamante' | 'reclamada' | 'observacoesGerais', value: string) => {
+    setEditData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveBasicInfo = async () => {
+    setIsSavingBasicInfo(true);
+    try {
+      const success = await onUpdateProcess(process.id, {
+        numeroProcesso: editData.numeroProcesso.trim(),
+        reclamante: editData.reclamante.trim(),
+        reclamada: editData.reclamada.trim(),
+        observacoesGerais: editData.observacoesGerais.trim()
+      });
+
+      if (success) {
+        setIsEditingBasicInfo(false);
+      }
+    } finally {
+      setIsSavingBasicInfo(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -140,7 +207,34 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
 
       {/* Informações principais do processo */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Informações Básicas</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Informações Básicas</h3>
+          {!isEditingBasicInfo ? (
+            <button
+              onClick={handleStartEdit}
+              className="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              Editar dados
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCancelEdit}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                disabled={isSavingBasicInfo}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveBasicInfo}
+                className="px-3 py-2 text-sm font-medium text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+                disabled={isSavingBasicInfo}
+              >
+                {isSavingBasicInfo ? 'Salvando...' : 'Salvar alterações'}
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Número do Processo */}
@@ -148,9 +242,17 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Número do Processo
             </label>
-            <div className="bg-gray-50 rounded-md p-3 border border-gray-200">
-              <span className="text-gray-900 font-mono">{process.numeroProcesso}</span>
-            </div>
+            {isEditingBasicInfo ? (
+              <input
+                value={editData.numeroProcesso}
+                onChange={(e) => handleEditChange('numeroProcesso', e.target.value)}
+                className="w-full rounded-md p-3 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            ) : (
+              <div className="bg-gray-50 rounded-md p-3 border border-gray-200">
+                <span className="text-gray-900 font-mono">{process.numeroProcesso}</span>
+              </div>
+            )}
           </div>
 
           {/* Data de Criação */}
@@ -189,9 +291,17 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Parte Autora
             </label>
-            <div className="bg-gray-50 rounded-md p-3 border border-gray-200">
-              <span className="text-gray-900">{process.reclamante}</span>
-            </div>
+            {isEditingBasicInfo ? (
+              <input
+                value={editData.reclamante}
+                onChange={(e) => handleEditChange('reclamante', e.target.value)}
+                className="w-full rounded-md p-3 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            ) : (
+              <div className="bg-gray-50 rounded-md p-3 border border-gray-200">
+                <span className="text-gray-900">{process.reclamante}</span>
+              </div>
+            )}
           </div>
 
           {/* Parte Re */}
@@ -199,21 +309,38 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Parte Re
             </label>
-            <div className="bg-gray-50 rounded-md p-3 border border-gray-200">
-              <span className="text-gray-900">{process.reclamada}</span>
-            </div>
+            {isEditingBasicInfo ? (
+              <input
+                value={editData.reclamada}
+                onChange={(e) => handleEditChange('reclamada', e.target.value)}
+                className="w-full rounded-md p-3 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            ) : (
+              <div className="bg-gray-50 rounded-md p-3 border border-gray-200">
+                <span className="text-gray-900">{process.reclamada}</span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Observações Gerais (ocupa largura completa) */}
-        {process.observacoesGerais && (
+        {(process.observacoesGerais || isEditingBasicInfo) && (
           <div className="mt-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Observações Gerais
             </label>
-            <div className="bg-gray-50 rounded-md p-3 border border-gray-200">
-              <p className="text-gray-900 whitespace-pre-wrap">{process.observacoesGerais}</p>
-            </div>
+            {isEditingBasicInfo ? (
+              <textarea
+                value={editData.observacoesGerais}
+                onChange={(e) => handleEditChange('observacoesGerais', e.target.value)}
+                rows={4}
+                className="w-full rounded-md p-3 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            ) : (
+              <div className="bg-gray-50 rounded-md p-3 border border-gray-200">
+                <p className="text-gray-900 whitespace-pre-wrap">{process.observacoesGerais}</p>
+              </div>
+            )}
           </div>
         )}
 
