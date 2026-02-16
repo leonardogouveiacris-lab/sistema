@@ -27,6 +27,10 @@ interface VisibleBookmarkItem {
   bookmarkId: string;
 }
 
+const isDocumentGroupBookmark = (bookmark: PDFBookmark, level: number): boolean => {
+  return level === 0 && Boolean(bookmark.documentId) && bookmark.title === bookmark.documentName;
+};
+
 const PDFBookmarkPanel: React.FC = () => {
   const {
     state,
@@ -129,7 +133,8 @@ const PDFBookmarkPanel: React.FC = () => {
         flatVisible.push({ bookmark, level, bookmarkId });
 
         const hasChildren = bookmark.items && bookmark.items.length > 0;
-        const isExpanded = expandAll || expandedItems.has(bookmarkId);
+        const isDocumentGroup = isDocumentGroupBookmark(bookmark, level);
+        const isExpanded = isDocumentGroup || expandAll || expandedItems.has(bookmarkId);
 
         if (hasChildren && isExpanded) {
           collectVisibleBookmarks(bookmark.items, level + 1, `${bookmarkId}-`);
@@ -166,7 +171,8 @@ const PDFBookmarkPanel: React.FC = () => {
 
   const renderBookmarkRow = ({ bookmark, level, bookmarkId }: VisibleBookmarkItem): React.ReactNode => {
     const hasChildren = bookmark.items && bookmark.items.length > 0;
-    const isExpanded = expandedItems.has(bookmarkId) || expandAll;
+    const isDocumentGroup = isDocumentGroupBookmark(bookmark, level);
+    const isExpanded = isDocumentGroup || expandedItems.has(bookmarkId) || expandAll;
     const isCurrentPage = bookmark.pageNumber === state.currentPage;
     const pageInfo = bookmark.pageNumber ? `p. ${bookmark.pageNumber}` : '';
 
