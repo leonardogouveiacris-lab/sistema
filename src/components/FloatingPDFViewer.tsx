@@ -59,6 +59,43 @@ const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
 const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
 const CONTINUOUS_PAGE_GAP_PX = 16;
+const PROGRAMMATIC_SCROLL_MAX_RETRIES = 60;
+
+const findFirstIndexByBottom = (cumulativePageBottoms: number[], threshold: number): number => {
+  let left = 0;
+  let right = cumulativePageBottoms.length - 1;
+  let answer = cumulativePageBottoms.length;
+
+  while (left <= right) {
+    const middle = Math.floor((left + right) / 2);
+    if (cumulativePageBottoms[middle] >= threshold) {
+      answer = middle;
+      right = middle - 1;
+    } else {
+      left = middle + 1;
+    }
+  }
+
+  return answer;
+};
+
+const findLastIndexByTop = (cumulativePageTops: number[], threshold: number): number => {
+  let left = 0;
+  let right = cumulativePageTops.length - 1;
+  let answer = -1;
+
+  while (left <= right) {
+    const middle = Math.floor((left + right) / 2);
+    if (cumulativePageTops[middle] <= threshold) {
+      answer = middle;
+      left = middle + 1;
+    } else {
+      right = middle - 1;
+    }
+  }
+
+  return answer;
+};
 
 const findFirstIndexByBottom = (cumulativePageBottoms: number[], threshold: number): number => {
   let left = 0;
@@ -2505,7 +2542,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     if (state.viewMode === 'continuous') {
       let retryCount = 0;
-      const MAX_RETRIES = 60;
+      const MAX_RETRIES = PROGRAMMATIC_SCROLL_MAX_RETRIES;
 
       const scrollToTargetPage = () => {
         const pageElement = pageRefs.current.get(pageNum);
@@ -3250,7 +3287,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const targetPage = state.highlightedPage;
     let retryCount = 0;
-    const MAX_RETRIES = 60;
+    const MAX_RETRIES = PROGRAMMATIC_SCROLL_MAX_RETRIES;
 
     const scrollToHighlightedPage = () => {
       const pageElement = pageRefs.current.get(targetPage);
