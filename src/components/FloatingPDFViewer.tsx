@@ -3891,6 +3891,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                 }
 
                 if (state.viewMode === 'continuous' && !shouldMountDocument) {
+                  const hasDocumentLoaded = loadedDocumentRefsByGenerationRef.current.has(doc.id);
+
                   return (
                     <div key={doc.id} className="flex flex-col items-center w-full">
                       {docIndex > 0 && (
@@ -3904,12 +3906,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                         </div>
                       )}
                       <div
-                        className="bg-white shadow-lg border border-gray-200 w-full max-w-4xl rounded-sm flex items-center justify-center"
+                        className={`w-full max-w-4xl rounded-sm flex items-center justify-center ${
+                          hasDocumentLoaded
+                            ? 'bg-white shadow-lg border border-gray-200'
+                            : 'bg-transparent shadow-none border-0'
+                        }`}
                         style={{ height: `${estimatedDocumentHeights.get(doc.id) || 920}px` }}
                       >
-                        <div className="text-gray-400 text-xs">
-                          Documento fora da janela ativa ({doc.displayName})
-                        </div>
+                        {hasDocumentLoaded && (
+                          <div className="text-gray-400 text-xs">
+                            Documento fora da janela ativa ({doc.displayName})
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
