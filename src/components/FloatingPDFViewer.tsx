@@ -57,6 +57,8 @@ const PDF_DEBUG = false;
 const BOOKMARKS_IDLE_TIMEOUT_MS = 1000;
 const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
+const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
+const CONTINUOUS_PAGE_GAP_PX = 16;
 
 type HeavyTaskType = 'comments' | 'bookmarks';
 
@@ -2239,6 +2241,67 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return arrays;
   }, [state.documents, documentPages]);
 
+  const continuousWindowByDocument = useMemo(() => {
+    const windows = new Map<string, {
+      firstVisibleLocalPage: number;
+      lastVisibleLocalPage: number;
+      rangeStart: number;
+      rangeEnd: number;
+    }>();
+
+    state.documents.forEach((doc) => {
+      const offset = memoizedDocumentOffsets.get(doc.id);
+      if (!offset) {
+        return;
+      }
+
+      const numPages = documentPages.get(doc.id) || offset.numPages;
+      if (numPages <= 0) {
+        return;
+      }
+
+      let firstVisibleLocalPage: number | null = null;
+      let lastVisibleLocalPage: number | null = null;
+
+      scrollBasedVisiblePages.forEach((globalPageNum) => {
+        if (globalPageNum < offset.startPage || globalPageNum > offset.endPage) {
+          return;
+        }
+
+        const localPageNum = globalPageNum - offset.startPage + 1;
+        if (firstVisibleLocalPage === null || localPageNum < firstVisibleLocalPage) {
+          firstVisibleLocalPage = localPageNum;
+        }
+        if (lastVisibleLocalPage === null || localPageNum > lastVisibleLocalPage) {
+          lastVisibleLocalPage = localPageNum;
+        }
+      });
+
+      if (firstVisibleLocalPage === null || lastVisibleLocalPage === null) {
+        if (state.currentPage >= offset.startPage && state.currentPage <= offset.endPage) {
+          const localCurrentPage = state.currentPage - offset.startPage + 1;
+          firstVisibleLocalPage = localCurrentPage;
+          lastVisibleLocalPage = localCurrentPage;
+        } else {
+          firstVisibleLocalPage = 1;
+          lastVisibleLocalPage = 1;
+        }
+      }
+
+      const rangeStart = Math.max(1, firstVisibleLocalPage - CONTINUOUS_WINDOW_BUFFER_PAGES);
+      const rangeEnd = Math.min(numPages, lastVisibleLocalPage + CONTINUOUS_WINDOW_BUFFER_PAGES);
+
+      windows.set(doc.id, {
+        firstVisibleLocalPage,
+        lastVisibleLocalPage,
+        rangeStart,
+        rangeEnd
+      });
+    });
+
+    return windows;
+  }, [state.documents, state.currentPage, memoizedDocumentOffsets, documentPages, scrollBasedVisiblePages]);
+
   const currentPageInfo = useMemo(() => {
     if (state.viewMode !== 'paginated' || state.totalPages === 0) return null;
     const offsets = memoizedDocumentOffsets;
@@ -3732,7 +3795,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               <div className="flex justify-center py-4">
                 <div className="flex flex-col items-center space-y-4">
               {state.documents.map((doc, docIndex) => {
-                const numPages = documentPages.get(doc.id) || 0;
                 const offset = memoizedDocumentOffsets.get(doc.id);
                 const shouldMountDocument = state.viewMode === 'paginated'
                   ? (currentPageInfo ? currentPageInfo.document.id === doc.id : docIndex === 0)
@@ -3886,13 +3948,55 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                         // Modo Contínuo Ultra-Performance: Renderização Mínima
                         (() => {
                           const pageArray = pageArraysByDocument.get(doc.id);
+                          const pageWindow = continuousWindowByDocument.get(doc.id);
                           if (!pageArray || !offset) {
                             return null;
                           }
 
+                          if (!pageWindow) {
+                            return null;
+                          }
+
+                          const { rangeStart, rangeEnd } = pageWindow;
+                          const rangePages: number[] = [];
+
+                          for (let localPageNum = rangeStart; localPageNum <= rangeEnd; localPageNum++) {
+                            rangePages.push(localPageNum);
+                          }
+
+                          const sumPageHeights = (startLocalPage: number, endLocalPage: number) => {
+                            if (startLocalPage > endLocalPage) {
+                              return 0;
+                            }
+
+                            let totalHeight = 0;
+                            for (let localPageNum = startLocalPage; localPageNum <= endLocalPage; localPageNum++) {
+                              const globalPageNum = offset.startPage + localPageNum - 1;
+                              totalHeight += getPageHeight(globalPageNum);
+                            }
+                            return totalHeight;
+                          };
+
+                          const beforeCount = Math.max(rangeStart - 1, 0);
+                          const afterCount = Math.max(pageArray.length - rangeEnd, 0);
+                          const beforeSpacerHeight = beforeCount > 0
+                            ? sumPageHeights(1, rangeStart - 1) + (beforeCount * CONTINUOUS_PAGE_GAP_PX)
+                            : 0;
+                          const afterSpacerHeight = afterCount > 0
+                            ? sumPageHeights(rangeEnd + 1, pageArray.length) + (afterCount * CONTINUOUS_PAGE_GAP_PX)
+                            : 0;
+
                           return (
-                            <div className="flex flex-col items-center space-y-4">
-                              {pageArray.map((localPageNum) => {
+                            <div className="flex flex-col items-center w-full">
+                              {beforeSpacerHeight > 0 && (
+                                <div
+                                  className="w-full"
+                                  style={{ height: `${beforeSpacerHeight}px` }}
+                                  aria-hidden="true"
+                                />
+                              )}
+
+                              {rangePages.map((localPageNum) => {
                                 const globalPageNum = offset.startPage + localPageNum - 1;
                                 const shouldRenderCanvas = pagesToRender.has(globalPageNum);
 
@@ -3911,6 +4015,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                     }}
                                     data-global-page={globalPageNum}
                                     className="relative flex items-center justify-center"
+                                    style={{ marginBottom: localPageNum < rangeEnd ? `${CONTINUOUS_PAGE_GAP_PX}px` : '0px' }}
                                   >
                                     {shouldRenderCanvas ? (
                                       <>
@@ -3972,6 +4077,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                   </div>
                                 );
                               })}
+
+                              {afterSpacerHeight > 0 && (
+                                <div
+                                  className="w-full"
+                                  style={{ height: `${afterSpacerHeight}px` }}
+                                  aria-hidden="true"
+                                />
+                              )}
                             </div>
                           );
                         })()
