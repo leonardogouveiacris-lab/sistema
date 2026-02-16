@@ -563,7 +563,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const allowLargeJump = Boolean(
       options?.allowLargeJump ||
       isLargeScrollJump ||
-      (state.isSearchOpen && isSearchNavigationActive())
+      (state.isSearchOpen && isSearchNavigationActive()) ||
+      (state.highlightedPage && state.highlightedPage === state.currentPage)
     );
 
     const visiblePages = new Set<number>();
@@ -657,6 +658,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     goToPage,
     isSearchNavigationActive,
     state.currentPage,
+    state.highlightedPage,
     state.isSearchOpen,
     state.totalPages,
     state.viewMode
@@ -2502,13 +2504,28 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     goToPage(pageNum);
 
     if (state.viewMode === 'continuous') {
-      const pageElement = pageRefs.current.get(pageNum);
-      if (pageElement && scrollContainerRef.current) {
-        pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
-      }
-      setTimeout(() => {
-        isProgrammaticScrollRef.current = false;
-      }, 400);
+      let retryCount = 0;
+      const MAX_RETRIES = 60;
+
+      const scrollToTargetPage = () => {
+        const pageElement = pageRefs.current.get(pageNum);
+        if (pageElement && scrollContainerRef.current) {
+          pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
+          setTimeout(() => {
+            isProgrammaticScrollRef.current = false;
+          }, 400);
+          return;
+        }
+
+        if (retryCount < MAX_RETRIES) {
+          retryCount += 1;
+          requestAnimationFrame(scrollToTargetPage);
+        } else {
+          isProgrammaticScrollRef.current = false;
+        }
+      };
+
+      scrollToTargetPage();
     }
   }, [goToPage, state.viewMode]);
 
@@ -3231,14 +3248,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     lastDetectedPageRef.current = state.highlightedPage;
     lastDetectionTimeRef.current = Date.now();
 
-    const pageElement = pageRefs.current.get(state.highlightedPage);
-    if (pageElement && scrollContainerRef.current) {
-      pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
-    }
+    const targetPage = state.highlightedPage;
+    let retryCount = 0;
+    const MAX_RETRIES = 60;
 
-    setTimeout(() => {
-      isProgrammaticScrollRef.current = false;
-    }, 400);
+    const scrollToHighlightedPage = () => {
+      const pageElement = pageRefs.current.get(targetPage);
+      if (pageElement && scrollContainerRef.current) {
+        pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
+        setTimeout(() => {
+          isProgrammaticScrollRef.current = false;
+        }, 400);
+        return;
+      }
+
+      if (retryCount < MAX_RETRIES) {
+        retryCount += 1;
+        requestAnimationFrame(scrollToHighlightedPage);
+      } else {
+        isProgrammaticScrollRef.current = false;
+      }
+    };
+
+    scrollToHighlightedPage();
   }, [state.highlightedPage, state.viewMode]);
 
   /**
