@@ -18,6 +18,10 @@ import { countTotalBookmarks } from '../utils/pdfBookmarkExtractor';
 import { PageRotationMap } from '../services/pageRotation.service';
 import * as PageRotationService from '../services/pageRotation.service';
 import logger from '../utils/logger';
+import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibilityIndex';
+
+const CONTINUOUS_PAGE_GAP_PX = 16;
+
 
 /**
  * Interface para referências dos editores de texto
@@ -1449,6 +1453,22 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     [state.pageDimensions, state.zoom, state.pageRotations]
   );
 
+  const cumulativePageTops = useMemo(() => {
+    const tops: number[] = [];
+    let accumulatedHeight = 0;
+
+    for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
+      tops.push(accumulatedHeight);
+      accumulatedHeight += getPageHeight(pageNum) + CONTINUOUS_PAGE_GAP_PX;
+    }
+
+    return tops;
+  }, [getPageHeight, state.totalPages]);
+
+  const cumulativePageBottoms = useMemo(() => {
+    return cumulativePageTops.map((top, index) => top + getPageHeight(index + 1));
+  }, [cumulativePageTops, getPageHeight]);
+
   const getVisiblePageFromScroll = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container || state.viewMode !== 'continuous' || state.totalPages === 0) {
@@ -1458,37 +1478,37 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     const scrollTop = container.scrollTop;
     const viewportHeight = container.clientHeight;
     const viewportCenter = scrollTop + viewportHeight / 2;
-    const gap = 16;
-
-    let accumulatedHeight = 0;
     let centerPage = 1;
     let minDistanceToCenter = Infinity;
 
-    for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
-      const pageHeight = getPageHeight(pageNum);
-      const pageTop = accumulatedHeight;
-      const pageBottom = accumulatedHeight + pageHeight;
-      const pageCenter = accumulatedHeight + pageHeight / 2;
+    const visibleStartIndex = Math.max(0, findFirstIndexByBottom(cumulativePageBottoms, scrollTop));
+    const visibleEndIndex = Math.min(
+      cumulativePageTops.length - 1,
+      findLastIndexByTop(cumulativePageTops, scrollTop + viewportHeight)
+    );
 
-      const isPageVisible = pageBottom >= scrollTop && pageTop <= scrollTop + viewportHeight;
-
-      if (isPageVisible) {
+    if (visibleStartIndex <= visibleEndIndex) {
+      for (let pageIndex = visibleStartIndex; pageIndex <= visibleEndIndex; pageIndex++) {
+        const pageTop = cumulativePageTops[pageIndex];
+        const pageBottom = cumulativePageBottoms[pageIndex];
+        const pageCenter = pageTop + (pageBottom - pageTop) / 2;
         const distanceToCenter = Math.abs(pageCenter - viewportCenter);
+
         if (distanceToCenter < minDistanceToCenter) {
           minDistanceToCenter = distanceToCenter;
-          centerPage = pageNum;
+          centerPage = pageIndex + 1;
         }
       }
-
-      if (pageTop > scrollTop + viewportHeight) {
-        break;
-      }
-
-      accumulatedHeight += pageHeight + gap;
+    } else {
+      const centerIndex = findFirstIndexByBottom(cumulativePageBottoms, viewportCenter);
+      centerPage = Math.min(
+        state.totalPages,
+        Math.max(1, centerIndex >= state.totalPages ? state.totalPages : centerIndex + 1)
+      );
     }
 
     return centerPage;
-  }, [getPageHeight, state.totalPages, state.viewMode]);
+  }, [cumulativePageBottoms, cumulativePageTops, state.totalPages, state.viewMode]);
 
   /**
    * Define o range de páginas a serem renderizadas
