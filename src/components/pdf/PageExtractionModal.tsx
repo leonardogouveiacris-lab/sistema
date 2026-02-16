@@ -24,6 +24,7 @@ interface PageExtractionModalProps {
 
 const THUMBNAIL_SCALE = 0.18;
 const THUMBNAILS_PER_ROW = 6;
+const THUMBNAIL_BATCH_SIZE = 3;
 
 const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   isOpen,
@@ -41,7 +42,8 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   const [isExtracting, setIsExtracting] = useState(false);
   const [progress, setProgress] = useState<ExtractionProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loadedThumbnails, setLoadedThumbnails] = useState<Set<number>>(new Set());
+  const [isPreviewDocumentReady, setIsPreviewDocumentReady] = useState(false);
+  const [thumbnailsToRender, setThumbnailsToRender] = useState(0);
   const [previewPage, setPreviewPage] = useState(0);
 
   const modalRef = useRef<HTMLDivElement>(null);
@@ -65,7 +67,8 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       setError(null);
       setProgress(null);
       setPreviewPage(0);
-      setLoadedThumbnails(new Set());
+      setIsPreviewDocumentReady(false);
+      setThumbnailsToRender(0);
 
       setTimeout(() => inputRef.current?.focus(), 100);
     }
@@ -165,9 +168,32 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     }
   }, [isOpen, handleKeyDown]);
 
-  const handleThumbnailLoad = useCallback((pageNum: number) => {
-    setLoadedThumbnails(prev => new Set([...prev, pageNum]));
-  }, []);
+  useEffect(() => {
+    if (!isPreviewDocumentReady) {
+      setThumbnailsToRender(0);
+      return;
+    }
+
+    const totalVisiblePages = visiblePreviewPages.length;
+    let renderedCount = 0;
+    let animationFrameId: number;
+
+    const renderBatch = () => {
+      renderedCount = Math.min(renderedCount + THUMBNAIL_BATCH_SIZE, totalVisiblePages);
+      setThumbnailsToRender(renderedCount);
+
+      if (renderedCount < totalVisiblePages) {
+        animationFrameId = requestAnimationFrame(renderBatch);
+      }
+    };
+
+    setThumbnailsToRender(0);
+    animationFrameId = requestAnimationFrame(renderBatch);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isPreviewDocumentReady, visiblePreviewPages]);
 
   if (!isOpen) return null;
 
@@ -301,63 +327,70 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 justify-items-center">
-                  {visiblePreviewPages.map((pageNum) => {
-                    const isLoaded = loadedThumbnails.has(pageNum);
+                <Document
+                  file={documentUrl}
+                  loading={null}
+                  error={null}
+                  onLoadSuccess={() => setIsPreviewDocumentReady(true)}
+                  onLoadError={() => setIsPreviewDocumentReady(false)}
+                >
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 justify-items-center">
+                    {!isPreviewDocumentReady && (
+                      <div className="col-span-full flex items-center justify-center py-8 text-gray-500">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      </div>
+                    )}
 
-                    return (
-                      <div
-                        key={pageNum}
-                        className="relative group flex flex-col items-center"
-                      >
-                        <div className="relative bg-white rounded-lg shadow-md overflow-hidden ring-2 ring-blue-500 ring-offset-2">
-                          <Document
-                            file={documentUrl}
-                            loading={null}
-                            error={null}
-                          >
-                            <Page
-                              pageNumber={pageNum}
-                              scale={THUMBNAIL_SCALE}
-                              renderTextLayer={false}
-                              renderAnnotationLayer={false}
-                              onRenderSuccess={() => handleThumbnailLoad(pageNum)}
-                              loading={
-                                <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
-                                  <span className="text-gray-400 text-xs">{pageNum}</span>
-                                </div>
-                              }
-                              className="block"
-                            />
-                          </Document>
+                    {visiblePreviewPages.map((pageNum, index) => {
+                      const shouldRenderPage = isPreviewDocumentReady && index < thumbnailsToRender;
 
-                          {!isLoaded && (
-                            <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-                              <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                      return (
+                        <div
+                          key={pageNum}
+                          className="relative group flex flex-col items-center"
+                        >
+                          <div className="relative bg-white rounded-lg shadow-md overflow-hidden ring-2 ring-blue-500 ring-offset-2">
+                            {shouldRenderPage ? (
+                              <Page
+                                pageNumber={pageNum}
+                                scale={THUMBNAIL_SCALE}
+                                renderTextLayer={false}
+                                renderAnnotationLayer={false}
+                                loading={
+                                  <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
+                                    <span className="text-gray-400 text-xs">{pageNum}</span>
+                                  </div>
+                                }
+                                className="block"
+                              />
+                            ) : (
+                              <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
+                                <span className="text-gray-400 text-xs">{pageNum}</span>
+                              </div>
+                            )}
+
+                            <div className="absolute top-1 left-1 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center shadow">
+                              <Check className="w-3 h-3 text-white" />
                             </div>
-                          )}
 
-                          <div className="absolute top-1 left-1 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center shadow">
-                            <Check className="w-3 h-3 text-white" />
+                            <button
+                              onClick={() => handleRemovePage(pageNum)}
+                              disabled={isExtracting}
+                              className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-50"
+                              title="Remover pagina"
+                            >
+                              <Trash2 className="w-3 h-3 text-white" />
+                            </button>
                           </div>
 
-                          <button
-                            onClick={() => handleRemovePage(pageNum)}
-                            disabled={isExtracting}
-                            className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-50"
-                            title="Remover pagina"
-                          >
-                            <Trash2 className="w-3 h-3 text-white" />
-                          </button>
+                          <span className="mt-2 text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                            Pagina {pageNum}
+                          </span>
                         </div>
-
-                        <span className="mt-2 text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                          Pagina {pageNum}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                </Document>
               )}
             </div>
           </div>
