@@ -59,6 +59,43 @@ const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
 const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
 const CONTINUOUS_PAGE_GAP_PX = 16;
+const PROGRAMMATIC_SCROLL_MAX_RETRIES = 60;
+
+const findFirstIndexByBottom = (cumulativePageBottoms: number[], threshold: number): number => {
+  let left = 0;
+  let right = cumulativePageBottoms.length - 1;
+  let answer = cumulativePageBottoms.length;
+
+  while (left <= right) {
+    const middle = Math.floor((left + right) / 2);
+    if (cumulativePageBottoms[middle] >= threshold) {
+      answer = middle;
+      right = middle - 1;
+    } else {
+      left = middle + 1;
+    }
+  }
+
+  return answer;
+};
+
+const findLastIndexByTop = (cumulativePageTops: number[], threshold: number): number => {
+  let left = 0;
+  let right = cumulativePageTops.length - 1;
+  let answer = -1;
+
+  while (left <= right) {
+    const middle = Math.floor((left + right) / 2);
+    if (cumulativePageTops[middle] <= threshold) {
+      answer = middle;
+      left = middle + 1;
+    } else {
+      right = middle - 1;
+    }
+  }
+
+  return answer;
+};
 
 type HeavyTaskType = 'comments' | 'bookmarks';
 
@@ -212,6 +249,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const documentSetSignature = useMemo(() => state.documents.map(doc => doc.id).join('|'), [state.documents]);
   const topLevelBookmarkCount = state.bookmarks.length;
   const totalBookmarkCount = useMemo(() => countTotalBookmarks(state.bookmarks), [state.bookmarks]);
+  const cumulativePageTops = useMemo(() => {
+    const tops: number[] = [];
+    let accumulatedHeight = 0;
+
+    for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
+      tops.push(accumulatedHeight);
+      accumulatedHeight += getPageHeight(pageNum) + CONTINUOUS_PAGE_GAP_PX;
+    }
+
+    return tops;
+  }, [getPageHeight, state.totalPages]);
+
+  const cumulativePageBottoms = useMemo(() => {
+    return cumulativePageTops.map((top, index) => top + getPageHeight(index + 1));
+  }, [cumulativePageTops, getPageHeight]);
 
   const startPhaseTimer = useCallback((phase: string) => {
     phaseTimersRef.current.set(phase, performance.now());
@@ -512,45 +564,54 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const allowLargeJump = Boolean(
       options?.allowLargeJump ||
       isLargeScrollJump ||
-      (state.isSearchOpen && isSearchNavigationActive())
+      (state.isSearchOpen && isSearchNavigationActive()) ||
+      (state.highlightedPage && state.highlightedPage === state.currentPage)
     );
 
-    let accumulatedHeight = 0;
     const visiblePages = new Set<number>();
-    const gap = 16;
     const viewportCenter = scrollTop + viewportHeight / 2;
     let centerPage = 1;
     let minDistanceToCenter = Infinity;
 
-    for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
-      const pageHeight = getPageHeight(pageNum);
-      const pageTop = accumulatedHeight;
-      const pageBottom = accumulatedHeight + pageHeight;
-      const pageCenter = accumulatedHeight + pageHeight / 2;
+    const bufferedViewportStart = scrollTop - buffer;
+    const bufferedViewportEnd = scrollTop + viewportHeight + buffer;
+    const bufferedStartIndex = Math.max(0, findFirstIndexByBottom(cumulativePageBottoms, bufferedViewportStart));
+    const bufferedEndIndex = Math.min(
+      cumulativePageTops.length - 1,
+      findLastIndexByTop(cumulativePageTops, bufferedViewportEnd)
+    );
 
-      const isInBufferedViewport = (
-        pageBottom >= scrollTop - buffer &&
-        pageTop <= scrollTop + viewportHeight + buffer
-      );
-
-      if (isInBufferedViewport) {
-        visiblePages.add(pageNum);
+    if (bufferedStartIndex <= bufferedEndIndex) {
+      for (let pageIndex = bufferedStartIndex; pageIndex <= bufferedEndIndex; pageIndex++) {
+        visiblePages.add(pageIndex + 1);
       }
+    }
 
-      const isPageVisible = pageBottom >= scrollTop && pageTop <= scrollTop + viewportHeight;
-      if (isPageVisible) {
+    const viewportStart = scrollTop;
+    const viewportEnd = scrollTop + viewportHeight;
+    const visibleStartIndex = Math.max(0, findFirstIndexByBottom(cumulativePageBottoms, viewportStart));
+    const visibleEndIndex = Math.min(
+      cumulativePageTops.length - 1,
+      findLastIndexByTop(cumulativePageTops, viewportEnd)
+    );
+
+    if (visibleStartIndex <= visibleEndIndex) {
+      for (let pageIndex = visibleStartIndex; pageIndex <= visibleEndIndex; pageIndex++) {
+        const pageTop = cumulativePageTops[pageIndex];
+        const pageBottom = cumulativePageBottoms[pageIndex];
+        const pageCenter = pageTop + (pageBottom - pageTop) / 2;
         const distanceToCenter = Math.abs(pageCenter - viewportCenter);
         if (distanceToCenter < minDistanceToCenter) {
           minDistanceToCenter = distanceToCenter;
-          centerPage = pageNum;
+          centerPage = pageIndex + 1;
         }
       }
-
-      if (pageTop > scrollTop + viewportHeight + buffer) {
-        break;
-      }
-
-      accumulatedHeight += pageHeight + gap;
+    } else {
+      const centerIndex = findFirstIndexByBottom(cumulativePageBottoms, viewportCenter);
+      centerPage = Math.min(
+        state.totalPages,
+        Math.max(1, centerIndex >= state.totalPages ? state.totalPages : centerIndex + 1)
+      );
     }
 
     for (let pageNum = 1; pageNum <= Math.min(5, state.totalPages); pageNum++) {
@@ -592,7 +653,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       lastDetectionTimeRef.current = now;
       goToPage(centerPage);
     }
-  }, [state.viewMode, state.totalPages, state.currentPage, state.isSearchOpen, getPageHeight, goToPage]);
+  }, [
+    cumulativePageBottoms,
+    cumulativePageTops,
+    goToPage,
+    isSearchNavigationActive,
+    state.currentPage,
+    state.highlightedPage,
+    state.isSearchOpen,
+    state.totalPages,
+    state.viewMode
+  ]);
 
   /**
    * Effect para detectar paginas visiveis durante scroll
@@ -2434,13 +2505,28 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     goToPage(pageNum);
 
     if (state.viewMode === 'continuous') {
-      const pageElement = pageRefs.current.get(pageNum);
-      if (pageElement && scrollContainerRef.current) {
-        pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
-      }
-      setTimeout(() => {
-        isProgrammaticScrollRef.current = false;
-      }, 400);
+      let retryCount = 0;
+      const MAX_RETRIES = PROGRAMMATIC_SCROLL_MAX_RETRIES;
+
+      const scrollToTargetPage = () => {
+        const pageElement = pageRefs.current.get(pageNum);
+        if (pageElement && scrollContainerRef.current) {
+          pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
+          setTimeout(() => {
+            isProgrammaticScrollRef.current = false;
+          }, 400);
+          return;
+        }
+
+        if (retryCount < MAX_RETRIES) {
+          retryCount += 1;
+          requestAnimationFrame(scrollToTargetPage);
+        } else {
+          isProgrammaticScrollRef.current = false;
+        }
+      };
+
+      scrollToTargetPage();
     }
   }, [goToPage, state.viewMode]);
 
@@ -3163,14 +3249,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     lastDetectedPageRef.current = state.highlightedPage;
     lastDetectionTimeRef.current = Date.now();
 
-    const pageElement = pageRefs.current.get(state.highlightedPage);
-    if (pageElement && scrollContainerRef.current) {
-      pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
-    }
+    const targetPage = state.highlightedPage;
+    let retryCount = 0;
+    const MAX_RETRIES = PROGRAMMATIC_SCROLL_MAX_RETRIES;
 
-    setTimeout(() => {
-      isProgrammaticScrollRef.current = false;
-    }, 400);
+    const scrollToHighlightedPage = () => {
+      const pageElement = pageRefs.current.get(targetPage);
+      if (pageElement && scrollContainerRef.current) {
+        pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
+        setTimeout(() => {
+          isProgrammaticScrollRef.current = false;
+        }, 400);
+        return;
+      }
+
+      if (retryCount < MAX_RETRIES) {
+        retryCount += 1;
+        requestAnimationFrame(scrollToHighlightedPage);
+      } else {
+        isProgrammaticScrollRef.current = false;
+      }
+    };
+
+    scrollToHighlightedPage();
   }, [state.highlightedPage, state.viewMode]);
 
   /**
