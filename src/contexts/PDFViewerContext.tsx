@@ -22,45 +22,6 @@ import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibil
 
 const CONTINUOUS_PAGE_GAP_PX = 16;
 
-
-const CONTINUOUS_PAGE_GAP_PX = 16;
-
-const findFirstIndexByBottom = (cumulativePageBottoms: number[], threshold: number): number => {
-  let left = 0;
-  let right = cumulativePageBottoms.length - 1;
-  let answer = cumulativePageBottoms.length;
-
-  while (left <= right) {
-    const middle = Math.floor((left + right) / 2);
-    if (cumulativePageBottoms[middle] >= threshold) {
-      answer = middle;
-      right = middle - 1;
-    } else {
-      left = middle + 1;
-    }
-  }
-
-  return answer;
-};
-
-const findLastIndexByTop = (cumulativePageTops: number[], threshold: number): number => {
-  let left = 0;
-  let right = cumulativePageTops.length - 1;
-  let answer = -1;
-
-  while (left <= right) {
-    const middle = Math.floor((left + right) / 2);
-    if (cumulativePageTops[middle] <= threshold) {
-      answer = middle;
-      left = middle + 1;
-    } else {
-      right = middle - 1;
-    }
-  }
-
-  return answer;
-};
-
 /**
  * Interface para referências dos editores de texto
  * Permite inserir texto programaticamente
