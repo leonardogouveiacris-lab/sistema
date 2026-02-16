@@ -49,13 +49,13 @@ export type SituacaoVerbaEnum =
 export type StatusVerbasEnum = 'pendente' | 'em_andamento' | 'concluido';
 
 /**
- * Interface para a tabela 'processes' (processos trabalhistas)
+ * Interface para a tabela 'processes'
  */
 export interface ProcessRecord {
   id: string;                    // UUID - Chave primária
   numero_processo: string;       // Número oficial do processo (único)
-  reclamante: string;           // Nome do reclamante
-  reclamada: string;            // Nome da empresa reclamada
+  reclamante: string;           // Nome da parte autora
+  reclamada: string;            // Nome da parte ré
   observacoes_gerais?: string;  // Observações adicionais (opcional)
   status_verbas: StatusVerbasEnum; // Status geral das verbas do processo
   created_at: string;           // Timestamp de criação (ISO)
@@ -79,12 +79,12 @@ export interface DecisionRecord {
 }
 
 /**
- * Interface para a tabela 'verbas' (verbas trabalhistas)
+ * Interface para a tabela 'verbas'
  */
 export interface VerbaRecord {
   id: string;                   // UUID - Chave primária
   process_id: string;           // UUID - Chave estrangeira para processes
-  tipo_verba: string;           // Tipo da verba trabalhista (TEXT dinâmico)
+  tipo_verba: string;           // Tipo da verba (TEXT dinâmico)
   created_at: string;           // Timestamp de criação (ISO)
   updated_at: string;           // Timestamp de atualização (ISO)
 }
@@ -148,7 +148,7 @@ export interface ProcessDocumentRecord {
 export interface Database {
   public: {
     Tables: {
-      // Tabela de processos trabalhistas
+      // Tabela de processos
       processes: {
         Row: ProcessRecord;                    // Dados completos de uma linha
         Insert: Omit<ProcessRecord, 'id' | 'created_at' | 'updated_at'>; // Dados para inserção
@@ -162,7 +162,7 @@ export interface Database {
         Update: Partial<Omit<DecisionRecord, 'id' | 'created_at'>>;
       };
       
-      // Tabela de verbas trabalhistas
+      // Tabela de verbas
       verbas: {
         Row: VerbaRecord;
         Insert: Omit<VerbaRecord, 'id' | 'created_at' | 'updated_at'>;

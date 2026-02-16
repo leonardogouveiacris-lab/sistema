@@ -6,7 +6,7 @@ import { BaseEntity } from './Common';
 
 /**
  * Interface principal para documentos de processo
- * Representa um PDF vinculado a um processo trabalhista
+ * Representa um PDF vinculado a um processo
  */
 export interface ProcessDocument extends BaseEntity {
   processId: string;        // ID do processo ao qual o documento pertence

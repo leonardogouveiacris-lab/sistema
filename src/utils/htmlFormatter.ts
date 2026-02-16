@@ -44,7 +44,7 @@ class HTMLFormatter {
       <div class="bg-white rounded-lg border border-gray-200 p-6 mb-6">
         <div class="mb-6">
           <h2 class="text-xl font-semibold text-gray-900">
-            Relatório de Revisão de Verbas Trabalhistas
+            Relatório de Liquidação
           </h2>
           <p class="text-sm text-gray-500 mt-1">
             Relatório detalhado do processo selecionado
@@ -200,7 +200,7 @@ class HTMLFormatter {
               Nenhuma verba encontrada
             </h3>
             <p class="text-gray-500 text-sm">
-              Este processo não possui verbas trabalhistas cadastradas ainda.
+              Este processo não possui verbas cadastradas ainda.
             </p>
           </div>
         </div>
@@ -226,7 +226,7 @@ class HTMLFormatter {
             </div>
             <div>
               <h3 class="text-lg font-semibold text-gray-900">
-                Verbas Trabalhistas
+                Verbas
               </h3>
               <p class="text-sm text-gray-500 mt-0.5">
                 ${verbas.length} tipo${verbas.length !== 1 ? 's' : ''} de verba, ${totalLancamentos} lancamento${totalLancamentos !== 1 ? 's' : ''}
@@ -250,7 +250,7 @@ class HTMLFormatter {
    */
   static generateReportTitle(numeroProcesso: string): string {
     const date = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-    return `Relatório de Verbas - Processo ${numeroProcesso} - ${date}`;
+    return `Relatório de Liquidação - Processo ${numeroProcesso} - ${date}`;
   }
 
   /**
@@ -265,7 +265,7 @@ class HTMLFormatter {
     const sections = [
       { id: 'decisoes', label: 'Decisoes Judiciais', count: totalDecisoes, letter: 'J' },
       { id: 'documentos', label: 'Lancamentos de Documentos', count: totalDocumentos, letter: 'D' },
-      { id: 'verbas', label: 'Verbas Trabalhistas', count: totalVerbas, letter: 'V' }
+      { id: 'verbas', label: 'Verbas', count: totalVerbas, letter: 'V' }
     ].filter(section => section.count > 0);
 
     if (sections.length === 0) return '';

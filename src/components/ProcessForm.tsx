@@ -1,7 +1,7 @@
 /**
  * Componente ProcessForm otimizado
  * 
- * Formulário completo para cadastro de novos processos trabalhistas.
+ * Formulário completo para cadastro de novos processos.
  * Inclui validação em tempo real, tratamento de erros e funcionalidades
  * de backup/importação com interface intuitiva e acessível.
  */
@@ -243,7 +243,7 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Cadastro de Processo</h2>
         <p className="text-sm text-gray-600 mt-1">
-          Informações básicas do processo trabalhista
+          Informações básicas do processo
           <span className="ml-2 text-xs text-gray-500">
             (Ctrl+Enter para salvar • Esc para limpar)
           </span>
@@ -276,16 +276,16 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
             {renderFieldError('numeroProcesso')}
           </div>
 
-          {/* Reclamante e Reclamada */}
+          {/* Parte Autora e Parte Ré */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label htmlFor="reclamante" className="block text-sm font-medium text-gray-700 mb-1">
-                Reclamante *
+                Parte Autora *
               </label>
               <input
                 id="reclamante"
                 type="text"
-                placeholder="Nome do reclamante"
+                placeholder="Nome da parte autora"
                 value={formData.reclamante}
                 onChange={(e) => handleInputChange('reclamante', e.target.value)}
                 className={getInputClasses('reclamante')}
@@ -299,12 +299,12 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
 
             <div>
               <label htmlFor="reclamada" className="block text-sm font-medium text-gray-700 mb-1">
-                Reclamada *
+                Parte Re *
               </label>
               <input
                 id="reclamada"
                 type="text"
-                placeholder="Nome da reclamada"
+                placeholder="Nome da parte re"
                 value={formData.reclamada}
                 onChange={(e) => handleInputChange('reclamada', e.target.value)}
                 className={getInputClasses('reclamada')}

@@ -1,5 +1,5 @@
 /**
- * Tipos otimizados para o sistema de verbas trabalhistas com estrutura hierárquica
+ * Tipos otimizados para o sistema de verbas com estrutura hierárquica
  * Estrutura: Verba > Lançamentos (Decisões)
  */
 
@@ -46,7 +46,7 @@ export interface VerbaLancamento extends BaseEntity {
 }
 
 /**
- * Interface principal para verbas trabalhistas com estrutura hierárquica
+ * Interface principal para verbas com estrutura hierárquica
  * Uma verba pode ter múltiplos lançamentos (decisões)
  */
 export interface Verba extends BaseEntity {

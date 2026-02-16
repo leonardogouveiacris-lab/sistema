@@ -1,5 +1,5 @@
 /**
- * Utilitários para geração e organização do Relatório de Verbas
+ * Utilitários para geração e organização do Relatório de Liquidação
  * Otimizado para melhor performance e menor código duplicado
  */
 

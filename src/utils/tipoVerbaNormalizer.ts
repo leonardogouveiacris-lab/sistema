@@ -144,9 +144,9 @@ export class TipoVerbaNormalizer {
   }
 
   /**
-   * Aplica correções específicas conhecidas do domínio trabalhista
-   * 
-   * Trata casos especiais comuns no direito do trabalho que precisam
+   * Aplica correções específicas conhecidas do domínio jurídico
+   *
+   * Trata casos especiais comuns que precisam
    * de formatação específica para ficarem corretos
    * 
    * @param text - Texto já processado pelas regras gerais

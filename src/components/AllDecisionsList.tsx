@@ -164,8 +164,8 @@ const AllDecisionsList: React.FC<AllDecisionsListProps> = ({
                           {process.numeroProcesso}
                         </h3>
                         <div className="text-sm text-gray-600 space-y-1">
-                          <p><span className="font-medium">Reclamante:</span> {process.reclamante}</p>
-                          <p><span className="font-medium">Reclamada:</span> {process.reclamada}</p>
+                          <p><span className="font-medium">Parte Autora:</span> {process.reclamante}</p>
+                          <p><span className="font-medium">Parte Re:</span> {process.reclamada}</p>
                         </div>
                       </div>
 

@@ -666,7 +666,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
               ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
               : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
           }`}
-          aria-label="Aba de Verbas Trabalhistas"
+          aria-label="Aba de Verbas"
         >
           <div className="flex items-center justify-center space-x-2">
             <DollarSign size={16} />

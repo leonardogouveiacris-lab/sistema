@@ -62,7 +62,7 @@ const ProcessList: React.FC<ProcessListProps> = ({ processes, onSelectProcess })
         <div className="text-center mb-6">
           <h2 className="text-xl font-semibold text-gray-900">Lista de Processos</h2>
           <p className="text-sm text-gray-600 mt-1">
-            Gerencie seus processos trabalhistas ({filteredProcesses.length} encontrados)
+            Gerencie seus processos ({filteredProcesses.length} encontrados)
           </p>
         </div>
 
@@ -74,7 +74,7 @@ const ProcessList: React.FC<ProcessListProps> = ({ processes, onSelectProcess })
           />
           <input
             type="search"
-            placeholder="Pesquisar por numero, reclamante ou reclamada..."
+            placeholder="Pesquisar por numero, parte autora ou parte re..."
             value={filter.searchTerm}
             onChange={(e) => handleFilterChange(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200"
@@ -95,7 +95,7 @@ const ProcessList: React.FC<ProcessListProps> = ({ processes, onSelectProcess })
             <p className="text-gray-500 max-w-md mx-auto">
               {filter.searchTerm
                 ? 'Tente ajustar os termos de busca para encontrar processos especificos'
-                : 'Crie seu primeiro processo para comecar a gerenciar seus casos trabalhistas'
+                : 'Crie seu primeiro processo para comecar a gerenciar seus casos'
               }
             </p>
           </div>
@@ -115,10 +115,10 @@ const ProcessList: React.FC<ProcessListProps> = ({ processes, onSelectProcess })
                       </h4>
                       <div className="text-sm text-gray-600 space-y-1">
                         <p>
-                          <span className="font-medium">Reclamante:</span> {process.reclamante}
+                          <span className="font-medium">Parte Autora:</span> {process.reclamante}
                         </p>
                         <p>
-                          <span className="font-medium">Reclamada:</span> {process.reclamada}
+                          <span className="font-medium">Parte Re:</span> {process.reclamada}
                         </p>
                         {process.observacoesGerais && (
                           <p className="line-clamp-2">

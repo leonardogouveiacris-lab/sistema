@@ -5,7 +5,7 @@
  * do Supabase, fornecendo uma interface limpa para as operações de banco de dados hierárquicas.
  * 
  * Estrutura Hierárquica:
- * - Verba: Tipo de verba trabalhista (ex: Horas Extras, Danos Morais)
+ * - Verba: Tipo de verba (ex: Horas Extras, Danos Morais)
  * - Lançamentos: Decisões específicas sobre essa verba (ex: Deferida, Reformada)
  * 
  * Funcionalidades:
@@ -39,7 +39,7 @@ type VerbaUpdate = Database['public']['Tables']['verbas']['Update'];
 type VerbaLancamentoUpdate = Database['public']['Tables']['verba_lancamentos']['Update'];
 
 /**
- * Classe de serviço para gerenciar operações hierárquicas de verbas trabalhistas
+ * Classe de serviço para gerenciar operações hierárquicas de verbas
  * 
  * Esta classe fornece métodos para todas as operações relacionadas
  * às entidades Verba e VerbaLancamento, mantendo a integridade

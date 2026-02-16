@@ -11,7 +11,7 @@ export const SYSTEM_VERSION = '1.0.0';
 // Informações da aplicação
 export const APP_INFO = {
   NAME: 'ProViewer',
-  DESCRIPTION: 'Visualizador de processos e verbas trabalhistas',
+  DESCRIPTION: 'Sistema de Relatorios de Liquidacao',
   AUTHOR: 'CalculoPro',
   CONTACT: 'contato@calculopro.com.br'
 } as const;
@@ -71,7 +71,7 @@ export const SUCCESS_MESSAGES = {
 // Configurações de exportação HTML
 export const EXPORT_CONFIG = {
   HTML_TEMPLATE_VERSION: '1.0',
-  DEFAULT_FILENAME_PREFIX: 'relatorio-verbas',
+  DEFAULT_FILENAME_PREFIX: 'relatorio-liquidacao',
   DATE_FORMAT_OPTIONS: {
     year: 'numeric' as const,
     month: 'long' as const,

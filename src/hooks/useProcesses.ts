@@ -1,5 +1,5 @@
 /**
- * Hook simplificado para gerenciamento de processos trabalhistas
+ * Hook simplificado para gerenciamento de processos
  * 
  * Este hook foi refatorado para usar EXCLUSIVAMENTE o Supabase como backend,
  * removendo completamente qualquer dependência de armazenamento local.

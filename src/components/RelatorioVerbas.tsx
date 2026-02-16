@@ -206,7 +206,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
     <EmptyState
       icon={<BarChart3 size={48} />}
       iconColor="text-gray-400"
-      title="Relatorio de Verbas Trabalhistas"
+      title="Relatorio de Liquidacao"
       description="Selecione um processo para gerar o relatorio detalhado."
       action={{
         label: "Ir para Lista de Processos",
@@ -221,7 +221,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
     const sections = [
       { id: 'decisoes', label: 'Decisoes Judiciais', count: estatisticas.totalDecisoes },
       { id: 'documentos', label: 'Lancamentos de Documentos', count: estatisticas.totalDocumentos },
-      { id: 'verbas', label: 'Verbas Trabalhistas', count: estatisticas.totalTiposVerba }
+      { id: 'verbas', label: 'Verbas', count: estatisticas.totalTiposVerba }
     ].filter(section => section.count > 0);
 
     if (sections.length === 0) return null;
@@ -252,7 +252,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
         <div className="flex items-start justify-between mb-6">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
-              Relatorio de Revisao de Verbas Trabalhistas
+              Relatorio de Liquidacao
             </h1>
             <p className="text-sm text-gray-500 mt-1">
               Analise detalhada do processo
@@ -288,11 +288,11 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
               <span className="ml-2 text-gray-900">{formatarDataCurta(selectedProcess.dataCriacao)}</span>
             </div>
             <div>
-              <span className="text-gray-500">Reclamante:</span>
+              <span className="text-gray-500">Parte Autora:</span>
               <span className="ml-2 text-gray-900">{selectedProcess.reclamante}</span>
             </div>
             <div>
-              <span className="text-gray-500">Reclamada:</span>
+              <span className="text-gray-500">Parte Re:</span>
               <span className="ml-2 text-gray-900">{selectedProcess.reclamada}</span>
             </div>
             {estatisticas.ultimaAtualizacao && (
@@ -361,7 +361,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">
-                Verbas Trabalhistas
+                Verbas
               </h2>
               <p className="text-sm text-gray-500">
                 {estatisticas.totalTiposVerba} tipo{estatisticas.totalTiposVerba !== 1 ? 's' : ''} de verba, {estatisticas.totalLancamentos} lancamento{estatisticas.totalLancamentos !== 1 ? 's' : ''}

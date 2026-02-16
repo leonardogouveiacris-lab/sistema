@@ -1,5 +1,5 @@
 /**
- * Componente VerbaForm - Formulário para cadastro de verbas trabalhistas
+ * Componente VerbaForm - Formulário para cadastro de verbas
  * Permite criar uma nova verba vinculada a um processo e decisão específicos
  */
 
@@ -258,7 +258,7 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Cadastro de Verbas</h2>
         <p className="text-sm text-gray-600 mt-1">
-          Registre as verbas trabalhistas e suas situações
+          Registre as verbas e suas situações
         </p>
       </div>
 

@@ -1,5 +1,5 @@
 /**
- * Tipos otimizados para o sistema de processos trabalhistas
+ * Tipos otimizados para o sistema de processos
  * Utiliza tipos base para consistência e reutilização
  */
 
@@ -11,13 +11,13 @@ import { BaseEntity, BaseFilter } from './Common';
 export type StatusVerbas = 'pendente' | 'em_andamento' | 'concluido';
 
 /**
- * Interface principal para processos trabalhistas
+ * Interface principal para processos
  * Herda campos de auditoria da BaseEntity
  */
 export interface Process extends BaseEntity {
   numeroProcesso: string;        // Número oficial do processo (único)
-  reclamante: string;           // Nome do reclamante
-  reclamada: string;            // Nome da empresa reclamada
+  reclamante: string;           // Nome da parte autora
+  reclamada: string;            // Nome da parte ré
   observacoesGerais?: string;   // Observações adicionais (opcional)
   statusVerbas: StatusVerbas;   // Status geral das verbas do processo
 }

@@ -796,8 +796,8 @@ class HTMLTemplate {
    * Gera template para informações do processo
    * 
    * @param numeroProcesso - Número do processo
-   * @param reclamante - Nome do reclamante
-   * @param reclamada - Nome da reclamada
+   * @param reclamante - Nome da parte autora
+   * @param reclamada - Nome da parte ré
    * @param dataCriacao - Data de criação do processo
    * @param ultimaAtualizacao - Data da última atualização
    * @returns HTML formatado para informações do processo
@@ -825,11 +825,11 @@ class HTMLTemplate {
           </div>
           <div class="flex flex-wrap items-center gap-x-6 gap-y-1">
             <div>
-              <span class="text-gray-600">Reclamante:</span>
+              <span class="text-gray-600">Parte Autora:</span>
               <span class="ml-2 text-gray-900">${reclamante}</span>
             </div>
             <div>
-              <span class="text-gray-600">Reclamada:</span>
+              <span class="text-gray-600">Parte Re:</span>
               <span class="ml-2 text-gray-900">${reclamada}</span>
             </div>
           </div>

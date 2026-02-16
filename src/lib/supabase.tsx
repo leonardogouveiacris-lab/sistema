@@ -50,7 +50,7 @@ export const supabase = isSupabaseConfigured
       // Configurações globais do cliente
       global: {
         headers: {
-          'X-Client-Info': 'sistema-verbas-trabalhistas@1.0.0'
+          'X-Client-Info': 'sistema-liquidacao@1.0.0'
         }
       }
     })

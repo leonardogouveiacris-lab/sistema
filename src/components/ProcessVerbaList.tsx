@@ -169,7 +169,7 @@ const ProcessVerbaList: React.FC<ProcessVerbaListProps> = ({
           <DollarSign className="mx-auto text-gray-300 mb-3" size={48} />
           <p className="text-gray-600 mb-2">Nenhuma verba cadastrada</p>
           <p className="text-gray-500 text-sm">
-            As verbas trabalhistas deste processo aparecerao aqui conforme forem cadastradas
+            As verbas deste processo aparecerao aqui conforme forem cadastradas
           </p>
         </div>
       </div>

@@ -15,7 +15,7 @@ export const HEADER_CONFIG = {
   LOGO_URL: 'https://calculopro.com.br/wp-content/uploads/2024/11/logonegativa.png',
   
   // Texto alternativo para acessibilidade
-  LOGO_ALT: 'ProViewer - Sistema de Revisao de Verbas Trabalhistas',
+  LOGO_ALT: 'ProViewer - Sistema de Relatorios de Liquidacao',
   
   // Informações de contato (lado direito do cabeçalho)
   CONTACT_INFO: {

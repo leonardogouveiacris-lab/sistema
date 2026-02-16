@@ -1,5 +1,5 @@
 /**
- * Componente VerbaList - Lista hierárquica de verbas trabalhistas
+ * Componente VerbaList - Lista hierárquica de verbas
  * Exibe verbas com estrutura Verba > Lançamentos (Decisões)
  */
 
@@ -475,7 +475,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
               <p className="text-gray-500 text-sm">
                 {filter.searchTerm 
                   ? 'Tente ajustar os termos de busca para encontrar verbas específicas' 
-                  : 'Cadastre a primeira verba trabalhista usando o formulário acima'
+                  : 'Cadastre a primeira verba usando o formulário acima'
                 }
               </p>
             </div>

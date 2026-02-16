@@ -103,8 +103,8 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
     <EmptyState
       icon={<DollarSign size={48} />}
       iconColor="text-green-600"
-      title="Gerenciar Verbas Trabalhistas"
-      description="Selecione um processo para cadastrar e gerenciar suas verbas trabalhistas. As verbas ficam vinculadas ao processo específico e suas decisões judiciais."
+      title="Gerenciar Verbas"
+      description="Selecione um processo para cadastrar e gerenciar as verbas. As verbas ficam vinculadas ao processo e suas decisoes judiciais."
       action={{
         label: "Ir para Lista de Processos",
         onClick: onBackToProcessList,

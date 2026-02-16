@@ -184,20 +184,20 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
             </div>
           </div>
 
-          {/* Reclamante */}
+          {/* Parte Autora */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Reclamante
+              Parte Autora
             </label>
             <div className="bg-gray-50 rounded-md p-3 border border-gray-200">
               <span className="text-gray-900">{process.reclamante}</span>
             </div>
           </div>
 
-          {/* Reclamada */}
+          {/* Parte Re */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Reclamada
+              Parte Re
             </label>
             <div className="bg-gray-50 rounded-md p-3 border border-gray-200">
               <span className="text-gray-900">{process.reclamada}</span>
