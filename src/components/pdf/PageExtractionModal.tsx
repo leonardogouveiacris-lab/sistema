@@ -46,6 +46,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
 
   const modalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
 
   const sortedSelectedPages = useMemo(() =>
     Array.from(selectedPages).sort((a, b) => a - b),
@@ -159,6 +160,48 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       return () => document.removeEventListener('keydown', handleKeyDown);
     }
   }, [isOpen, handleKeyDown]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  const handlePreviewWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const container = previewContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const { scrollTop, clientHeight, scrollHeight } = container;
+    const canScroll = scrollHeight > clientHeight;
+
+    if (!canScroll) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    const isScrollingDown = event.deltaY > 0;
+    const isScrollingUp = event.deltaY < 0;
+    const isAtTop = scrollTop <= 0;
+    const isAtBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight;
+
+    if ((isScrollingUp && isAtTop) || (isScrollingDown && isAtBottom)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    event.stopPropagation();
+  }, []);
 
   useEffect(() => {
     if (!isPreviewDocumentReady) {
@@ -286,7 +329,11 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
               </span>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 bg-gray-100/50">
+            <div
+              ref={previewContainerRef}
+              onWheel={handlePreviewWheel}
+              className="flex-1 overflow-y-auto p-4 bg-gray-100/50"
+            >
               {sortedSelectedPages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center py-8">
                   <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
