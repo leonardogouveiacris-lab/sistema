@@ -110,6 +110,14 @@ const isWholeWordMatch = (text: string, start: number, end: number): boolean => 
 };
 
 export const buildPageSearchIndex = (page: PageTextContent): PageSearchIndex => {
+  if (page.items.length === 0 && page.text) {
+    return {
+      pageNumber: page.pageNumber,
+      text: page.text,
+      spans: []
+    };
+  }
+
   let text = '';
   const spans: TextSpan[] = [];
   let cursor = 0;
@@ -182,16 +190,19 @@ export const searchPage = (
       const originalStart = indexMap[matchIdx];
       const originalEnd = indexMap[matchEndIdx - 1] + 1;
 
-      const rects = pageIndex.spans
-        .filter(span => span.end > originalStart && span.start < originalEnd)
-        .map(span => calculatePartialRect(span, originalStart, originalEnd));
+      const rects = pageIndex.spans.length > 0
+        ? mergeRectsIntoLines(
+          pageIndex.spans
+            .filter(span => span.end > originalStart && span.start < originalEnd)
+            .map(span => calculatePartialRect(span, originalStart, originalEnd))
+        )
+        : [];
 
-      const mergedRects = mergeRectsIntoLines(rects);
       matches.push({
         matchStart: originalStart,
         matchEnd: originalEnd,
         matchText: pageIndex.text.slice(originalStart, originalEnd),
-        rects: mergedRects
+        rects
       });
     }
 
