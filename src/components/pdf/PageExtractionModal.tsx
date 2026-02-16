@@ -46,7 +46,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isPreviewDocumentReady, setIsPreviewDocumentReady] = useState(false);
   const [thumbnailsToRender, setThumbnailsToRender] = useState(0);
-  const [loadedThumbnailPages, setLoadedThumbnailPages] = useState<Set<number>>(new Set());
 
   const modalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -67,7 +66,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       setProgress(null);
       setIsPreviewDocumentReady(false);
       setThumbnailsToRender(0);
-      setLoadedThumbnailPages(new Set());
 
       setTimeout(() => inputRef.current?.focus(), 100);
     }
@@ -82,12 +80,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
 
   useEffect(() => {
     setIsPreviewDocumentReady(false);
-    setLoadedThumbnailPages(new Set());
   }, [documentUrl]);
-
-  useEffect(() => {
-    setLoadedThumbnailPages(new Set());
-  }, [sortedSelectedPages]);
 
   const handlePageRangeChange = useCallback((input: string) => {
     setPageRangeInput(input);
@@ -240,18 +233,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     });
   }, [shouldUseIncrementalLoading, sortedSelectedPages.length]);
 
-  const handleThumbnailLoad = useCallback((pageNum: number) => {
-    setLoadedThumbnailPages((current) => {
-      if (current.has(pageNum)) {
-        return current;
-      }
-
-      const updated = new Set(current);
-      updated.add(pageNum);
-      return updated;
-    });
-  }, []);
-
   useEffect(() => {
     if (!isPreviewDocumentReady) {
       setThumbnailsToRender(0);
@@ -393,12 +374,12 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
                     {!isPreviewDocumentReady && (
                       <div className="col-span-full flex items-center justify-center py-8 text-gray-500">
                         <Loader2 className="w-5 h-5 animate-spin" />
+                        <span className="ml-2 text-sm">Carregando miniaturas...</span>
                       </div>
                     )}
 
                     {sortedSelectedPages.map((pageNum, index) => {
                       const shouldRenderPage = isPreviewDocumentReady && index < thumbnailsToRender;
-                      const isPageLoaded = loadedThumbnailPages.has(pageNum);
 
                       return (
                         <div
@@ -412,7 +393,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
                                 scale={THUMBNAIL_SCALE}
                                 renderTextLayer={false}
                                 renderAnnotationLayer={false}
-                                onRenderSuccess={() => handleThumbnailLoad(pageNum)}
                                 loading={
                                   <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
                                     <span className="text-gray-400 text-xs">{pageNum}</span>
@@ -423,12 +403,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
                             ) : (
                               <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
                                 <span className="text-gray-400 text-xs">{pageNum}</span>
-                              </div>
-                            )}
-
-                            {shouldRenderPage && !isPageLoaded && (
-                              <div className="absolute inset-0 bg-white/70 flex items-center justify-center pointer-events-none">
-                                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                               </div>
                             )}
 
