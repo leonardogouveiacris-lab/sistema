@@ -220,6 +220,7 @@ const PDFBookmarkPanel: React.FC = () => {
             <Tooltip
               content={bookmark.title}
               className="min-w-0 flex-1 overflow-hidden"
+              position="right"
               maxWidth={680}
               tooltipClassName="bg-slate-200 border-slate-300 text-slate-800"
             >

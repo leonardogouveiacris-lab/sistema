@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 interface TooltipProps {
   content: string;
@@ -25,7 +26,7 @@ const Tooltip: React.FC<TooltipProps> = ({
   const tooltipRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const calculatePosition = () => {
+  const calculatePosition = useCallback(() => {
     if (!triggerRef.current || !tooltipRef.current) return;
 
     const triggerRect = triggerRef.current.getBoundingClientRect();
@@ -64,7 +65,7 @@ const Tooltip: React.FC<TooltipProps> = ({
     top = Math.max(8, Math.min(top, window.innerHeight - tooltipRect.height - 8));
 
     setCoords({ top, left });
-  };
+  }, [position]);
 
   useEffect(() => {
     if (isVisible) {
@@ -79,7 +80,7 @@ const Tooltip: React.FC<TooltipProps> = ({
         window.removeEventListener('scroll', recalculate, true);
       };
     }
-  }, [isVisible, content, position]);
+  }, [isVisible, content, calculatePosition]);
 
   const handleMouseEnter = () => {
     timeoutRef.current = setTimeout(() => {
@@ -106,6 +107,30 @@ const Tooltip: React.FC<TooltipProps> = ({
     return <>{children}</>;
   }
 
+  const tooltipNode = isVisible ? (
+    <div
+      ref={tooltipRef}
+      className={`fixed z-[9999] px-3 py-1.5 text-xs text-gray-800 bg-gray-200 border border-gray-300 rounded-md shadow-md pointer-events-none animate-fade-in whitespace-nowrap ${tooltipClassName}`}
+      style={{
+        top: coords.top,
+        left: coords.left,
+        maxWidth: maxWidth,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis'
+      }}
+    >
+      {content}
+      <div
+        className={`absolute w-2 h-2 bg-gray-200 border border-gray-300 transform rotate-45 ${
+          position === 'top' ? 'bottom-[-4px] left-1/2 -translate-x-1/2' :
+          position === 'bottom' ? 'top-[-4px] left-1/2 -translate-x-1/2' :
+          position === 'left' ? 'right-[-4px] top-1/2 -translate-y-1/2' :
+          'left-[-4px] top-1/2 -translate-y-1/2'
+        }`}
+      />
+    </div>
+  ) : null;
+
   return (
     <>
       <div
@@ -116,29 +141,7 @@ const Tooltip: React.FC<TooltipProps> = ({
       >
         {children}
       </div>
-      {isVisible && (
-        <div
-          ref={tooltipRef}
-          className={`fixed z-[9999] px-3 py-1.5 text-xs text-gray-800 bg-gray-200 border border-gray-300 rounded-md shadow-md pointer-events-none animate-fade-in whitespace-nowrap ${tooltipClassName}`}
-          style={{
-            top: coords.top,
-            left: coords.left,
-            maxWidth: maxWidth,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis'
-          }}
-        >
-          {content}
-          <div
-            className={`absolute w-2 h-2 bg-gray-200 border border-gray-300 transform rotate-45 ${
-              position === 'top' ? 'bottom-[-4px] left-1/2 -translate-x-1/2' :
-              position === 'bottom' ? 'top-[-4px] left-1/2 -translate-x-1/2' :
-              position === 'left' ? 'right-[-4px] top-1/2 -translate-y-1/2' :
-              'left-[-4px] top-1/2 -translate-y-1/2'
-            }`}
-          />
-        </div>
-      )}
+      {tooltipNode ? createPortal(tooltipNode, document.body) : null}
     </>
   );
 };
