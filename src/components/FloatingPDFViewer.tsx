@@ -49,6 +49,7 @@ import {
 } from '../utils/performance';
 import { extractBookmarksWithDocumentInfo, mergeBookmarksFromMultipleDocuments, countTotalBookmarks, DocumentInfo } from '../utils/pdfBookmarkExtractor';
 import { mergeRectsIntoLines } from '../utils/rectMerger';
+import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibilityIndex';
 
 // Configurar worker do PDF.js usando arquivo local
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -61,77 +62,6 @@ const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
 const CONTINUOUS_PAGE_GAP_PX = 16;
 const PROGRAMMATIC_SCROLL_MAX_RETRIES = 60;
 
-const findFirstIndexByBottom = (cumulativePageBottoms: number[], threshold: number): number => {
-  let left = 0;
-  let right = cumulativePageBottoms.length - 1;
-  let answer = cumulativePageBottoms.length;
-
-  while (left <= right) {
-    const middle = Math.floor((left + right) / 2);
-    if (cumulativePageBottoms[middle] >= threshold) {
-      answer = middle;
-      right = middle - 1;
-    } else {
-      left = middle + 1;
-    }
-  }
-
-  return answer;
-};
-
-const findLastIndexByTop = (cumulativePageTops: number[], threshold: number): number => {
-  let left = 0;
-  let right = cumulativePageTops.length - 1;
-  let answer = -1;
-
-  while (left <= right) {
-    const middle = Math.floor((left + right) / 2);
-    if (cumulativePageTops[middle] <= threshold) {
-      answer = middle;
-      left = middle + 1;
-    } else {
-      right = middle - 1;
-    }
-  }
-
-  return answer;
-};
-
-const findFirstIndexByBottom = (cumulativePageBottoms: number[], threshold: number): number => {
-  let left = 0;
-  let right = cumulativePageBottoms.length - 1;
-  let answer = cumulativePageBottoms.length;
-
-  while (left <= right) {
-    const middle = Math.floor((left + right) / 2);
-    if (cumulativePageBottoms[middle] >= threshold) {
-      answer = middle;
-      right = middle - 1;
-    } else {
-      left = middle + 1;
-    }
-  }
-
-  return answer;
-};
-
-const findLastIndexByTop = (cumulativePageTops: number[], threshold: number): number => {
-  let left = 0;
-  let right = cumulativePageTops.length - 1;
-  let answer = -1;
-
-  while (left <= right) {
-    const middle = Math.floor((left + right) / 2);
-    if (cumulativePageTops[middle] <= threshold) {
-      answer = middle;
-      left = middle + 1;
-    } else {
-      right = middle - 1;
-    }
-  }
-
-  return answer;
-};
 
 type HeavyTaskType = 'comments' | 'bookmarks';
 

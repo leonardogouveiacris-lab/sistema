@@ -18,6 +18,10 @@ import { countTotalBookmarks } from '../utils/pdfBookmarkExtractor';
 import { PageRotationMap } from '../services/pageRotation.service';
 import * as PageRotationService from '../services/pageRotation.service';
 import logger from '../utils/logger';
+import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibilityIndex';
+
+const CONTINUOUS_PAGE_GAP_PX = 16;
+
 
 const CONTINUOUS_PAGE_GAP_PX = 16;
 
