@@ -341,8 +341,14 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
 
     try {
       const localSearch = buildLocalSearchResults(query);
-      if (localSearch.hasIndexedContent) {
+      if (localSearch.results.length > 0) {
         setSearchResults(localSearch.results);
+        setSearchComplete(true);
+        return;
+      }
+
+      if (localSearch.hasIndexedContent && !processId) {
+        setSearchResults([]);
         setSearchComplete(true);
         return;
       }
