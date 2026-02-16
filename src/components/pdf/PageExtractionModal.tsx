@@ -359,15 +359,10 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
           </div>
 
           <div className="flex-1 overflow-hidden flex flex-col min-h-[280px]">
-            <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between bg-white">
+            <div className="px-6 py-3 border-b border-gray-100 bg-white">
               <span className="text-sm font-medium text-gray-700">
                 Preview das paginas selecionadas
               </span>
-              {shouldUseIncrementalLoading && (
-                <span className="text-xs text-amber-600 font-medium">
-                  Modo performance ativo ({PERFORMANCE_PAGE_THRESHOLD}+ paginas)
-                </span>
-              )}
             </div>
 
             <div
