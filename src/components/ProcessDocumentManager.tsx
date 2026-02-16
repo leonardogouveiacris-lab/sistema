@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useState, useRef } from 'react';
-import { FileText, Trash2, Eye, AlertCircle, Plus, Info, Download } from 'lucide-react';
+import { FileText, Trash2, Eye, AlertCircle, Plus, Info, Download, Loader2 } from 'lucide-react';
 import { useProcessDocuments } from '../hooks/useProcessDocuments';
 import { usePDFViewer } from '../contexts/PDFViewerContext';
 import { useToast } from '../contexts/ToastContext';
@@ -63,6 +63,7 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
     documentType: ''
   });
   const [isDragging, setIsDragging] = useState(false);
+  const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -201,11 +202,21 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
   }, []);
 
   const handleDownload = useCallback(async (doc: ProcessDocument) => {
-    const success = await downloadDocument(doc);
-    if (!success) {
-      toast.error('Erro ao baixar documento');
+    if (downloadingDocId === doc.id) {
+      return;
     }
-  }, [toast]);
+
+    setDownloadingDocId(doc.id);
+
+    try {
+      const success = await downloadDocument(doc);
+      if (!success) {
+        toast.error('Erro ao baixar documento');
+      }
+    } finally {
+      setDownloadingDocId(null);
+    }
+  }, [downloadingDocId, toast]);
 
   if (isLoading && !uploadProgress && documents.length === 0) {
     return (
@@ -300,10 +311,20 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
                     </button>
                     <button
                       onClick={() => handleDownload(doc)}
-                      className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded transition-colors duration-200"
-                      title="Baixar documento"
+                      disabled={downloadingDocId === doc.id}
+                      aria-busy={downloadingDocId === doc.id}
+                      aria-label={downloadingDocId === doc.id ? 'Baixando documento...' : 'Baixar documento'}
+                      className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={downloadingDocId === doc.id ? 'Baixando documento...' : 'Baixar documento'}
                     >
-                      <Download className="w-5 h-5" />
+                      {downloadingDocId === doc.id ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <span className="text-xs">Baixando...</span>
+                        </span>
+                      ) : (
+                        <Download className="w-5 h-5" />
+                      )}
                     </button>
                     <button
                       onClick={() => handleDelete(doc)}
