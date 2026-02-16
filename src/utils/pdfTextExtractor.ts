@@ -30,6 +30,13 @@ export interface DocumentTextCache {
   pages: Map<number, PageTextContent>;
 }
 
+export interface SearchRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface SearchResult {
   documentId: string;
   documentIndex: number;
@@ -75,15 +82,19 @@ async function extractPageText(
         const rectWidth = Math.abs(x2 - x1);
         const rectHeight = Math.abs(y2 - y1);
         const text = textItem.str;
+        const startOffset = fullText.length;
+        fullText += `${text} `;
+        const endOffset = fullText.length - 1;
         items.push({
           text,
           x: rectX,
           y: rectY,
           width: rectWidth,
           height: rectHeight,
-          transform: textItem.transform || []
+          transform: textItem.transform || [],
+          startOffset,
+          endOffset
         });
-        fullText += `${text} `;
       }
     }
 
@@ -158,7 +169,7 @@ export async function extractAllPagesText(
   };
 
   const numPages = pdfDocument.numPages;
-  const YIELD_INTERVAL = 3;
+  const BATCH_CONCURRENCY = 4;
   const progressInterval = Math.max(1, options?.progressIntervalPages ?? 4);
   const priorityPages = Array.from(new Set((options?.priorityPages || [])
     .filter(page => Number.isInteger(page) && page >= 1 && page <= numPages)));
@@ -172,33 +183,45 @@ export async function extractAllPagesText(
   let processedPages = 0;
   let lastProgressReport = 0;
 
-  for (const pageNumber of orderedPages) {
+  for (let batchStart = 0; batchStart < orderedPages.length; batchStart += BATCH_CONCURRENCY) {
     if (abortSignal?.aborted) {
       logger.info(
-        `Text extraction aborted for document ${documentId} at page ${pageNumber}`,
+        `Text extraction aborted for document ${documentId} at batch ${batchStart}`,
         'pdfTextExtractor.extractAllPagesText'
       );
       return cache;
     }
 
-    const pageContent = await extractPageText(pdfDocument, pageNumber);
-    cache.pages.set(pageNumber, pageContent);
-    textCache.set(documentId, { ...cache, pages: new Map(cache.pages) });
-    processedPages += 1;
+    const batch = orderedPages.slice(batchStart, batchStart + BATCH_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(pageNumber => extractPageText(pdfDocument, pageNumber))
+    );
+
+    for (const pageContent of results) {
+      cache.pages.set(pageContent.pageNumber, pageContent);
+      processedPages += 1;
+    }
 
     if (onProgress && (processedPages - lastProgressReport >= progressInterval || processedPages === numPages)) {
       onProgress(processedPages, numPages);
       lastProgressReport = processedPages;
+      textCache.set(documentId, cache);
     }
 
-    if (processedPages % YIELD_INTERVAL === 0) {
-      await yieldToMain();
-    }
+    await yieldToMain();
   }
 
   textCache.set(documentId, cache);
   cacheDocument(cache).catch(() => {});
-  persistToDatabase(cache).catch(() => {});
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    window.requestIdleCallback(() => {
+      persistToDatabase(cache).catch(() => {});
+    }, { timeout: 5000 });
+  } else {
+    setTimeout(() => {
+      persistToDatabase(cache).catch(() => {});
+    }, 1000);
+  }
 
   logger.success(
     `Extracted text from ${numPages} pages of document ${documentId}`,

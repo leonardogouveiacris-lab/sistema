@@ -868,10 +868,19 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const setSelectedText = useCallback((text: string, position?: SelectionPosition) => {
     setState(prev => {
       const nextPosition = position || null;
-      const sameText = prev.selectedText === text;
-      const samePosition = JSON.stringify(prev.selectionPosition) === JSON.stringify(nextPosition);
-
-      if (sameText && samePosition) {
+      if (prev.selectedText === text && prev.selectionPosition === nextPosition) {
+        return prev;
+      }
+      if (
+        prev.selectedText === text &&
+        prev.selectionPosition !== null &&
+        nextPosition !== null &&
+        prev.selectionPosition.x === nextPosition.x &&
+        prev.selectionPosition.y === nextPosition.y &&
+        prev.selectionPosition.width === nextPosition.width &&
+        prev.selectionPosition.height === nextPosition.height &&
+        prev.selectionPosition.pageNumber === nextPosition.pageNumber
+      ) {
         return prev;
       }
 
@@ -1358,11 +1367,24 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     logger.info(`Cor de comentário selecionada: ${color}`, 'PDFViewerContext.setSelectedCommentColor');
   }, []);
 
+  const commentsByPageIndex = useMemo(() => {
+    const index = new Map<number, PDFComment[]>();
+    for (const c of state.comments) {
+      const existing = index.get(c.pageNumber);
+      if (existing) {
+        existing.push(c);
+      } else {
+        index.set(c.pageNumber, [c]);
+      }
+    }
+    return index;
+  }, [state.comments]);
+
   const getCommentsByPage = useCallback(
     (pageNumber: number): PDFComment[] => {
-      return state.comments.filter(c => c.pageNumber === pageNumber);
+      return commentsByPageIndex.get(pageNumber) || [];
     },
-    [state.comments]
+    [commentsByPageIndex]
   );
 
   const addConnectorToComment = useCallback((commentId: string, connector: PDFCommentConnector) => {
@@ -1661,14 +1683,24 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setState(prev => ({ ...prev, hoveredHighlightId: highlightId }));
   }, []);
 
-  /**
-   * Retorna highlights de uma página específica
-   */
+  const highlightsByPageIndex = useMemo(() => {
+    const index = new Map<number, PDFHighlight[]>();
+    for (const h of state.highlights) {
+      const existing = index.get(h.pageNumber);
+      if (existing) {
+        existing.push(h);
+      } else {
+        index.set(h.pageNumber, [h]);
+      }
+    }
+    return index;
+  }, [state.highlights]);
+
   const getHighlightsByPage = useCallback(
     (pageNumber: number): PDFHighlight[] => {
-      return state.highlights.filter(h => h.pageNumber === pageNumber);
+      return highlightsByPageIndex.get(pageNumber) || [];
     },
-    [state.highlights]
+    [highlightsByPageIndex]
   );
 
   /**

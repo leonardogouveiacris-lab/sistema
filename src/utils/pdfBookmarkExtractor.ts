@@ -22,45 +22,6 @@ export interface DocumentInfo {
 }
 
 /**
- * Extrai bookmarks de um documento PDF (método legado - mantido para compatibilidade)
- * @param pdfDocument - O documento PDF (PDFDocumentProxy do PDF.js)
- * @returns Array de bookmarks processados
- */
-export async function extractBookmarks(pdfDocument: PDFDocumentProxy): Promise<PDFBookmark[]> {
-  try {
-    logger.info('Iniciando extração de bookmarks', 'pdfBookmarkExtractor.extractBookmarks');
-
-    const outline = await pdfDocument.getOutline();
-
-    if (!outline || outline.length === 0) {
-      logger.info('PDF não possui bookmarks', 'pdfBookmarkExtractor.extractBookmarks');
-      return [];
-    }
-
-    logger.info(
-      `Encontrados ${outline.length} bookmarks de primeiro nível`,
-      'pdfBookmarkExtractor.extractBookmarks'
-    );
-
-    const bookmarks = await processBookmarkItems(outline, pdfDocument);
-
-    logger.success(
-      `Extração de bookmarks concluída: ${bookmarks.length} items processados`,
-      'pdfBookmarkExtractor.extractBookmarks'
-    );
-
-    return bookmarks;
-  } catch (error) {
-    logger.errorWithException(
-      'Erro ao extrair bookmarks do PDF',
-      error as Error,
-      'pdfBookmarkExtractor.extractBookmarks'
-    );
-    throw error;
-  }
-}
-
-/**
  * Extrai bookmarks de um documento PDF com informações do documento e offset de páginas
  * @param pdfDocument - O documento PDF (PDFDocumentProxy do PDF.js)
  * @param documentInfo - Informações do documento (ID, índice, nome, offset)

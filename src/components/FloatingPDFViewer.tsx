@@ -54,7 +54,6 @@ import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibil
 // Configurar worker do PDF.js usando arquivo local
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
-const PDF_DEBUG = false;
 const BOOKMARKS_IDLE_TIMEOUT_MS = 1000;
 const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
@@ -172,7 +171,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const lastZoomTimestampRef = useRef<number>(0);
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const textSelectionDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const keyNavigationDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
   const textExtractionProgressRef = useRef<Map<string, { current: number; total: number }>>(new Map());
@@ -913,7 +912,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const TEXT_SPAN_SELECTOR = '.textLayer > span, .textLayer span[role="presentation"]';
     const TEXT_LAYER_LOCAL_SPAN_SELECTOR = ':scope > span, :scope span[role="presentation"]';
-    const SHIFT_CLICK_DEBUG = true;
+    const SHIFT_CLICK_DEBUG = false;
 
     interface ShiftClickTrace {
       traceId: string;
@@ -1684,17 +1683,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         hasDragRef.current = false;
       }
 
-      if (PDF_DEBUG) {
-        console.log('[PDF-DEBUG] pointerdown', {
-          target: target?.tagName,
-          className: target?.className?.toString?.()?.substring(0, 50),
-          isInsidePdf,
-          isInTextLayer,
-          isInReactPdfPage,
-          startedInsidePdf: startedInsidePdfRef.current,
-          timestamp: Date.now()
-        });
-      }
     };
 
     const handlePointerMove = (e: PointerEvent) => {
@@ -1702,14 +1690,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (!hasDragRef.current) {
           hasDragRef.current = true;
           isSelectingTextRef.current = true;
-        }
-
-        if (PDF_DEBUG) {
-          const selection = window.getSelection();
-          console.log('[PDF-DEBUG] pointermove', {
-            hasDrag: hasDragRef.current,
-            selectionLength: selection?.toString().length || 0
-          });
         }
       }
     };
@@ -1725,17 +1705,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const anchorInPdf = scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode);
       const focusInPdf = scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode);
       const startedInside = startedInsidePdfRef.current;
-
-      if (PDF_DEBUG) {
-        console.log('[PDF-DEBUG] pointerup', {
-          selectionText: selectedText.substring(0, 30),
-          hasValidSelection,
-          anchorInPdf,
-          focusInPdf,
-          startedInside,
-          willAccept: hasValidSelection && anchorInPdf && startedInside
-        });
-      }
 
       if (hasValidSelection && anchorInPdf && startedInside) {
         isSelectingTextRef.current = true;
@@ -2593,29 +2562,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const selection = window.getSelection();
     const selectedText = extractTextFromSelection(selection);
 
-    if (PDF_DEBUG) {
-      console.log('[PDF-DEBUG] handleTextSelection - START', {
-        selectedText: selectedText.substring(0, 30),
-        length: selectedText.length,
-        startedInsidePdf: startedInsidePdfRef.current,
-        rangeCount: selection?.rangeCount,
-        timestamp: Date.now()
-      });
-    }
-
     if (!selectedText || selectedText.length < 3) {
-      if (PDF_DEBUG) {
-        console.log('[PDF-DEBUG] handleTextSelection - skipped: text too short', { length: selectedText.length });
-      }
       return;
     }
 
     if (!startedInsidePdfRef.current) {
-      if (PDF_DEBUG) {
-        console.log('[PDF-DEBUG] handleTextSelection - skipped: selection did not start inside PDF', {
-          startedInsidePdfRef: startedInsidePdfRef.current
-        });
-      }
       return;
     }
 
@@ -2625,15 +2576,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const anchorNode = selection?.anchorNode;
     const focusNode = selection?.focusNode;
     if (!anchorNode || !focusNode) {
-      if (PDF_DEBUG) {
-        console.log('[PDF-DEBUG] handleTextSelection - skipped: missing anchor or focus node');
-      }
       return;
     }
     if (!scrollContainer.contains(anchorNode) && !scrollContainer.contains(focusNode)) {
-      if (PDF_DEBUG) {
-        console.log('[PDF-DEBUG] handleTextSelection - skipped: anchor/focus not in PDF container');
-      }
       return;
     }
 
@@ -2642,9 +2587,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       if (!range) return;
 
       if (!scrollContainer.contains(range.commonAncestorContainer)) {
-        if (PDF_DEBUG) {
-          console.log('[PDF-DEBUG] handleTextSelection - skipped: commonAncestorContainer not in PDF');
-        }
         return;
       }
 
@@ -2733,15 +2675,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       registerContextCommit();
       setSelectedText(selectedText, position);
-
-      if (PDF_DEBUG) {
-        console.log('[PDF-DEBUG] handleTextSelection - SUCCESS', {
-          textPreview: selectedText.substring(0, 50),
-          length: selectedText.length,
-          rawRectsCount: rawRects.length,
-          mergedRectsCount: rects.length
-        });
-      }
 
       logger.info(
         `Texto selecionado: ${selectedText.substring(0, 50)}...`,
@@ -3207,12 +3140,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     }
 
-    if (PDF_DEBUG) {
-      logger.info(
-        `Página ${pageNumber} carregada: ${Math.round(baseWidth)}x${Math.round(baseHeight)}px (base), rotação interna: ${internalRotation || 0}°`,
-        'FloatingPDFViewer.onPageLoadSuccess'
-      );
-    }
   }, [state.zoom, finishPhaseTimer, getDocumentByGlobalPage, flushPageDimensionUpdates]);
 
   /**
