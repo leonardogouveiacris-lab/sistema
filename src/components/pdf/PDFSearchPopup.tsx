@@ -58,7 +58,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   const searchRequestIdRef = useRef(0);
   const localIndexRef = useRef<Map<string, Map<number, ReturnType<typeof buildPageSearchIndex>>>>(new Map());
   const indexProgressRef = useRef<{ current: number; total: number }>({ current: 0, total: 0 });
-  const idleCallbackRef = useRef<number | null>(null);
+  const idleCallbackIdsRef = useRef<Set<number>>(new Set());
   const localQueryRef = useRef<string>(localQuery);
   const isSearchOpenRef = useRef<boolean>(state.isSearchOpen);
   const [isIndexing, setIsIndexing] = useState(false);
@@ -94,6 +94,21 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     window.clearTimeout(id);
   }, []);
 
+  const scheduleTrackedIdleTask = useCallback((callback: (deadline: IdleDeadline) => void) => {
+    let idleId = 0;
+    idleId = scheduleIdleTask((deadline) => {
+      idleCallbackIdsRef.current.delete(idleId);
+      callback(deadline);
+    });
+    idleCallbackIdsRef.current.add(idleId);
+    return idleId;
+  }, [scheduleIdleTask]);
+
+  const cancelAllIdleTasks = useCallback(() => {
+    idleCallbackIdsRef.current.forEach((id) => cancelIdleTask(id));
+    idleCallbackIdsRef.current.clear();
+  }, [cancelIdleTask]);
+
   useEffect(() => {
     if (state.isSearchOpen && inputRef.current) {
       inputRef.current.focus();
@@ -123,15 +138,12 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
-      if (idleCallbackRef.current) {
-        cancelIdleTask(idleCallbackRef.current);
-        idleCallbackRef.current = null;
-      }
+      cancelAllIdleTasks();
       setSearchComplete(false);
       lastNavigatedQueryRef.current = '';
       setLocalQuery('');
     }
-  }, [state.isSearchOpen, cancelIdleTask]);
+  }, [cancelAllIdleTasks, state.isSearchOpen]);
 
   const updateIndexProgress = useCallback((current: number, total: number) => {
     indexProgressRef.current = { current, total };
@@ -145,6 +157,8 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     const documents = state.documents;
     if (documents.length === 0) return;
 
+    cancelAllIdleTasks();
+
     const totalPages = documents.reduce((sum, doc) => {
       const docOffsets = documentOffsets.get(doc.id);
       return sum + (docOffsets?.numPages || 0);
@@ -154,9 +168,13 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       .reduce((sum, pageMap) => sum + pageMap.size, 0);
     updateIndexProgress(indexedPages, totalPages);
 
+    const taskQueue: Array<{ docId: string; pageNumber: number }> = [];
+    const cachedPagesByDocument = new Map<string, Map<number, string>>();
+
     for (const doc of documents) {
-      if (!state.isSearchOpen) return;
+      if (!isSearchOpenRef.current) return;
       if (localIndexRef.current.has(doc.id)) continue;
+
       const cached = await getCachedDocumentText(doc.id);
       if (!cached) {
         continue;
@@ -164,28 +182,45 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
 
       const pageIndexMap = new Map<number, ReturnType<typeof buildPageSearchIndex>>();
       localIndexRef.current.set(doc.id, pageIndexMap);
-      const pageNumbers = Array.from(cached.pages.keys()).sort((a, b) => a - b);
-      let cursor = 0;
+      cachedPagesByDocument.set(doc.id, cached.pages);
 
-      const buildChunk = (deadline: IdleDeadline) => {
-        while (cursor < pageNumbers.length && (deadline.timeRemaining() > 8 || deadline.didTimeout)) {
-          const pageNumber = pageNumbers[cursor];
-          const pageContent = cached.pages.get(pageNumber);
-          if (pageContent) {
-            pageIndexMap.set(pageNumber, buildPageSearchIndex(pageContent));
-          }
-          cursor += 1;
-          updateIndexProgress(indexProgressRef.current.current + 1, totalPages);
-        }
-
-        if (cursor < pageNumbers.length && state.isSearchOpen) {
-          idleCallbackRef.current = scheduleIdleTask(buildChunk);
-        }
-      };
-
-      idleCallbackRef.current = scheduleIdleTask(buildChunk);
+      Array.from(cached.pages.keys())
+        .sort((a, b) => a - b)
+        .forEach((pageNumber) => {
+          taskQueue.push({ docId: doc.id, pageNumber });
+        });
     }
-  }, [documentOffsets, scheduleIdleTask, state.documents, state.isSearchOpen, updateIndexProgress]);
+
+    if (taskQueue.length === 0) {
+      return;
+    }
+
+    let cursor = 0;
+
+    const buildQueueChunk = (deadline: IdleDeadline) => {
+      while (cursor < taskQueue.length && (deadline.timeRemaining() > 8 || deadline.didTimeout)) {
+        const task = taskQueue[cursor];
+        const pageIndexMap = localIndexRef.current.get(task.docId);
+        const cachedPages = cachedPagesByDocument.get(task.docId);
+        const pageContent = cachedPages?.get(task.pageNumber);
+
+        if (pageIndexMap && pageContent) {
+          pageIndexMap.set(task.pageNumber, buildPageSearchIndex(pageContent));
+        }
+
+        cursor += 1;
+        updateIndexProgress(indexProgressRef.current.current + 1, totalPages);
+      }
+
+      if (cursor < taskQueue.length && isSearchOpenRef.current) {
+        scheduleTrackedIdleTask(buildQueueChunk);
+      }
+    };
+
+    scheduleTrackedIdleTask(buildQueueChunk);
+  }, [cancelAllIdleTasks, documentOffsets, scheduleTrackedIdleTask, state.documents, state.isSearchOpen, updateIndexProgress]);
+
+  useEffect(() => () => cancelAllIdleTasks(), [cancelAllIdleTasks]);
 
   useEffect(() => {
     if (state.isSearchOpen) {
