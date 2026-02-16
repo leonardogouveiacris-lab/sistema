@@ -2256,6 +2256,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return null;
   }, [state.viewMode, state.currentPage, state.totalPages, state.documents, memoizedDocumentOffsets]);
 
+  const currentDoc = getCurrentDocument();
+  const currentDocTotalPages = currentDoc ? documentPages.get(currentDoc.id) || 0 : 0;
+
   const documentsToMountInContinuous = useMemo(() => {
     if (state.viewMode !== 'continuous') {
       return new Set<number>();
@@ -4025,13 +4028,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       <PageRangeRotationModal totalPages={state.totalPages} />
 
       {/* Modal de extração de páginas */}
-      {getCurrentDocument() && (
+      {currentDoc && (
         <PageExtractionModal
           isOpen={state.isPageExtractionModalOpen}
           onClose={closePageExtractionModal}
-          documentUrl={getCurrentDocument()?.url || ''}
-          documentName={getCurrentDocument()?.displayName || 'documento.pdf'}
-          totalPages={state.totalPages}
+          documentUrl={currentDoc.url}
+          documentName={currentDoc.displayName || 'documento.pdf'}
+          totalPages={currentDocTotalPages}
         />
       )}
     </>
