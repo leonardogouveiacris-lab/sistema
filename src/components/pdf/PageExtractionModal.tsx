@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { X, Download, FileOutput, Check, Loader2, AlertCircle, ChevronLeft, ChevronRight, FileText, Trash2 } from 'lucide-react';
+import { X, Download, FileOutput, Check, Loader2, AlertCircle, FileText, Trash2 } from 'lucide-react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
@@ -23,7 +23,6 @@ interface PageExtractionModalProps {
 }
 
 const THUMBNAIL_SCALE = 0.18;
-const THUMBNAILS_PER_ROW = 6;
 const THUMBNAIL_BATCH_SIZE = 3;
 
 const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
@@ -44,7 +43,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isPreviewDocumentReady, setIsPreviewDocumentReady] = useState(false);
   const [thumbnailsToRender, setThumbnailsToRender] = useState(0);
-  const [previewPage, setPreviewPage] = useState(0);
 
   const modalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -54,11 +52,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     [selectedPages]
   );
 
-  const totalPreviewPages = Math.ceil(sortedSelectedPages.length / THUMBNAILS_PER_ROW);
-  const previewStartIndex = previewPage * THUMBNAILS_PER_ROW;
-  const previewEndIndex = Math.min(previewStartIndex + THUMBNAILS_PER_ROW, sortedSelectedPages.length);
-  const visiblePreviewPages = sortedSelectedPages.slice(previewStartIndex, previewEndIndex);
-
   useEffect(() => {
     if (isOpen) {
       setSelectedPages(new Set([state.currentPage]));
@@ -66,7 +59,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       setOutputFilename(generateExtractedFilename(documentName, [state.currentPage]));
       setError(null);
       setProgress(null);
-      setPreviewPage(0);
       setIsPreviewDocumentReady(false);
       setThumbnailsToRender(0);
 
@@ -82,8 +74,8 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   }, [selectedPages, documentName]);
 
   useEffect(() => {
-    setPreviewPage(0);
-  }, [selectedPages.size]);
+    setIsPreviewDocumentReady(false);
+  }, [documentUrl]);
 
   const handlePageRangeChange = useCallback((input: string) => {
     setPageRangeInput(input);
@@ -174,7 +166,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       return;
     }
 
-    const totalVisiblePages = visiblePreviewPages.length;
+    const totalVisiblePages = sortedSelectedPages.length;
     let renderedCount = 0;
     let animationFrameId: number;
 
@@ -193,7 +185,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isPreviewDocumentReady, visiblePreviewPages]);
+  }, [isPreviewDocumentReady, sortedSelectedPages]);
 
   if (!isOpen) return null;
 
@@ -292,27 +284,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
               <span className="text-sm font-medium text-gray-700">
                 Preview das paginas selecionadas
               </span>
-              {sortedSelectedPages.length > THUMBNAILS_PER_ROW && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setPreviewPage(p => Math.max(0, p - 1))}
-                    disabled={previewPage === 0 || isExtracting}
-                    className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-30"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span className="text-xs text-gray-500 min-w-[60px] text-center">
-                    {previewPage + 1} / {totalPreviewPages}
-                  </span>
-                  <button
-                    onClick={() => setPreviewPage(p => Math.min(totalPreviewPages - 1, p + 1))}
-                    disabled={previewPage >= totalPreviewPages - 1 || isExtracting}
-                    className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-30"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 bg-gray-100/50">
@@ -334,14 +305,14 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
                   onLoadSuccess={() => setIsPreviewDocumentReady(true)}
                   onLoadError={() => setIsPreviewDocumentReady(false)}
                 >
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 justify-items-center">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 justify-items-center content-start">
                     {!isPreviewDocumentReady && (
                       <div className="col-span-full flex items-center justify-center py-8 text-gray-500">
                         <Loader2 className="w-5 h-5 animate-spin" />
                       </div>
                     )}
 
-                    {visiblePreviewPages.map((pageNum, index) => {
+                    {sortedSelectedPages.map((pageNum, index) => {
                       const shouldRenderPage = isPreviewDocumentReady && index < thumbnailsToRender;
 
                       return (
