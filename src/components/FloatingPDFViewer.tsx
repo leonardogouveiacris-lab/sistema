@@ -49,6 +49,7 @@ import {
 } from '../utils/performance';
 import { extractBookmarksWithDocumentInfo, mergeBookmarksFromMultipleDocuments, countTotalBookmarks, DocumentInfo } from '../utils/pdfBookmarkExtractor';
 import { mergeRectsIntoLines } from '../utils/rectMerger';
+import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibilityIndex';
 
 // Configurar worker do PDF.js usando arquivo local
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -59,42 +60,8 @@ const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
 const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
 const CONTINUOUS_PAGE_GAP_PX = 16;
+const PROGRAMMATIC_SCROLL_MAX_RETRIES = 60;
 
-const findFirstIndexByBottom = (cumulativePageBottoms: number[], threshold: number): number => {
-  let left = 0;
-  let right = cumulativePageBottoms.length - 1;
-  let answer = cumulativePageBottoms.length;
-
-  while (left <= right) {
-    const middle = Math.floor((left + right) / 2);
-    if (cumulativePageBottoms[middle] >= threshold) {
-      answer = middle;
-      right = middle - 1;
-    } else {
-      left = middle + 1;
-    }
-  }
-
-  return answer;
-};
-
-const findLastIndexByTop = (cumulativePageTops: number[], threshold: number): number => {
-  let left = 0;
-  let right = cumulativePageTops.length - 1;
-  let answer = -1;
-
-  while (left <= right) {
-    const middle = Math.floor((left + right) / 2);
-    if (cumulativePageTops[middle] <= threshold) {
-      answer = middle;
-      left = middle + 1;
-    } else {
-      right = middle - 1;
-    }
-  }
-
-  return answer;
-};
 
 type HeavyTaskType = 'comments' | 'bookmarks';
 
@@ -2347,14 +2314,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
       });
 
+      const isCurrentPageInDocument = state.currentPage >= offset.startPage && state.currentPage <= offset.endPage;
+      const localCurrentPage = isCurrentPageInDocument
+        ? state.currentPage - offset.startPage + 1
+        : null;
+
       if (firstVisibleLocalPage === null || lastVisibleLocalPage === null) {
-        if (state.currentPage >= offset.startPage && state.currentPage <= offset.endPage) {
-          const localCurrentPage = state.currentPage - offset.startPage + 1;
+        if (localCurrentPage !== null) {
           firstVisibleLocalPage = localCurrentPage;
           lastVisibleLocalPage = localCurrentPage;
         } else {
           firstVisibleLocalPage = 1;
           lastVisibleLocalPage = 1;
+        }
+      }
+
+      if (localCurrentPage !== null) {
+        const isCurrentNearVisibleWindow =
+          localCurrentPage >= firstVisibleLocalPage - CONTINUOUS_WINDOW_BUFFER_PAGES &&
+          localCurrentPage <= lastVisibleLocalPage + CONTINUOUS_WINDOW_BUFFER_PAGES;
+
+        if (!isCurrentNearVisibleWindow) {
+          firstVisibleLocalPage = localCurrentPage;
+          lastVisibleLocalPage = localCurrentPage;
         }
       }
 
@@ -2505,7 +2487,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     if (state.viewMode === 'continuous') {
       let retryCount = 0;
-      const MAX_RETRIES = 60;
+      const MAX_RETRIES = PROGRAMMATIC_SCROLL_MAX_RETRIES;
 
       const scrollToTargetPage = () => {
         const pageElement = pageRefs.current.get(pageNum);
@@ -3250,7 +3232,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const targetPage = state.highlightedPage;
     let retryCount = 0;
-    const MAX_RETRIES = 60;
+    const MAX_RETRIES = PROGRAMMATIC_SCROLL_MAX_RETRIES;
 
     const scrollToHighlightedPage = () => {
       const pageElement = pageRefs.current.get(targetPage);
