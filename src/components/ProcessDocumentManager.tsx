@@ -9,7 +9,7 @@
  * - Estatísticas de lançamentos vinculados a cada PDF
  */
 
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { FileText, Trash2, Eye, AlertCircle, Plus, Info, Download, Loader2 } from 'lucide-react';
 import { useProcessDocuments } from '../hooks/useProcessDocuments';
 import { usePDFViewer } from '../contexts/PDFViewerContext';
@@ -18,7 +18,6 @@ import { ProcessDocument, DocumentValidation } from '../types/ProcessDocument';
 import { downloadDocument } from '../services/processDocument.service';
 import { DynamicEnumType } from '../services/dynamicEnum.service';
 import { CustomDropdown } from './ui';
-import { preloadPDFViewer } from '../App';
 import logger from '../utils/logger';
 
 interface ProcessDocumentManagerProps {
@@ -67,25 +66,6 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const prefetchedUrlsRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!documents || documents.length === 0) return;
-
-    preloadPDFViewer();
-
-    documents.forEach(doc => {
-      if (doc.url && !prefetchedUrlsRef.current.has(doc.url)) {
-        prefetchedUrlsRef.current.add(doc.url);
-        const link = document.createElement('link');
-        link.rel = 'prefetch';
-        link.href = doc.url;
-        link.as = 'fetch';
-        link.crossOrigin = 'anonymous';
-        document.head.appendChild(link);
-      }
-    });
-  }, [documents]);
 
   const handleFileSelect = useCallback((file: File) => {
     clearError();

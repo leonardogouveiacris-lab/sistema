@@ -195,7 +195,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const phaseTimersRef = useRef<Map<string, number>>(new Map());
   const criticalDocStartTimesRef = useRef<Map<string, number>>(new Map());
   const firstPaintRecordedRef = useRef(false);
-  const [initialPaintDone, setInitialPaintDone] = useState(false);
   const commentsLoadStartedRef = useRef(false);
   const commentsLoadedDocsRef = useRef<Set<string>>(new Set());
   const commentsLoadInFlightRef = useRef<Set<string>>(new Set());
@@ -3180,7 +3179,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (!firstPaintRecordedRef.current) {
       firstPaintRecordedRef.current = true;
       finishPhaseTimer('critical-first-page', 'FloatingPDFViewer.onPageLoadSuccess', { pageNumber });
-      requestAnimationFrame(() => setInitialPaintDone(true));
     }
 
     const ownerDocument = getDocumentByGlobalPage(pageNumber);
@@ -4019,8 +4017,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                 }
                                 className="shadow-lg"
                                 wrapperClassName="relative"
-                                renderTextLayer={initialPaintDone}
-                                renderAnnotationLayer={initialPaintDone && !state.performanceMode.disableAnnotations}
+                                renderTextLayer={true}
+                                renderAnnotationLayer={!state.performanceMode.disableAnnotations}
                                 isInteracting={state.isInteracting && !state.isSearchOpen}
                               >
                               <HighlightLayer pageNumber={state.currentPage} scale={state.displayZoom} />
@@ -4140,8 +4138,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                             }
                                             className="shadow-lg"
                                             wrapperClassName="relative"
-                                            renderTextLayer={initialPaintDone}
-                                            renderAnnotationLayer={initialPaintDone && !state.performanceMode.disableAnnotations}
+                                            renderTextLayer={true}
+                                            renderAnnotationLayer={!state.performanceMode.disableAnnotations}
                                             isInteracting={state.isInteracting && !state.isSearchOpen}
                                           >
                                         <HighlightLayer pageNumber={globalPageNum} scale={state.displayZoom} />

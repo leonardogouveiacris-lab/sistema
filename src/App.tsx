@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   ErrorBoundary,
   Header,
@@ -11,7 +11,8 @@ import {
 } from './components';
 import { EmptyState } from './components/ui';
 import { AlertTriangle } from 'lucide-react';
-import { PDFViewerProvider, usePDFViewer } from './contexts/PDFViewerContext';
+import FloatingPDFViewer from './components/FloatingPDFViewer';
+import { PDFViewerProvider } from './contexts/PDFViewerContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { VerbaProvider } from './contexts/VerbaContext';
 import { DecisionProvider } from './contexts/DecisionContext';
@@ -19,31 +20,6 @@ import { DocumentoProvider } from './contexts/DocumentoContext';
 import { useProcesses, useDecisions, useVerbas, useDocumentos, OperationResult } from './hooks';
 import { Process, NewProcess, NewDecision, NewVerbaComLancamento, NewVerbaLancamento, NewDocumento } from './types';
 import { logger, getUserFriendlyMessage } from './utils';
-
-const LazyFloatingPDFViewer = lazy(() => import('./components/FloatingPDFViewer'));
-
-export const preloadPDFViewer = () => {
-  import('./components/FloatingPDFViewer');
-};
-
-function PDFViewerGate({ processId }: { processId?: string }) {
-  const { state } = usePDFViewer();
-
-  if (!state.isOpen) return null;
-
-  return (
-    <Suspense fallback={
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-        <div className="bg-white rounded-xl shadow-2xl p-8 flex flex-col items-center gap-4">
-          <div className="animate-spin w-10 h-10 border-3 border-blue-600 border-t-transparent rounded-full" />
-          <p className="text-gray-700 font-medium">Carregando visualizador...</p>
-        </div>
-      </div>
-    }>
-      <LazyFloatingPDFViewer processId={processId} />
-    </Suspense>
-  );
-}
 
 enum AppTabs {
   LISTA_PROCESSOS = 'lista-processos',
@@ -435,7 +411,7 @@ function AppContent() {
       <main className="container mx-auto px-6 py-8 max-w-4xl" role="main" aria-label="Conteúdo principal">
         {renderContent()}
       </main>
-      <PDFViewerGate processId={selectedProcess?.id} />
+      <FloatingPDFViewer processId={selectedProcess?.id} />
     </div>
   );
 }
