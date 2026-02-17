@@ -1,6 +1,8 @@
 import React, { memo, useMemo } from 'react';
 import { Page } from 'react-pdf';
 
+const CAPPED_DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+
 interface MemoizedPDFPageProps {
   pageNumber: number;
   scale: number;
@@ -40,7 +42,8 @@ const MemoizedPDFPage: React.FC<MemoizedPDFPageProps> = memo(({
     return {
       transform: needsCssTransform ? `scale(${cssScaleRatio})` : undefined,
       transformOrigin: 'top left',
-      willChange: isInteracting ? 'transform' : 'auto'
+      willChange: isInteracting ? 'transform' : 'auto',
+      contain: 'layout paint',
     } as React.CSSProperties;
   }, [cssScaleRatio, needsCssTransform, isInteracting]);
 
@@ -55,6 +58,8 @@ const MemoizedPDFPage: React.FC<MemoizedPDFPageProps> = memo(({
       <Page
         pageNumber={pageNumber}
         scale={scale}
+        devicePixelRatio={CAPPED_DPR}
+        canvasBackground="white"
         {...(combinedRotation !== undefined ? { rotate: combinedRotation } : {})}
         onLoadSuccess={onLoadSuccess}
         loading={loading}

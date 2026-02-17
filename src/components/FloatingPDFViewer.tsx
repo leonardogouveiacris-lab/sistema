@@ -54,12 +54,15 @@ import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibil
 // Configurar worker do PDF.js usando arquivo local
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
-const PDF_DOCUMENT_OPTIONS = { wasmUrl: '/wasm/' };
+const PDF_DOCUMENT_OPTIONS = {
+  wasmUrl: '/wasm/',
+  isEvalSupported: false,
+};
 
 const BOOKMARKS_IDLE_TIMEOUT_MS = 1000;
 const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
-const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
+const CONTINUOUS_WINDOW_BUFFER_PAGES = 2;
 const CONTINUOUS_PAGE_GAP_PX = 16;
 const PROGRAMMATIC_SCROLL_MAX_RETRIES = 60;
 
@@ -212,7 +215,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     totalRunMs: 0,
     maxBacklog: 0
   });
-  const INTERACTION_DEBOUNCE_MS = 200;
+  const INTERACTION_DEBOUNCE_MS = 500;
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
   const documentSetSignature = useMemo(() => state.documents.map(doc => doc.id).join('|'), [state.documents]);
@@ -548,7 +551,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const scrollTop = container.scrollTop;
     const viewportHeight = container.clientHeight;
-    const buffer = viewportHeight * 1.5;
+    const buffer = viewportHeight * 1.0;
     const scrollDelta = options?.previousScrollTop !== undefined
       ? Math.abs(scrollTop - options.previousScrollTop)
       : 0;
@@ -4113,10 +4116,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                           </MemoizedPDFPage>
                                       </>
                                     ) : (
-                                      // Placeholder ultra-leve para páginas não renderizadas
                                       <div
                                         className="bg-white shadow-lg flex items-center justify-center border border-gray-200"
-                                        style={{ height: `${pageHeight}px`, width: `${pageWidth}px` }}
+                                        style={{ height: `${pageHeight}px`, width: `${pageWidth}px`, contentVisibility: 'auto', containIntrinsicSize: `${pageWidth}px ${pageHeight}px` }}
                                       >
                                         <div className="text-gray-300 text-xs">
                                           Página {globalPageNum}
