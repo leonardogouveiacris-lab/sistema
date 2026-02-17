@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { Trash2, Palette } from 'lucide-react';
 import { PDFHighlight, HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_CONFIG, HighlightColor } from '../../types/Highlight';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
@@ -98,6 +98,8 @@ const HighlightLayer: React.FC<HighlightLayerProps> = ({ pageNumber, scale }) =>
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
+  const [adjustedPos, setAdjustedPos] = useState<{ x: number; y: number } | null>(null);
+
   const highlights = useMemo(() => getHighlightsByPage(pageNumber), [getHighlightsByPage, pageNumber]);
 
   const computedHighlights = useMemo<ComputedHighlight[]>(() => {
@@ -108,6 +110,27 @@ const HighlightLayer: React.FC<HighlightLayerProps> = ({ pageNumber, scale }) =>
       rects: computeHighlightRects(highlight)
     }));
   }, [highlights]);
+
+  useLayoutEffect(() => {
+    if (contextMenu && contextMenuRef.current) {
+      const rect = contextMenuRef.current.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const pad = 8;
+
+      let x = contextMenu.x;
+      let y = contextMenu.y;
+
+      if (x + rect.width > vw - pad) x = vw - rect.width - pad;
+      if (y + rect.height > vh - pad) y = vh - rect.height - pad;
+      if (x < pad) x = pad;
+      if (y < pad) y = pad;
+
+      setAdjustedPos({ x, y });
+    } else {
+      setAdjustedPos(null);
+    }
+  }, [contextMenu]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -252,8 +275,9 @@ const HighlightLayer: React.FC<HighlightLayerProps> = ({ pageNumber, scale }) =>
           ref={contextMenuRef}
           className="fixed z-[10001] bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[200px]"
           style={{
-            left: `${contextMenu.x}px`,
-            top: `${contextMenu.y}px`
+            left: `${(adjustedPos ?? contextMenu).x}px`,
+            top: `${(adjustedPos ?? contextMenu).y}px`,
+            visibility: adjustedPos ? 'visible' : 'hidden'
           }}
         >
           <div className="px-3 py-2 border-b border-gray-100">
