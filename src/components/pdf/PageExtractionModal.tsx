@@ -14,6 +14,8 @@ import {
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
+const PDF_DOCUMENT_OPTIONS = { wasmUrl: '/wasm/' };
+
 interface PageExtractionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -365,6 +367,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
               ) : (
                 <Document
                   file={documentUrl}
+                  options={PDF_DOCUMENT_OPTIONS}
                   loading={null}
                   error={null}
                   onLoadSuccess={() => setIsPreviewDocumentReady(true)}

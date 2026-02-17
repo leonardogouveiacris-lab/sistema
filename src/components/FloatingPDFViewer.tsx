@@ -54,6 +54,8 @@ import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibil
 // Configurar worker do PDF.js usando arquivo local
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
+const PDF_DOCUMENT_OPTIONS = { wasmUrl: '/wasm/' };
+
 const BOOKMARKS_IDLE_TIMEOUT_MS = 1000;
 const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
@@ -3894,6 +3896,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
                     <Document
                       file={doc.url}
+                      options={PDF_DOCUMENT_OPTIONS}
                       onLoadSuccess={(pdf) => onDocumentLoadSuccess(pdf, docIndex)}
                       onLoadError={onDocumentLoadError}
                       onItemClick={onItemClick}
