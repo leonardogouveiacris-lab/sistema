@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Trash2, Palette } from 'lucide-react';
 import { PDFHighlight, HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_CONFIG, HighlightColor } from '../../types/Highlight';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
@@ -270,7 +271,7 @@ const HighlightLayer: React.FC<HighlightLayerProps> = ({ pageNumber, scale }) =>
         })}
       </div>
 
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div
           ref={contextMenuRef}
           className="fixed z-[10001] bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[200px]"
@@ -308,7 +309,8 @@ const HighlightLayer: React.FC<HighlightLayerProps> = ({ pageNumber, scale }) =>
             <Trash2 size={14} />
             <span>Excluir destaque</span>
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
