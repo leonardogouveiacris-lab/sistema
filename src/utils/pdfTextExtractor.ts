@@ -169,15 +169,16 @@ export async function extractAllPagesText(
   };
 
   const numPages = pdfDocument.numPages;
-  const BATCH_CONCURRENCY = 4;
+  const BATCH_CONCURRENCY = 6;
   const progressInterval = Math.max(1, options?.progressIntervalPages ?? 4);
   const priorityPages = Array.from(new Set((options?.priorityPages || [])
     .filter(page => Number.isInteger(page) && page >= 1 && page <= numPages)));
 
+  const prioritySet = new Set(priorityPages);
   const orderedPages = [
     ...priorityPages,
     ...Array.from({ length: numPages }, (_, index) => index + 1)
-      .filter(page => !priorityPages.includes(page))
+      .filter(page => !prioritySet.has(page))
   ];
 
   let processedPages = 0;

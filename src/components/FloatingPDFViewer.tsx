@@ -63,12 +63,14 @@ const PDF_DOCUMENT_OPTIONS = {
   cMapPacked: true,
   disableAutoFetch: true,
   disableStream: false,
+  enableXfa: false,
+  disableRange: false,
 };
 
 const BOOKMARKS_IDLE_TIMEOUT_MS = 1000;
 const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
-const CONTINUOUS_WINDOW_BUFFER_PAGES = 2;
+const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
 const CONTINUOUS_PAGE_GAP_PX = 16;
 const PROGRAMMATIC_SCROLL_MAX_RETRIES = 60;
 
@@ -337,17 +339,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [logHeavyTaskMetrics]);
 
   const processHeavyTaskQueue = useCallback(() => {
-    while (
-      heavyTaskInFlightRef.current.size < HEAVY_TASK_CONCURRENCY &&
-      heavyTaskQueueRef.current.length > 0
-    ) {
+    if (heavyTaskQueueRef.current.length > 1) {
       heavyTaskQueueRef.current.sort((a, b) => {
         if (b.priority !== a.priority) {
           return b.priority - a.priority;
         }
         return a.enqueuedAt - b.enqueuedAt;
       });
+    }
 
+    while (
+      heavyTaskInFlightRef.current.size < HEAVY_TASK_CONCURRENCY &&
+      heavyTaskQueueRef.current.length > 0
+    ) {
       const nextTask = heavyTaskQueueRef.current.shift();
       if (!nextTask || nextTask.controller.signal.aborted || nextTask.generation !== heavyTaskGenerationRef.current) {
         continue;
@@ -620,17 +624,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       );
     }
 
-    for (let pageNum = 1; pageNum <= Math.min(5, state.totalPages); pageNum++) {
-      visiblePages.add(pageNum);
-    }
-
     setScrollBasedVisiblePages(prev => {
-      const prevArray = Array.from(prev).sort((a, b) => a - b);
-      const newArray = Array.from(visiblePages).sort((a, b) => a - b);
-      if (prevArray.length === newArray.length && prevArray.every((v, i) => v === newArray[i])) {
-        return prev;
+      if (prev.size !== visiblePages.size) return visiblePages;
+      for (const page of visiblePages) {
+        if (!prev.has(page)) return visiblePages;
       }
-      return visiblePages;
+      return prev;
     });
 
     const timeSinceLastZoom = now - lastZoomTimestampRef.current;
@@ -928,24 +927,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const TEXT_SPAN_SELECTOR = '.textLayer > span, .textLayer span[role="presentation"]';
     const TEXT_LAYER_LOCAL_SPAN_SELECTOR = ':scope > span, :scope span[role="presentation"]';
-    const SHIFT_CLICK_DEBUG = false;
-
-    interface ShiftClickTrace {
-      traceId: string;
-      clickPage: number | null;
-      anchorPage: number | null;
-      spansByStage: {
-        directTarget: number;
-        activeTextLayer: number;
-        clickPage: number;
-        anchorPage: number;
-        selectionGlobal: number;
-      };
-      winnerStrategy: 'direct-target-span' | 'active-text-layer-nearest' | 'click-page-nearest' | 'anchor-page-nearest' | 'none';
-      initialOffset: number | null;
-      finalOffset: number | null;
-      failureReason: string | null;
-    }
 
     const isSelectableSpan = (span: Element): span is HTMLElement => {
       if (!(span instanceof HTMLElement)) return false;
@@ -1004,29 +985,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return bestSpan;
     };
 
-    const createShiftClickTrace = (): ShiftClickTrace => ({
-      traceId: `shift-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      clickPage: null,
-      anchorPage: null,
-      spansByStage: {
-        directTarget: 0,
-        activeTextLayer: 0,
-        clickPage: 0,
-        anchorPage: 0,
-        selectionGlobal: 0
-      },
-      winnerStrategy: 'none',
-      initialOffset: null,
-      finalOffset: null,
-      failureReason: null
-    });
-
-    const logShiftClickDebug = (trace: ShiftClickTrace) => {
-      if (!SHIFT_CLICK_DEBUG) return;
-      console.debug('[FloatingPDFViewer][Shift+click]', trace);
-    };
-
-
     const applyRangeWithOverlayGuard = (range: Range, source: 'caret-click' | 'caret-arrow' | 'caret-shift-arrow' | 'caret-shift-click' | 'caret-triple-click') => {
       if (!canWriteProgrammaticSelection) {
         return false;
@@ -1059,19 +1017,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       startOffset: number,
       endSpan: HTMLElement,
       endOffset: number,
-      source: 'caret-shift-click' | 'caret-shift-arrow' = 'caret-shift-click',
-      trace?: ShiftClickTrace
+      source: 'caret-shift-click' | 'caret-shift-arrow' = 'caret-shift-click'
     ) => {
       const spans = getAllTextSpans();
 
-      if (trace) {
-        trace.spansByStage.selectionGlobal = spans.length;
-      }
-
       if (spans.length === 0) {
-        if (trace) {
-          trace.failureReason = 'global-spans-empty';
-        }
         return false;
       }
 
@@ -1133,18 +1083,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const mappedStartSpan = remapSpanToGlobalCollection(startSpan);
       const mappedEndSpan = remapSpanToGlobalCollection(endSpan);
       if (!mappedStartSpan || !mappedEndSpan) {
-        if (trace) {
-          trace.failureReason = `remap-failed:start=${!!mappedStartSpan};end=${!!mappedEndSpan}`;
-        }
         return false;
       }
 
       const startIndex = spans.indexOf(mappedStartSpan);
       const endIndex = spans.indexOf(mappedEndSpan);
       if (startIndex === -1 || endIndex === -1) {
-        if (trace) {
-          trace.failureReason = `mapped-index-not-found:start=${startIndex};end=${endIndex}`;
-        }
         return false;
       }
 
@@ -1166,9 +1110,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const endNode = actualEndSpan.firstChild;
 
       if (!startNode || !endNode) {
-        if (trace) {
-          trace.failureReason = 'missing-text-node-in-selection-range';
-        }
         return false;
       }
 
@@ -1177,11 +1118,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       range.setStart(startNode, maxStartOffset);
       range.setEnd(endNode, maxEndOffset);
-
-      if (trace) {
-        trace.initialOffset = maxStartOffset;
-        trace.finalOffset = maxEndOffset;
-      }
 
       applyRangeWithOverlayGuard(range, source);
       return true;
@@ -1192,17 +1128,24 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return 0;
 
       const text = textNode.textContent || '';
-      const range = document.createRange();
+      if (text.length === 0) return 0;
 
-      for (let i = 0; i <= text.length; i++) {
-        range.setStart(textNode, i);
-        range.setEnd(textNode, i);
+      const range = document.createRange();
+      let lo = 0;
+      let hi = text.length;
+
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        range.setStart(textNode, mid);
+        range.setEnd(textNode, mid);
         const rect = range.getBoundingClientRect();
-        if (rect.left >= clientX) {
-          return Math.max(0, i);
+        if (rect.left < clientX) {
+          lo = mid + 1;
+        } else {
+          hi = mid;
         }
       }
-      return text.length;
+      return lo;
     };
 
     const getClickOffsetByCoordinates = (span: HTMLElement, clientX: number, clientY: number): number => {
@@ -1268,24 +1211,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       selectionAnchorState: { span: HTMLElement; offset: number },
       clientX: number,
       clientY: number,
-      clickPage: number | null,
-      trace: ShiftClickTrace
+      clickPage: number | null
     ): { span: HTMLElement; offset: number } | null => {
       const directSpan = target.closest(TEXT_SPAN_SELECTOR) as HTMLElement | null;
-      trace.spansByStage.directTarget = directSpan && isSelectableSpan(directSpan) ? 1 : 0;
       if (directSpan && isSelectableSpan(directSpan)) {
-        trace.winnerStrategy = 'direct-target-span';
         return { span: directSpan, offset: getClickOffsetByCoordinates(directSpan, clientX, clientY) };
       }
 
       const activeTextLayer = target.closest('.textLayer') as HTMLElement | null;
-      trace.spansByStage.activeTextLayer = activeTextLayer ? getVisibleSpansFromTextLayer(activeTextLayer).length : 0;
       const nearestInActiveLayer = activeTextLayer
         ? resolveNearestSpanFromPoint(activeTextLayer, clientX, clientY)
         : null;
 
       if (nearestInActiveLayer) {
-        trace.winnerStrategy = 'active-text-layer-nearest';
         return {
           span: nearestInActiveLayer,
           offset: getClickOffsetByCoordinates(nearestInActiveLayer, clientX, clientY)
@@ -1294,10 +1232,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (clickPage) {
         const clickPageSpans = getSpansForPage(clickPage);
-        trace.spansByStage.clickPage = clickPageSpans.length;
         const clickPageFallback = findNearestSpanByCoordinates(clickPageSpans, clientX, clientY);
         if (clickPageFallback) {
-          trace.winnerStrategy = 'click-page-nearest';
           return {
             span: clickPageFallback,
             offset: getClickOffsetByCoordinates(clickPageFallback, clientX, clientY)
@@ -1306,21 +1242,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       const anchorPage = getPageNumber(selectionAnchorState.span);
-      trace.anchorPage = anchorPage;
       if (!anchorPage) {
-        trace.failureReason = 'anchor-page-missing';
         return null;
       }
 
       const anchorPageSpans = getSpansForPage(anchorPage);
-      trace.spansByStage.anchorPage = anchorPageSpans.length;
       const fallbackSpan = findNearestSpanByCoordinates(anchorPageSpans, clientX, clientY);
       if (!fallbackSpan) {
-        trace.failureReason = 'anchor-page-nearest-not-found';
         return null;
       }
 
-      trace.winnerStrategy = 'anchor-page-nearest';
       return {
         span: fallbackSpan,
         offset: getClickOffsetByCoordinates(fallbackSpan, clientX, clientY)
@@ -1406,12 +1337,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const textLayerSpan = target.closest(TEXT_SPAN_SELECTOR) as HTMLElement | null;
 
       if (e.shiftKey && selectionAnchor) {
-        const trace = createShiftClickTrace();
-        trace.anchorPage = getPageNumber(selectionAnchor.span);
         const clickPage = inferClickPageNumber(target, e.clientX, e.clientY, selectionAnchor);
-        trace.clickPage = clickPage;
 
-        const resolved = resolveShiftClickTarget(target, selectionAnchor, e.clientX, e.clientY, clickPage, trace);
+        const resolved = resolveShiftClickTarget(target, selectionAnchor, e.clientX, e.clientY, clickPage);
 
         if (resolved) {
           activateCaret(resolved.span, true);
@@ -1420,30 +1348,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             selectionAnchor.offset,
             resolved.span,
             resolved.offset,
-            'caret-shift-click',
-            trace
+            'caret-shift-click'
           );
           if (selectionApplied) {
             currentFocus = { span: resolved.span, offset: resolved.offset };
-          } else if (!trace.failureReason) {
-            trace.failureReason = 'selection-not-applied';
           }
-          logShiftClickDebug(trace);
           return;
         }
 
         if (textLayer || clickPage) {
-          if (!trace.failureReason) {
-            trace.failureReason = textLayer ? 'unresolved-inside-text-layer' : 'unresolved-inside-rendered-page';
-          }
-          logShiftClickDebug(trace);
           return;
         }
 
-        if (!trace.failureReason) {
-          trace.failureReason = 'unresolved-outside-text-layer-and-pages';
-        }
-        logShiftClickDebug(trace);
         deactivateCaret();
         return;
       }
@@ -1756,7 +1672,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const newSet = new Set(prev);
       newSet.add(state.currentPage);
 
-      while (newSet.size > 5) {
+      while (newSet.size > 10) {
         let farthestPage: number | null = null;
         let farthestDist = -1;
         for (const page of newSet) {
@@ -2755,7 +2671,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       setSelectedText(selectedText);
       startedInsidePdfRef.current = false;
     }
-  }, [registerContextCommit, selectionMode, setSelectedText, state.currentPage, state.zoom]);
+  }, [registerContextCommit, selectionMode, setSelectedText, state.currentPage, state.zoom, state.displayZoom]);
 
   const getCommentFieldForCurrentMode = useCallback((): InsertionField => {
     const formMode = state.formMode;
@@ -3217,6 +3133,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         setForceRenderPages(prev => {
           const newSet = new Set(prev);
           newSet.add(state.currentPage);
+          if (newSet.size > 5) {
+            for (const page of newSet) {
+              if (page !== state.currentPage) {
+                newSet.delete(page);
+                if (newSet.size <= 5) break;
+              }
+            }
+          }
           return newSet;
         });
       }
