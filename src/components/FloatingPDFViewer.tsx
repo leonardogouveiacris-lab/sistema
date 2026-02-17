@@ -40,14 +40,17 @@ import { useSelectionOverlay } from '../hooks/useSelectionOverlay';
 import logger from '../utils/logger';
 import { formatPDFText, extractTextFromSelection } from '../utils/textFormatter';
 import * as HighlightsService from '../services/highlights.service';
-import { extractAllPagesText } from '../utils/pdfTextExtractor';
+const lazyExtractAllPagesText = () => import('../utils/pdfTextExtractor').then(m => m.extractAllPagesText);
 import {
   generatePDFCacheKey,
   saveBookmarksToCache,
   loadBookmarksFromCache,
   clearOldBookmarkCaches
 } from '../utils/performance';
-import { extractBookmarksWithDocumentInfo, mergeBookmarksFromMultipleDocuments, countTotalBookmarks, DocumentInfo } from '../utils/pdfBookmarkExtractor';
+import type { DocumentInfo } from '../utils/pdfBookmarkExtractor';
+import { countTotalBookmarks, mergeBookmarksFromMultipleDocuments } from '../utils/pdfBookmarkExtractor';
+
+const lazyExtractBookmarks = () => import('../utils/pdfBookmarkExtractor').then(m => m.extractBookmarksWithDocumentInfo);
 import { mergeRectsIntoLines } from '../utils/rectMerger';
 import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibilityIndex';
 
@@ -57,6 +60,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 const PDF_DOCUMENT_OPTIONS = {
   wasmUrl: '/wasm/',
   isEvalSupported: false,
+  cMapPacked: true,
+  disableAutoFetch: true,
+  disableStream: false,
 };
 
 const BOOKMARKS_IDLE_TIMEOUT_MS = 1000;
@@ -448,7 +454,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * Effect para limpar caches antigos de bookmarks na montagem
    */
   useEffect(() => {
-    clearOldBookmarkCaches();
+    if ('requestIdleCallback' in window) {
+      const id = requestIdleCallback(() => clearOldBookmarkCaches());
+      return () => cancelIdleCallback(id);
+    }
+    const id = setTimeout(() => clearOldBookmarkCaches(), 2000);
+    return () => clearTimeout(id);
   }, []);
 
   /**
@@ -682,7 +693,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       const now = Date.now();
-      if (now - scrollThrottleRef.current < 200) {
+      if (now - scrollThrottleRef.current < 80) {
         return;
       }
       scrollThrottleRef.current = now;
@@ -1745,19 +1756,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const newSet = new Set(prev);
       newSet.add(state.currentPage);
 
-      if (newSet.size > 5) {
-        const pagesArray = Array.from(newSet);
-        const sortedByDistance = pagesArray.sort((a, b) => {
-          const distA = Math.abs(a - state.currentPage);
-          const distB = Math.abs(b - state.currentPage);
-          return distB - distA;
-        });
-
-        while (newSet.size > 5) {
-          const farthest = sortedByDistance.shift();
-          if (farthest !== undefined && farthest !== state.currentPage) {
-            newSet.delete(farthest);
+      while (newSet.size > 5) {
+        let farthestPage: number | null = null;
+        let farthestDist = -1;
+        for (const page of newSet) {
+          if (page === state.currentPage) continue;
+          const dist = Math.abs(page - state.currentPage);
+          if (dist > farthestDist) {
+            farthestDist = dist;
+            farthestPage = page;
           }
+        }
+        if (farthestPage !== null) {
+          newSet.delete(farthestPage);
+        } else {
+          break;
         }
       }
 
@@ -1843,7 +1856,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     try {
       const cachedBookmarks = loadBookmarksFromCache(cacheKey);
-      const bookmarks = cachedBookmarks || await extractBookmarksWithDocumentInfo(pdf, documentInfo);
+      let bookmarks: any[];
+      if (cachedBookmarks) {
+        bookmarks = cachedBookmarks;
+      } else {
+        const extractFn = await lazyExtractBookmarks();
+        bookmarks = await extractFn(pdf, documentInfo);
+      }
       if (signal.aborted || !state.isOpen) {
         return;
       }
@@ -2091,7 +2110,36 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return getDocumentOffsets();
   }, [getDocumentOffsets]);
 
+  const extractionProgressRafRef = useRef<number | null>(null);
+
   const recalcExtractionProgress = useCallback(() => {
+    if (extractionProgressRafRef.current !== null) return;
+
+    extractionProgressRafRef.current = requestAnimationFrame(() => {
+      extractionProgressRafRef.current = null;
+
+      if (textExtractionProgressRef.current.size === 0) {
+        setTextExtractionProgress(null);
+        return;
+      }
+
+      let aggregateCurrent = 0;
+      let aggregateTotal = 0;
+      textExtractionProgressRef.current.forEach(value => {
+        aggregateCurrent += value.current;
+        aggregateTotal += value.total;
+      });
+
+      setTextExtractionProgress({ current: aggregateCurrent, total: aggregateTotal });
+    });
+  }, [setTextExtractionProgress]);
+
+  const recalcExtractionProgressSync = useCallback(() => {
+    if (extractionProgressRafRef.current !== null) {
+      cancelAnimationFrame(extractionProgressRafRef.current);
+      extractionProgressRafRef.current = null;
+    }
+
     if (textExtractionProgressRef.current.size === 0) {
       setTextExtractionProgress(null);
       return;
@@ -2120,15 +2168,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
       textExtractionAbortControllersRef.current.delete(documentId);
       textExtractionProgressRef.current.delete(documentId);
-      recalcExtractionProgress();
+      recalcExtractionProgressSync();
       return;
     }
 
     textExtractionAbortControllersRef.current.forEach(controller => controller.abort());
     textExtractionAbortControllersRef.current.clear();
     textExtractionProgressRef.current.clear();
-    recalcExtractionProgress();
-  }, [recalcExtractionProgress]);
+    recalcExtractionProgressSync();
+  }, [recalcExtractionProgressSync]);
 
   const startLazyTextExtraction = useCallback(() => {
     const shouldExtract = state.isSearchOpen || state.searchQuery.trim().length > 0;
@@ -2156,23 +2204,25 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       textExtractionAbortControllersRef.current.set(documentId, controller);
       updateExtractionProgress(documentId, 0, pdf.numPages);
 
-      extractAllPagesText(
-        pdf,
-        documentId,
-        (current, total) => updateExtractionProgress(documentId, current, total),
-        controller.signal,
-        {
-          priorityPages: [currentLocalPage, ...visibleLocalPages],
-          progressIntervalPages: 4
-        }
+      lazyExtractAllPagesText().then(extractFn =>
+        extractFn(
+          pdf,
+          documentId,
+          (current, total) => updateExtractionProgress(documentId, current, total),
+          controller.signal,
+          {
+            priorityPages: [currentLocalPage, ...visibleLocalPages],
+            progressIntervalPages: 4
+          }
+        )
       ).then(() => {
         textExtractionAbortControllersRef.current.delete(documentId);
         textExtractionProgressRef.current.delete(documentId);
-        recalcExtractionProgress();
+        recalcExtractionProgressSync();
       }).catch((error) => {
         textExtractionAbortControllersRef.current.delete(documentId);
         textExtractionProgressRef.current.delete(documentId);
-        recalcExtractionProgress();
+        recalcExtractionProgressSync();
 
         logger.warn(
           `Falha na extração lazy de texto do documento ${documentId}`,
@@ -2181,7 +2231,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         );
       });
     });
-  }, [state.isSearchOpen, state.searchQuery, pdfDocumentProxies, memoizedDocumentOffsets, scrollBasedVisiblePages, state.currentPage, updateExtractionProgress, recalcExtractionProgress]);
+  }, [state.isSearchOpen, state.searchQuery, pdfDocumentProxies, memoizedDocumentOffsets, scrollBasedVisiblePages, state.currentPage, updateExtractionProgress, recalcExtractionProgressSync]);
 
   useEffect(() => {
     startLazyTextExtraction();

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { PDFComment, ConnectorType, PDFCommentConnector } from '../../types/PDFComment';
 import * as PDFCommentsService from '../../services/pdfComments.service';
@@ -41,6 +41,24 @@ const CommentLayer: React.FC<CommentLayerProps> = ({
   } | null>(null);
 
   const comments = getCommentsByPage(pageNumber);
+
+  const { arrowConnectorEntries, highlightBoxEntries } = useMemo(() => {
+    const arrows: Array<{ comment: PDFComment; connector: PDFCommentConnector }> = [];
+    const boxes: Array<{ comment: PDFComment; connector: PDFCommentConnector }> = [];
+
+    for (const comment of comments) {
+      if (!comment.connectors || comment.connectors.length === 0) continue;
+      for (const connector of comment.connectors) {
+        if (connector.connectorType === 'arrow') {
+          arrows.push({ comment, connector });
+        } else if (connector.connectorType === 'highlightbox') {
+          boxes.push({ comment, connector });
+        }
+      }
+    }
+
+    return { arrowConnectorEntries: arrows, highlightBoxEntries: boxes };
+  }, [comments]);
 
   const handleLayerClick = useCallback(async (e: React.MouseEvent<HTMLDivElement>) => {
     if (!state.isCommentModeActive) return;
@@ -102,51 +120,6 @@ const CommentLayer: React.FC<CommentLayerProps> = ({
     setEditingConnectorId(state.editingConnectorId === connectorId ? null : connectorId);
   }, [state.editingConnectorId, setEditingConnectorId]);
 
-  const renderArrowConnectors = (comment: PDFComment) => {
-    if (!comment.connectors || comment.connectors.length === 0) return null;
-
-    return comment.connectors
-      .filter(connector => connector.connectorType === 'arrow')
-      .map(connector => {
-        const isEditing = state.editingConnectorId === connector.id;
-        return (
-          <ArrowConnector
-            key={connector.id}
-            connector={connector}
-            commentId={comment.id}
-            commentX={comment.positionX}
-            commentY={comment.positionY}
-            scale={scale}
-            isEditing={isEditing}
-            onSelect={() => handleSelectConnector(connector.id)}
-          />
-        );
-      });
-  };
-
-  const renderHighlightBoxConnectors = (comment: PDFComment) => {
-    if (!comment.connectors || comment.connectors.length === 0) return null;
-
-    return comment.connectors
-      .filter(connector => connector.connectorType === 'highlightbox')
-      .map(connector => {
-        const isEditing = state.editingConnectorId === connector.id;
-        return (
-          <HighlightBoxConnector
-            key={connector.id}
-            connector={connector}
-            commentId={comment.id}
-            commentColor={comment.color}
-            commentX={comment.positionX}
-            commentY={comment.positionY}
-            scale={scale}
-            isEditing={isEditing}
-            onSelect={() => handleSelectConnector(connector.id)}
-          />
-        );
-      });
-  };
-
   return (
     <div
       className="absolute inset-0"
@@ -156,20 +129,39 @@ const CommentLayer: React.FC<CommentLayerProps> = ({
       }}
       onClick={handleLayerClick}
     >
-      <svg
-        className="absolute inset-0"
-        style={{ width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }}
-      >
-        {comments.map(comment => (
-          <g key={`connectors-${comment.id}`} style={{ pointerEvents: 'auto' }}>
-            {renderArrowConnectors(comment)}
-          </g>
-        ))}
-      </svg>
+      {arrowConnectorEntries.length > 0 && (
+        <svg
+          className="absolute inset-0"
+          style={{ width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }}
+        >
+          {arrowConnectorEntries.map(({ comment, connector }) => (
+            <g key={connector.id} style={{ pointerEvents: 'auto' }}>
+              <ArrowConnector
+                connector={connector}
+                commentId={comment.id}
+                commentX={comment.positionX}
+                commentY={comment.positionY}
+                scale={scale}
+                isEditing={state.editingConnectorId === connector.id}
+                onSelect={() => handleSelectConnector(connector.id)}
+              />
+            </g>
+          ))}
+        </svg>
+      )}
 
-      {comments.map(comment => (
-        <div key={`highlightbox-${comment.id}`} style={{ pointerEvents: 'auto' }}>
-          {renderHighlightBoxConnectors(comment)}
+      {highlightBoxEntries.map(({ comment, connector }) => (
+        <div key={connector.id} style={{ pointerEvents: 'auto' }}>
+          <HighlightBoxConnector
+            connector={connector}
+            commentId={comment.id}
+            commentColor={comment.color}
+            commentX={comment.positionX}
+            commentY={comment.positionY}
+            scale={scale}
+            isEditing={state.editingConnectorId === connector.id}
+            onSelect={() => handleSelectConnector(connector.id)}
+          />
         </div>
       ))}
 
