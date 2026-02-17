@@ -26,7 +26,6 @@ interface HighlightRect {
   height: number;
 }
 
-const MAX_RETRY_ATTEMPTS = 20;
 const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
 
 const normalizeString = (text: string): string => {
@@ -107,6 +106,7 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
   const [highlightRects, setHighlightRects] = useState<Map<number, HighlightRect[]>>(new Map());
   const textLayerRef = useRef<Element | null>(null);
   const lastRectsRef = useRef<Map<number, HighlightRect[]>>(new Map());
+  const observerRef = useRef<MutationObserver | null>(null);
 
   const pageResults = useMemo(() => {
     return searchResults.filter(r => r.globalPageNumber === pageNumber);
@@ -119,8 +119,10 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
     return currentResult;
   }, [searchResults, currentSearchIndex, pageNumber]);
 
+  const normalizedSearchTerm = useMemo(() => normalizeString(searchQuery), [searchQuery]);
+
   useEffect(() => {
-    if (pageResults.length === 0 || !searchQuery) {
+    if (pageResults.length === 0 || !normalizedSearchTerm) {
       if (lastRectsRef.current.size > 0) {
         lastRectsRef.current = new Map();
         setHighlightRects(new Map());
@@ -128,10 +130,11 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
       return;
     }
 
-    let retryCount = 0;
-    let rafId: number | null = null;
+    let cancelled = false;
 
     const computeHighlights = () => {
+      if (cancelled) return;
+
       let textLayer = textLayerRef.current;
 
       if (!textLayer || !document.contains(textLayer)) {
@@ -141,29 +144,15 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
         textLayerRef.current = textLayer;
       }
 
-      if (!textLayer) {
-        retryCount++;
-        if (retryCount < MAX_RETRY_ATTEMPTS) {
-          rafId = requestAnimationFrame(computeHighlights);
-        }
-        return;
-      }
+      if (!textLayer) return false;
 
       const spans = textLayer.querySelectorAll('span[role="presentation"]');
-      if (spans.length === 0) {
-        retryCount++;
-        if (retryCount < MAX_RETRY_ATTEMPTS) {
-          rafId = requestAnimationFrame(computeHighlights);
-        }
-        return;
-      }
+      if (spans.length === 0) return false;
 
       const newRects = new Map<number, HighlightRect[]>();
       const parentRect = textLayer.getBoundingClientRect();
-      const searchTerm = normalizeString(searchQuery);
-      if (!searchTerm) {
-        return;
-      }
+      const searchTerm = normalizedSearchTerm;
+      if (!searchTerm) return true;
 
       const getTextNodeRect = (span: Element, startIdx: number, endIdx: number): DOMRect | null => {
         const textNode = span.firstChild;
@@ -233,25 +222,53 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
         );
       }
 
+      const matchesByText = new Map<string, number[]>();
+      const unindexedMatches: number[] = [];
+      allMatches.forEach((match, index) => {
+        if (match.normalizedText) {
+          const existing = matchesByText.get(match.normalizedText);
+          if (existing) {
+            existing.push(index);
+          } else {
+            matchesByText.set(match.normalizedText, [index]);
+          }
+        }
+        unindexedMatches.push(index);
+      });
+
       const usedMatches = new Set<number>();
       let missingMatches = 0;
+      let unindexedPointer = 0;
 
       pageResults.forEach((result) => {
         const rects: HighlightRect[] = [];
-
         let matchIndex = -1;
 
         if (result.matchText) {
           const normalizedMatchText = normalizeString(result.matchText);
           if (normalizedMatchText) {
-            matchIndex = allMatches.findIndex(
-              (match, index) => !usedMatches.has(index) && match.normalizedText === normalizedMatchText
-            );
+            const candidates = matchesByText.get(normalizedMatchText);
+            if (candidates) {
+              for (let i = 0; i < candidates.length; i++) {
+                if (!usedMatches.has(candidates[i])) {
+                  matchIndex = candidates[i];
+                  candidates.splice(i, 1);
+                  break;
+                }
+              }
+            }
           }
         }
 
         if (matchIndex === -1) {
-          matchIndex = allMatches.findIndex((_, index) => !usedMatches.has(index));
+          while (unindexedPointer < unindexedMatches.length) {
+            const candidate = unindexedMatches[unindexedPointer];
+            unindexedPointer++;
+            if (!usedMatches.has(candidate)) {
+              matchIndex = candidate;
+              break;
+            }
+          }
         }
 
         if (matchIndex !== -1) {
@@ -281,16 +298,61 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
         lastRectsRef.current = newRects;
         setHighlightRects(newRects);
       }
+      return true;
     };
 
-    const timeoutId = setTimeout(computeHighlights, 100);
+    const tryCompute = () => {
+      if (cancelled) return;
+      const success = computeHighlights();
+      if (success !== false) return;
+
+      const pageEl = document.querySelector(`[data-global-page="${pageNumber}"]`);
+      if (!pageEl) {
+        const rafId = requestAnimationFrame(tryCompute);
+        return () => cancelAnimationFrame(rafId);
+      }
+
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+
+      observerRef.current = new MutationObserver(() => {
+        const textLayer = pageEl.querySelector('.textLayer');
+        if (textLayer) {
+          const spans = textLayer.querySelectorAll('span[role="presentation"]');
+          if (spans.length > 0) {
+            observerRef.current?.disconnect();
+            observerRef.current = null;
+            computeHighlights();
+          }
+        }
+      });
+
+      observerRef.current.observe(pageEl, {
+        childList: true,
+        subtree: true
+      });
+    };
+
+    const timeoutId = setTimeout(tryCompute, 50);
     return () => {
+      cancelled = true;
       clearTimeout(timeoutId);
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
       }
     };
-  }, [pageResults, pageNumber, scale, searchQuery]);
+  }, [pageResults, pageNumber, scale, normalizedSearchTerm]);
+
+  useEffect(() => {
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+    };
+  }, []);
 
   if (pageResults.length === 0) return null;
 
@@ -312,7 +374,7 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
               <div
                 key={rectIdx}
                 ref={isCurrent ? currentResultRef : null}
-                className={`absolute transition-all duration-200 ${
+                className={`absolute transition-colors duration-200 ${
                   isCurrent
                     ? 'bg-orange-400/60 ring-2 ring-orange-500 animate-pulse'
                     : 'bg-yellow-300/50'
