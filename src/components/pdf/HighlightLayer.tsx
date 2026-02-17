@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Trash2, Palette } from 'lucide-react';
 import { PDFHighlight, HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_CONFIG, HighlightColor } from '../../types/Highlight';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
@@ -83,7 +83,7 @@ function computeHighlightRects(highlight: PDFHighlight): ComputedRect[] {
   return rects;
 }
 
-const HighlightLayer: React.FC<HighlightLayerProps> = memo(({ pageNumber, scale }) => {
+const HighlightLayer: React.FC<HighlightLayerProps> = ({ pageNumber, scale }) => {
   const {
     state,
     getHighlightsByPage,
@@ -233,7 +233,7 @@ const HighlightLayer: React.FC<HighlightLayerProps> = memo(({ pageNumber, scale 
                     height: `${rect.height * multiplier}px`,
                     pointerEvents: isBeingDeleted ? 'none' : 'auto',
                     cursor: isBeingDeleted ? 'wait' : 'pointer',
-                    transition: 'opacity 200ms ease-in-out, background-color 200ms ease-in-out',
+                    transition: 'all 200ms ease-in-out',
                     opacity: isBeingDeleted ? 0.3 : isHovered ? 0.5 : undefined,
                     zIndex: isSelected ? 20 : undefined
                   }}
@@ -288,9 +288,7 @@ const HighlightLayer: React.FC<HighlightLayerProps> = memo(({ pageNumber, scale 
       )}
     </>
   );
-}, (prevProps, nextProps) => {
-  return prevProps.pageNumber === nextProps.pageNumber && prevProps.scale === nextProps.scale;
-});
+};
 
 HighlightLayer.displayName = 'HighlightLayer';
 

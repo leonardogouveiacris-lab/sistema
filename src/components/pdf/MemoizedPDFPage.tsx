@@ -80,6 +80,7 @@ const MemoizedPDFPage: React.FC<MemoizedPDFPageProps> = memo(({
   if (prevProps.renderAnnotationLayer !== nextProps.renderAnnotationLayer) return false;
   if (prevProps.isInteracting !== nextProps.isInteracting) return false;
   if (prevProps.wrapperClassName !== nextProps.wrapperClassName) return false;
+  if (prevProps.children !== nextProps.children) return false;
   return true;
 });
 
