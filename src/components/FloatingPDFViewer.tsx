@@ -3043,11 +3043,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
-      const target = e.target as HTMLElement;
+      const target = e.target;
       if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
+        target instanceof HTMLElement &&
+        (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable
+        )
       ) {
         return;
       }
@@ -3077,7 +3080,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             return;
           }
 
-          logger.debug('[FloatingPDFViewer] Keyboard navigation repeat/hold allowed', {
+          logger.info('[FloatingPDFViewer] Keyboard navigation repeat/hold allowed', {
             key: e.key,
             elapsed,
             throttleMs: navigationThrottleMs,
@@ -3086,7 +3089,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           });
           lastHandledRepeatByKey.set(e.key, now);
         } else {
-          logger.debug('[FloatingPDFViewer] Keyboard navigation discrete tap allowed', {
+          logger.info('[FloatingPDFViewer] Keyboard navigation discrete tap allowed', {
             key: e.key,
             throttleMs: keyboardNavigationThrottleMsRef.current
           });
