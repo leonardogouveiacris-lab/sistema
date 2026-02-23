@@ -943,6 +943,61 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return nextSet;
     });
 
+    const centerPageDivergence = Math.abs(centerPage - state.currentPage);
+    if (centerPageDivergence >= CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES) {
+      if (forcedReconciliationDivergenceStartedAtRef.current === null) {
+        forcedReconciliationDivergenceStartedAtRef.current = now;
+      }
+    } else {
+      forcedReconciliationDivergenceStartedAtRef.current = null;
+    }
+
+    const divergenceDurationMs = forcedReconciliationDivergenceStartedAtRef.current === null
+      ? 0
+      : now - forcedReconciliationDivergenceStartedAtRef.current;
+    const shouldForceReconciliation =
+      centerPageDivergence >= CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES &&
+      divergenceDurationMs >= FORCED_RECONCILIATION_DIVERGENCE_DURATION_MS;
+
+    if (shouldForceReconciliation) {
+      logger.warn(
+        'forced-page-reconciliation',
+        'FloatingPDFViewer.calculateVisiblePagesFromScroll',
+        {
+          centerPage,
+          currentPage: state.currentPage,
+          deltaPages: centerPageDivergence,
+          divergenceDurationMs,
+          skipPageChange,
+          isProgrammaticScroll: isProgrammaticScrollRef.current,
+          pendingNavigationTarget: pendingNavigationTargetRef.current
+        }
+      );
+
+      pendingNavigationTargetRef.current = null;
+      keyboardNavTargetPageRef.current = null;
+      keyboardNavTargetReachedAtRef.current = null;
+      keyboardNavRecentTargetPageRef.current = null;
+      keyboardNavStableFramesRef.current = 0;
+      keyboardNavLockUntilRef.current = 0;
+      keyboardNavCooldownUntilRef.current = 0;
+      forcedReconciliationDivergenceStartedAtRef.current = null;
+      currentPageVisibleDivergenceStartedAtRef.current = null;
+      currentPageVisibleDivergenceLastLogAtRef.current = 0;
+      scrollDivergenceStartedAtRef.current = null;
+      scrollDivergenceLastLogAtRef.current = 0;
+      zoomAnchorRef.current = null;
+      zoomBlockedUntilRef.current = 0;
+      offsetRebuildBlockUntilRef.current = 0;
+      centerPageFreezeUntilRef.current = 0;
+
+      lastDetectedPageRef.current = centerPage;
+      lastDetectionTimeRef.current = now;
+      releaseProgrammaticScroll('forced-page-reconciliation');
+      goToPage(centerPage);
+      return;
+    }
+
     if (pendingNavigationTarget) {
       const pendingElapsedMs = now - pendingNavigationTarget.startedAt;
       const targetPage = pendingNavigationTarget.page;
@@ -1042,48 +1097,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         `Congelando centerPage durante remount: center=${centerPage}, current=${state.currentPage}`,
         'FloatingPDFViewer.calculateVisiblePagesFromScroll'
       );
-      return;
-    }
-
-    const centerPageDivergence = Math.abs(centerPage - state.currentPage);
-    if (centerPageDivergence >= CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES) {
-      if (forcedReconciliationDivergenceStartedAtRef.current === null) {
-        forcedReconciliationDivergenceStartedAtRef.current = now;
-      }
-    } else {
-      forcedReconciliationDivergenceStartedAtRef.current = null;
-    }
-
-    const divergenceDurationMs = forcedReconciliationDivergenceStartedAtRef.current === null
-      ? 0
-      : now - forcedReconciliationDivergenceStartedAtRef.current;
-    const shouldForceReconciliation =
-      centerPageDivergence >= CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES &&
-      divergenceDurationMs >= FORCED_RECONCILIATION_DIVERGENCE_DURATION_MS;
-
-    if (shouldForceReconciliation) {
-      logger.warn(
-        'forced reconciliation',
-        'FloatingPDFViewer.calculateVisiblePagesFromScroll',
-        {
-          centerPage,
-          currentPage: state.currentPage,
-          divergencePages: centerPageDivergence,
-          divergenceDurationMs,
-          pendingNavigationTarget: pendingNavigationTargetRef.current
-        }
-      );
-
-      pendingNavigationTargetRef.current = null;
-      keyboardNavTargetPageRef.current = null;
-      keyboardNavTargetReachedAtRef.current = null;
-      keyboardNavLockUntilRef.current = 0;
-      keyboardNavCooldownUntilRef.current = 0;
-      forcedReconciliationDivergenceStartedAtRef.current = null;
-      lastDetectedPageRef.current = centerPage;
-      lastDetectionTimeRef.current = now;
-      releaseProgrammaticScroll('forced-reconciliation');
-      goToPage(centerPage);
       return;
     }
 
