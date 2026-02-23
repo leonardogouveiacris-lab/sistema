@@ -3644,31 +3644,42 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return targetByGlobalPage;
     }
 
-    // Fallback temporário para cenários onde offsets ainda não foram carregados
-    const fallbackDocument = getCurrentDocument();
-    if (!fallbackDocument) {
-      return null;
-    }
+    return null;
+  }, [findDocumentByGlobalPage, state.currentPage]);
 
-    const fallbackDocumentIndex = state.documents.findIndex((doc) => doc.id === fallbackDocument.id);
-    const fallbackOffset = memoizedDocumentOffsets.get(fallbackDocument.id);
-    const safeOffset = fallbackOffset || {
-      startPage: state.currentPage,
-      endPage: state.currentPage,
-    };
+  const extractionSourceDocuments = useMemo(() => {
+    return state.documents
+      .map((doc) => {
+        const offsets = memoizedDocumentOffsets.get(doc.id);
+        if (!offsets || !doc.url) {
+          return null;
+        }
 
-    return {
-      document: fallbackDocument,
-      documentIndex: fallbackDocumentIndex,
-      localPage: Math.max(1, state.currentPage - safeOffset.startPage + 1),
-      offset: safeOffset,
-    };
-  }, [findDocumentByGlobalPage, state.currentPage, getCurrentDocument, state.documents, memoizedDocumentOffsets]);
+        const pageCount = documentPages.get(doc.id)
+          || Math.max(0, offsets.endPage - offsets.startPage + 1);
 
-  const extractionTargetTotalPages = extractionTarget
-    ? documentPages.get(extractionTarget.document.id)
-      || (extractionTarget.offset.endPage - extractionTarget.offset.startPage + 1)
-    : 0;
+        if (pageCount <= 0) {
+          return null;
+        }
+
+        return {
+          documentId: doc.id,
+          documentName: doc.displayName || doc.fileName || 'documento.pdf',
+          url: doc.url,
+          globalStart: offsets.startPage,
+          globalEnd: offsets.endPage,
+          pageCount,
+        };
+      })
+      .filter(Boolean) as {
+        documentId: string;
+        documentName: string;
+        url: string;
+        globalStart: number;
+        globalEnd: number;
+        pageCount: number;
+      }[];
+  }, [state.documents, memoizedDocumentOffsets, documentPages]);
 
   /**
    * Handler para navegação manual de página (input direto)
@@ -5457,15 +5468,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       <PageRangeRotationModal totalPages={state.totalPages} />
 
       {/* Modal de extração de páginas */}
-      {extractionTarget && (
+      {state.documents.length > 0 && (
         <PageExtractionModal
           isOpen={state.isPageExtractionModalOpen}
           onClose={closePageExtractionModal}
-          documentUrl={extractionTarget.document.url}
-          documentName={extractionTarget.document.displayName || extractionTarget.document.fileName || 'documento.pdf'}
-          totalPages={extractionTargetTotalPages}
-          globalPageStart={extractionTarget.offset.startPage}
-          globalPageEnd={extractionTarget.offset.endPage}
+          documentName={extractionTarget?.document.displayName || extractionTarget?.document.fileName || 'documento.pdf'}
+          totalPages={state.totalPages}
+          sourceDocuments={extractionSourceDocuments}
         />
       )}
     </>
