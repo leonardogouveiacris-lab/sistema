@@ -92,6 +92,9 @@ const TEXT_SELECTION_STALE_RESET_MS = 2500;
 const DRAG_SCROLL_BLOCK_WINDOW_MS = 400;
 const POINTER_DOWN_SAFETY_RESET_MS = 450;
 const TEXT_SELECTION_SAFETY_RESET_MS = 450;
+const EMPTY_VISIBLE_PAGES_SCROLL_FRAME_THRESHOLD = 4;
+const SCROLL_ACTIVITY_IDLE_TIMEOUT_MS = 160;
+const CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES = 3;
 
 
 type HeavyTaskType = 'comments' | 'bookmarks';
@@ -178,6 +181,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const [visitedPages, setVisitedPages] = useState<Set<number>>(new Set());
   const [forceRenderPages, setForceRenderPages] = useState<Set<number>>(new Set());
   const [scrollBasedVisiblePages, setScrollBasedVisiblePages] = useState<Set<number>>(new Set());
+  const [scrollFallbackVisibleRange, setScrollFallbackVisibleRange] = useState<{ start: number; end: number } | null>(null);
   const [scrollRenderCache, setScrollRenderCache] = useState<Set<number>>(new Set());
   const [pageInputValue, setPageInputValue] = useState<string>('');
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
@@ -206,6 +210,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const scrollReconciliationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollDivergenceStartedAtRef = useRef<number | null>(null);
   const scrollDivergenceLastLogAtRef = useRef<number>(0);
+  const currentPageVisibleDivergenceStartedAtRef = useRef<number | null>(null);
+  const currentPageVisibleDivergenceLastLogAtRef = useRef<number>(0);
+  const emptyVisiblePagesScrollFramesRef = useRef<number>(0);
+  const isUserScrollingRef = useRef<boolean>(false);
+  const scrollIdleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevZoomRef = useRef<number>(state.zoom);
   const prevDisplayZoomRef = useRef<number>(state.displayZoom);
   const isZoomChangingRef = useRef(false);
@@ -594,6 +603,41 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
   }, []);
 
+  const deriveVisibleRangeFromContainer = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container || state.totalPages <= 0 || cumulativePageBottoms.length === 0 || cumulativePageTops.length === 0) {
+      return null;
+    }
+
+    const viewportStart = container.scrollTop;
+    const viewportEnd = viewportStart + container.clientHeight;
+
+    const fallbackStartIndex = Math.max(0, findFirstIndexByBottom(cumulativePageBottoms, viewportStart));
+    const fallbackEndIndex = Math.min(
+      cumulativePageTops.length - 1,
+      findLastIndexByTop(cumulativePageTops, viewportEnd)
+    );
+
+    if (fallbackStartIndex <= fallbackEndIndex) {
+      return {
+        start: fallbackStartIndex + 1,
+        end: fallbackEndIndex + 1
+      };
+    }
+
+    const viewportCenter = viewportStart + container.clientHeight / 2;
+    const centerIndex = findFirstIndexByBottom(cumulativePageBottoms, viewportCenter);
+    const centerPage = Math.min(
+      state.totalPages,
+      Math.max(1, centerIndex >= state.totalPages ? state.totalPages : centerIndex + 1)
+    );
+
+    return {
+      start: centerPage,
+      end: centerPage
+    };
+  }, [cumulativePageBottoms, cumulativePageTops, state.totalPages]);
+
   /**
    * Calcula quais paginas estao visiveis baseado no scrollTop do container
    * Esta funcao e chamada durante o scroll e usa as dimensoes das paginas para determinar
@@ -710,6 +754,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
     if (visibleEndPageRef.current < guaranteedEnd) {
       visibleEndPageRef.current = guaranteedEnd;
+    }
+
+    if (visiblePages.size > 0 && scrollFallbackVisibleRange !== null) {
+      setScrollFallbackVisibleRange(null);
     }
 
     setScrollBasedVisiblePages(prev => {
@@ -995,7 +1043,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     state.highlightedPage,
     state.isSearchOpen,
     state.totalPages,
-    state.viewMode
+    state.viewMode,
+    scrollFallbackVisibleRange
   ]);
 
   const startProgrammaticPageNavigation = useCallback((targetPage: number, source: 'highlight' | 'manual' | 'search', syncCurrentPage = false) => {
@@ -1156,6 +1205,34 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const handleScroll = () => {
       const now = Date.now();
+      isUserScrollingRef.current = true;
+      if (scrollIdleTimeoutRef.current) {
+        clearTimeout(scrollIdleTimeoutRef.current);
+      }
+      scrollIdleTimeoutRef.current = setTimeout(() => {
+        isUserScrollingRef.current = false;
+        emptyVisiblePagesScrollFramesRef.current = 0;
+      }, SCROLL_ACTIVITY_IDLE_TIMEOUT_MS);
+
+      if (scrollBasedVisiblePages.size === 0) {
+        emptyVisiblePagesScrollFramesRef.current += 1;
+        if (emptyVisiblePagesScrollFramesRef.current > EMPTY_VISIBLE_PAGES_SCROLL_FRAME_THRESHOLD) {
+          const fallbackRange = deriveVisibleRangeFromContainer();
+          setScrollFallbackVisibleRange(prev => {
+            if (!fallbackRange) {
+              return prev;
+            }
+            if (prev?.start === fallbackRange.start && prev?.end === fallbackRange.end) {
+              return prev;
+            }
+            return fallbackRange;
+          });
+        }
+      } else {
+        emptyVisiblePagesScrollFramesRef.current = 0;
+        setScrollFallbackVisibleRange(prev => (prev === null ? prev : null));
+      }
+
       const shouldBlockForDrag =
         isPointerDownRef.current &&
         hasDragRef.current &&
@@ -1263,8 +1340,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         clearTimeout(initialScrollRecalcTimeoutRef.current);
         initialScrollRecalcTimeoutRef.current = null;
       }
+
+      if (scrollIdleTimeoutRef.current) {
+        clearTimeout(scrollIdleTimeoutRef.current);
+        scrollIdleTimeoutRef.current = null;
+      }
+
+      isUserScrollingRef.current = false;
+      emptyVisiblePagesScrollFramesRef.current = 0;
+      setScrollFallbackVisibleRange(null);
     };
-  }, [state.viewMode]);
+  }, [deriveVisibleRangeFromContainer, scrollBasedVisiblePages, state.viewMode]);
 
   useEffect(() => {
     registerScrollContainer(scrollContainerRef.current);
@@ -2935,6 +3021,24 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return arrays;
   }, [state.documents, documentPages]);
 
+  const fallbackVisibleRangeFromScroll = scrollFallbackVisibleRange;
+
+  const effectiveVisiblePages = useMemo(() => {
+    if (scrollBasedVisiblePages.size > 0) {
+      return scrollBasedVisiblePages;
+    }
+
+    if (!fallbackVisibleRangeFromScroll) {
+      return new Set<number>();
+    }
+
+    const nextSet = new Set<number>();
+    for (let page = fallbackVisibleRangeFromScroll.start; page <= fallbackVisibleRangeFromScroll.end; page += 1) {
+      nextSet.add(page);
+    }
+    return nextSet;
+  }, [fallbackVisibleRangeFromScroll, scrollBasedVisiblePages]);
+
   const continuousWindowByDocument = useMemo(() => {
     const windows = new Map<string, {
       firstVisibleLocalPage: number;
@@ -2957,7 +3061,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       let firstVisibleLocalPage: number | null = null;
       let lastVisibleLocalPage: number | null = null;
 
-      scrollBasedVisiblePages.forEach((globalPageNum) => {
+      effectiveVisiblePages.forEach((globalPageNum) => {
         if (globalPageNum < offset.startPage || globalPageNum > offset.endPage) {
           return;
         }
@@ -2975,6 +3079,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const localCurrentPage = isCurrentPageInDocument
         ? state.currentPage - offset.startPage + 1
         : null;
+
+      if ((firstVisibleLocalPage === null || lastVisibleLocalPage === null) && fallbackVisibleRangeFromScroll) {
+        const fallbackStart = Math.max(offset.startPage, fallbackVisibleRangeFromScroll.start);
+        const fallbackEnd = Math.min(offset.endPage, fallbackVisibleRangeFromScroll.end);
+
+        if (fallbackStart <= fallbackEnd) {
+          firstVisibleLocalPage = fallbackStart - offset.startPage + 1;
+          lastVisibleLocalPage = fallbackEnd - offset.startPage + 1;
+        }
+      }
 
       if (firstVisibleLocalPage === null || lastVisibleLocalPage === null) {
         if (localCurrentPage !== null) {
@@ -3009,11 +3123,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     });
 
     return windows;
-  }, [state.documents, state.currentPage, memoizedDocumentOffsets, documentPages, scrollBasedVisiblePages]);
+  }, [state.documents, state.currentPage, memoizedDocumentOffsets, documentPages, effectiveVisiblePages, fallbackVisibleRangeFromScroll]);
 
   const continuousGlobalVisibleRange = useMemo(() => {
     if (state.viewMode !== 'continuous' || state.totalPages <= 0) {
       return null;
+    }
+
+    if (fallbackVisibleRangeFromScroll) {
+      return {
+        start: Math.max(1, Math.min(state.totalPages, fallbackVisibleRangeFromScroll.start)),
+        end: Math.max(1, Math.min(state.totalPages, fallbackVisibleRangeFromScroll.end))
+      };
     }
 
     const fallbackPage = Math.min(state.totalPages, Math.max(1, state.currentPage));
@@ -3024,7 +3145,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       start: Math.min(start, end),
       end: Math.max(start, end)
     };
-  }, [state.viewMode, state.totalPages, state.currentPage, scrollBasedVisiblePages]);
+  }, [state.viewMode, state.totalPages, state.currentPage, fallbackVisibleRangeFromScroll]);
 
   const continuousCanvasPipeline = useMemo(() => {
     if (state.viewMode !== 'continuous') {
@@ -3050,11 +3171,26 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const visibleDocumentIds = new Set<string>();
 
     let activeDocumentId: string | null = null;
+    const visibleAnchorPage = Math.min(
+      state.totalPages,
+      Math.max(1, Math.round((globalRange.start + globalRange.end) / 2))
+    );
+
     for (const doc of state.documents) {
       const offset = memoizedDocumentOffsets.get(doc.id);
-      if (offset && state.currentPage >= offset.startPage && state.currentPage <= offset.endPage) {
+      if (offset && visibleAnchorPage >= offset.startPage && visibleAnchorPage <= offset.endPage) {
         activeDocumentId = doc.id;
         break;
+      }
+    }
+
+    if (!activeDocumentId) {
+      for (const doc of state.documents) {
+        const offset = memoizedDocumentOffsets.get(doc.id);
+        if (offset && state.currentPage >= offset.startPage && state.currentPage <= offset.endPage) {
+          activeDocumentId = doc.id;
+          break;
+        }
       }
     }
 
@@ -3165,6 +3301,48 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     continuousGlobalVisibleRange
   ]);
 
+  useEffect(() => {
+    if (state.viewMode !== 'continuous' || !continuousGlobalVisibleRange) {
+      currentPageVisibleDivergenceStartedAtRef.current = null;
+      return;
+    }
+
+    const now = Date.now();
+    const { start, end } = continuousGlobalVisibleRange;
+    const distanceToVisibleRange = state.currentPage < start
+      ? start - state.currentPage
+      : state.currentPage > end
+        ? state.currentPage - end
+        : 0;
+
+    if (distanceToVisibleRange < CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES) {
+      currentPageVisibleDivergenceStartedAtRef.current = null;
+      return;
+    }
+
+    if (currentPageVisibleDivergenceStartedAtRef.current === null) {
+      currentPageVisibleDivergenceStartedAtRef.current = now;
+      return;
+    }
+
+    const divergenceDurationMs = now - currentPageVisibleDivergenceStartedAtRef.current;
+    if (divergenceDurationMs >= 500 && now - currentPageVisibleDivergenceLastLogAtRef.current >= 500) {
+      currentPageVisibleDivergenceLastLogAtRef.current = now;
+      logger.info(
+        'Métrica: currentPage divergente do range visível por mais de 500ms',
+        'FloatingPDFViewer.currentPageVisibleDivergence',
+        {
+          currentPage: state.currentPage,
+          visibleStart: start,
+          visibleEnd: end,
+          distanceToVisibleRange,
+          divergenceDurationMs,
+          usedFallbackVisibleRange: Boolean(fallbackVisibleRangeFromScroll)
+        }
+      );
+    }
+  }, [state.viewMode, state.currentPage, continuousGlobalVisibleRange, fallbackVisibleRangeFromScroll]);
+
   const continuousCanvasPagesByDocument = useMemo(() => {
     const pagesByDocument = continuousCanvasPipeline.pagesByDocument;
 
@@ -3202,6 +3380,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (state.viewMode !== 'continuous') return new Set<number>();
 
     const candidatePriority = new Map<number, number>();
+    const viewportCorePages = new Set<number>();
     const pushCandidate = (page: number, priority: number) => {
       if (page < 1 || page > state.totalPages) {
         return;
@@ -3213,8 +3392,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     };
 
+    if (continuousGlobalVisibleRange) {
+      for (let page = continuousGlobalVisibleRange.start; page <= continuousGlobalVisibleRange.end; page += 1) {
+        viewportCorePages.add(page);
+        pushCandidate(page, -1);
+      }
+    }
+
     // 1) Prioridade máxima: páginas visíveis no viewport atual
-    scrollBasedVisiblePages.forEach((page) => {
+    effectiveVisiblePages.forEach((page) => {
       pushCandidate(page, 0);
     });
 
@@ -3263,15 +3449,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       });
 
     if (rankedCandidates.length > CONTINUOUS_RENDER_BUDGET_PAGES) {
-      return new Set<number>(
-        rankedCandidates
-          .slice(0, CONTINUOUS_RENDER_BUDGET_PAGES)
-          .map((candidate) => candidate.page)
-      );
+      const selectedPages = new Set<number>(viewportCorePages);
+
+      for (const candidate of rankedCandidates) {
+        if (selectedPages.has(candidate.page)) {
+          continue;
+        }
+        if (selectedPages.size >= CONTINUOUS_RENDER_BUDGET_PAGES && viewportCorePages.size <= CONTINUOUS_RENDER_BUDGET_PAGES) {
+          break;
+        }
+        selectedPages.add(candidate.page);
+      }
+
+      return selectedPages;
     }
 
     return new Set<number>(rankedCandidates.map((candidate) => candidate.page));
-  }, [state.viewMode, state.currentPage, state.totalPages, continuousCanvasPipeline, memoizedDocumentOffsets, scrollBasedVisiblePages, scrollRenderCache, forceRenderPages]);
+  }, [state.viewMode, state.currentPage, state.totalPages, continuousCanvasPipeline, continuousGlobalVisibleRange, memoizedDocumentOffsets, effectiveVisiblePages, scrollRenderCache, forceRenderPages]);
 
   const currentPageInfo = useMemo(() => {
     if (state.viewMode !== 'paginated' || state.totalPages === 0) return null;
