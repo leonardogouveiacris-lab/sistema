@@ -63,7 +63,7 @@ export interface UploadProgress {
  * Constantes relacionadas a documentos
  */
 export const DOCUMENT_CONSTANTS = {
-  MAX_FILE_SIZE: 209715200,          // 200MB em bytes
+  MAX_FILE_SIZE: 367001600,          // 350MB em bytes
   ALLOWED_MIME_TYPE: 'application/pdf',
   STORAGE_BUCKET: 'process-documents',
   SESSION_STORAGE_KEY: 'temp_process_documents'
