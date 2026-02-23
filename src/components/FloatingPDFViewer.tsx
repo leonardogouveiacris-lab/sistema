@@ -228,6 +228,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
+  const visibleStartPageRef = useRef<number>(1);
+  const visibleEndPageRef = useRef<number>(1);
   const textExtractionProgressRef = useRef<Map<string, { current: number; total: number }>>(new Map());
   const textExtractionAbortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const highlightedPageRef = useRef<number | null>(state.highlightedPage);
@@ -651,6 +653,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     );
 
     if (visibleStartIndex <= visibleEndIndex) {
+      visibleStartPageRef.current = visibleStartIndex + 1;
+      visibleEndPageRef.current = visibleEndIndex + 1;
+
       for (let pageIndex = visibleStartIndex; pageIndex <= visibleEndIndex; pageIndex++) {
         const pageTop = cumulativePageTops[pageIndex];
         const pageBottom = cumulativePageBottoms[pageIndex];
@@ -667,6 +672,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         state.totalPages,
         Math.max(1, centerIndex >= state.totalPages ? state.totalPages : centerIndex + 1)
       );
+
+      visibleStartPageRef.current = centerPage;
+      visibleEndPageRef.current = centerPage;
     }
 
     setScrollBasedVisiblePages(prev => {
@@ -2710,9 +2718,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return new Map<string, Set<number>>();
     }
 
-    const viewportCenter = scrollContainerRef.current
-      ? scrollContainerRef.current.scrollTop + (scrollContainerRef.current.clientHeight / 2)
-      : null;
+    const globalVisibleStartPage = visibleStartPageRef.current;
+    const globalVisibleEndPage = visibleEndPageRef.current;
+    const overscanPages = 2;
 
     const pagesByDocument = new Map<string, Set<number>>();
 
@@ -2735,44 +2743,68 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
-      const rankedPages: Array<{ localPageNum: number; distance: number }> = [];
+      const windowStartGlobal = offset.startPage + rangeStart - 1;
+      const windowEndGlobal = offset.startPage + rangeEnd - 1;
+      const fallbackAnchorGlobal = isActiveDocument
+        ? state.currentPage
+        : Math.min(
+            offset.endPage,
+            Math.max(offset.startPage, Math.round((globalVisibleStartPage + globalVisibleEndPage) / 2))
+          );
 
-      for (let localPageNum = rangeStart; localPageNum <= rangeEnd; localPageNum += 1) {
-        const globalPageNum = offset.startPage + localPageNum - 1;
-        const pageTop = cumulativePageTops[globalPageNum - 1];
-        const pageBottom = cumulativePageBottoms[globalPageNum - 1];
+      const baseStartGlobalRaw = Math.max(offset.startPage, globalVisibleStartPage);
+      const baseEndGlobalRaw = Math.min(offset.endPage, globalVisibleEndPage);
+      const hasBaseInDocument = baseStartGlobalRaw <= baseEndGlobalRaw;
 
-        let distanceToViewportCenter: number;
-        if (
-          viewportCenter !== null &&
-          Number.isFinite(pageTop) &&
-          Number.isFinite(pageBottom)
-        ) {
-          const pageCenter = pageTop + ((pageBottom - pageTop) / 2);
-          distanceToViewportCenter = Math.abs(pageCenter - viewportCenter);
-        } else {
-          distanceToViewportCenter = Math.abs(globalPageNum - state.currentPage) * 1000;
-        }
+      const baseStartGlobal = hasBaseInDocument ? baseStartGlobalRaw : fallbackAnchorGlobal;
+      const baseEndGlobal = hasBaseInDocument ? baseEndGlobalRaw : fallbackAnchorGlobal;
 
-        rankedPages.push({
-          localPageNum,
-          distance: distanceToViewportCenter
-        });
+      let selectionStartGlobal = Math.max(windowStartGlobal, Math.min(baseStartGlobal, baseEndGlobal));
+      let selectionEndGlobal = Math.min(windowEndGlobal, Math.max(baseStartGlobal, baseEndGlobal));
+
+      if (selectionStartGlobal > selectionEndGlobal) {
+        selectionStartGlobal = Math.min(windowEndGlobal, Math.max(windowStartGlobal, fallbackAnchorGlobal));
+        selectionEndGlobal = selectionStartGlobal;
       }
 
-      rankedPages.sort((a, b) => {
-        if (a.distance !== b.distance) {
-          return a.distance - b.distance;
+      for (let i = 0; i < overscanPages; i += 1) {
+        if (selectionStartGlobal > windowStartGlobal) {
+          selectionStartGlobal -= 1;
         }
-        return a.localPageNum - b.localPageNum;
-      });
+        if (selectionEndGlobal < windowEndGlobal) {
+          selectionEndGlobal += 1;
+        }
+      }
+
+      let currentSize = selectionEndGlobal - selectionStartGlobal + 1;
+      if (currentSize > budget) {
+        const baseCenter = Math.round((baseStartGlobal + baseEndGlobal) / 2);
+        selectionStartGlobal = Math.max(
+          windowStartGlobal,
+          Math.min(baseCenter - Math.floor((budget - 1) / 2), windowEndGlobal - budget + 1)
+        );
+        selectionEndGlobal = selectionStartGlobal + budget - 1;
+      } else {
+        let expandForward = true;
+        while (currentSize < budget && (selectionStartGlobal > windowStartGlobal || selectionEndGlobal < windowEndGlobal)) {
+          if (expandForward && selectionEndGlobal < windowEndGlobal) {
+            selectionEndGlobal += 1;
+          } else if (!expandForward && selectionStartGlobal > windowStartGlobal) {
+            selectionStartGlobal -= 1;
+          } else if (selectionEndGlobal < windowEndGlobal) {
+            selectionEndGlobal += 1;
+          } else if (selectionStartGlobal > windowStartGlobal) {
+            selectionStartGlobal -= 1;
+          }
+
+          expandForward = !expandForward;
+          currentSize = selectionEndGlobal - selectionStartGlobal + 1;
+        }
+      }
 
       const selectedPages = new Set<number>();
-      for (const rankedPage of rankedPages) {
-        selectedPages.add(rankedPage.localPageNum);
-        if (selectedPages.size >= budget) {
-          break;
-        }
+      for (let globalPage = selectionStartGlobal; globalPage <= selectionEndGlobal; globalPage += 1) {
+        selectedPages.add(globalPage - offset.startPage + 1);
       }
 
       pagesByDocument.set(doc.id, selectedPages);
@@ -2784,9 +2816,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     state.documents,
     state.currentPage,
     memoizedDocumentOffsets,
-    continuousWindowByDocument,
-    cumulativePageTops,
-    cumulativePageBottoms
+    continuousWindowByDocument
   ]);
 
   const currentPageInfo = useMemo(() => {
