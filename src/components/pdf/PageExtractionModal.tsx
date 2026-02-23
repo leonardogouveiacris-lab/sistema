@@ -37,7 +37,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   documentName,
   totalPages
 }) => {
-  const { state } = usePDFViewer();
+  const { state, getLocalPageNumber } = usePDFViewer();
   const toast = useToast();
 
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
@@ -59,11 +59,29 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   );
   const shouldUseIncrementalLoading = sortedSelectedPages.length > PERFORMANCE_PAGE_THRESHOLD;
 
+  const getCurrentLocalPage = useCallback(() => {
+    if (totalPages <= 0) {
+      return null;
+    }
+
+    const localCurrentPage = getLocalPageNumber(state.currentPage);
+    return Math.max(1, Math.min(localCurrentPage, totalPages));
+  }, [getLocalPageNumber, state.currentPage, totalPages]);
+
   useEffect(() => {
     if (isOpen) {
-      setSelectedPages(new Set([state.currentPage]));
-      setPageRangeInput(String(state.currentPage));
-      setOutputFilename(generateExtractedFilename(documentName, [state.currentPage]));
+      const initialPage = getCurrentLocalPage();
+
+      if (initialPage === null) {
+        setSelectedPages(new Set());
+        setPageRangeInput('');
+        setOutputFilename(`${documentName.replace(/\.pdf$/i, '')}_extraido.pdf`);
+      } else {
+        setSelectedPages(new Set([initialPage]));
+        setPageRangeInput(String(initialPage));
+        setOutputFilename(generateExtractedFilename(documentName, [initialPage]));
+      }
+
       setError(null);
       setProgress(null);
       setIsPreviewDocumentReady(false);
@@ -71,7 +89,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
 
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [isOpen, state.currentPage, documentName]);
+  }, [isOpen, getCurrentLocalPage, documentName]);
 
   useEffect(() => {
     if (selectedPages.size > 0) {
@@ -100,9 +118,17 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   }, [totalPages]);
 
   const handleSelectCurrentPage = useCallback(() => {
-    setSelectedPages(new Set([state.currentPage]));
-    setPageRangeInput(String(state.currentPage));
-  }, [state.currentPage]);
+    const currentLocalPage = getCurrentLocalPage();
+
+    if (currentLocalPage === null) {
+      setSelectedPages(new Set());
+      setPageRangeInput('');
+      return;
+    }
+
+    setSelectedPages(new Set([currentLocalPage]));
+    setPageRangeInput(String(currentLocalPage));
+  }, [getCurrentLocalPage]);
 
   const handleClearSelection = useCallback(() => {
     setSelectedPages(new Set());
@@ -309,7 +335,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
                   disabled={isExtracting}
                   className="px-3 py-2.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 whitespace-nowrap"
                 >
-                  Pagina {state.currentPage}
+                  Pagina {getCurrentLocalPage() ?? '-'}
                 </button>
                 <button
                   onClick={handleSelectAll}
