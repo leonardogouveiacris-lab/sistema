@@ -872,8 +872,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return prev;
       }
 
+      const budget = CONTINUOUS_RENDER_BUDGET_PAGES;
       const nextSet = new Set(prev);
       const recencyQueue = scrollRenderCacheRecencyQueueRef.current;
+      const pendingTargetPage = pendingNavigationTarget?.page;
+      const protectedPages = new Set<number>(visiblePages);
+
+      if (pendingTargetPage && pendingTargetPage >= 1 && pendingTargetPage <= state.totalPages) {
+        protectedPages.add(pendingTargetPage);
+      }
+
+      const normalizeRecencyQueue = () => {
+        const deduplicated: number[] = [];
+        const seen = new Set<number>();
+        recencyQueue.forEach(page => {
+          if (!nextSet.has(page) || seen.has(page)) {
+            return;
+          }
+          seen.add(page);
+          deduplicated.push(page);
+        });
+        recencyQueue.length = 0;
+        recencyQueue.push(...deduplicated);
+      };
 
       visiblePages.forEach(page => {
         if (page < 1 || page > state.totalPages) {
@@ -888,18 +909,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         recencyQueue.push(page);
       });
 
-      while (nextSet.size > CONTINUOUS_RENDER_BUDGET_PAGES && recencyQueue.length > 0) {
-        const viewportAnchoredPages = new Set<number>();
-        visiblePages.forEach(page => {
-          viewportAnchoredPages.add(page);
-          if (page - 1 >= 1) viewportAnchoredPages.add(page - 1);
-          if (page + 1 <= state.totalPages) viewportAnchoredPages.add(page + 1);
-        });
+      normalizeRecencyQueue();
 
+      const viewportAnchoredPages = new Set<number>();
+      visiblePages.forEach(page => {
+        viewportAnchoredPages.add(page);
+        if (page - 1 >= 1) viewportAnchoredPages.add(page - 1);
+        if (page + 1 <= state.totalPages) viewportAnchoredPages.add(page + 1);
+      });
+
+      while (nextSet.size > budget && recencyQueue.length > 0) {
         let evictionIndex = -1;
         for (let index = 0; index < recencyQueue.length; index += 1) {
           const candidate = recencyQueue[index];
-          if (visiblePages.has(candidate)) {
+          if (protectedPages.has(candidate)) {
             continue;
           }
 
@@ -921,9 +944,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             'Scroll render cache: sem candidato seguro para eviccao no loop principal',
             'FloatingPDFViewer.calculateVisiblePagesFromScroll',
             {
-              budget: CONTINUOUS_RENDER_BUDGET_PAGES,
+              budget,
               cacheSize: nextSet.size,
               visiblePages: Array.from(visiblePages),
+              pendingTargetPage,
               recencyQueueSize: recencyQueue.length
             }
           );
@@ -934,41 +958,90 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (evictedPage !== undefined) {
           nextSet.delete(evictedPage);
         }
+
+        normalizeRecencyQueue();
       }
 
-      if (nextSet.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
-        const activeDocumentId = getCurrentDocument()?.id;
-        let didFallbackEviction = false;
+      if (nextSet.size > budget) {
+        const distanceToViewport = (page: number) => {
+          const start = visibleStartPageRef.current;
+          const end = visibleEndPageRef.current;
+          if (page >= start && page <= end) {
+            return 0;
+          }
+          return page < start ? start - page : page - end;
+        };
 
-        for (let index = 0; index < recencyQueue.length && nextSet.size > CONTINUOUS_RENDER_BUDGET_PAGES;) {
-          const candidate = recencyQueue[index];
-          const candidateDocumentId = getDocumentByGlobalPage(candidate)?.id;
-          const isOutsideActiveDocument = activeDocumentId ? candidateDocumentId !== activeDocumentId : true;
+        const distanceToPendingTarget = (page: number) => {
+          if (!pendingTargetPage) {
+            return 0;
+          }
+          return Math.abs(page - pendingTargetPage);
+        };
 
-          if (!visiblePages.has(candidate) && isOutsideActiveDocument && nextSet.has(candidate)) {
-            recencyQueue.splice(index, 1);
-            nextSet.delete(candidate);
-            didFallbackEviction = true;
-            continue;
+        while (nextSet.size > budget) {
+          const candidates = Array.from(nextSet).filter(page => !protectedPages.has(page));
+          if (candidates.length === 0) {
+            break;
           }
 
-          index += 1;
-        }
-
-        if (!didFallbackEviction && nextSet.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
-          logger.warn(
-            'Scroll render cache: fallback sem candidato fora do documento ativo e fora da janela visivel',
-            'FloatingPDFViewer.calculateVisiblePagesFromScroll',
-            {
-              budget: CONTINUOUS_RENDER_BUDGET_PAGES,
-              cacheSize: nextSet.size,
-              activeDocumentId,
-              visiblePages: Array.from(visiblePages),
-              recencyQueueSize: recencyQueue.length
+          const recencyIndexMap = new Map<number, number>();
+          recencyQueue.forEach((page, index) => {
+            if (!recencyIndexMap.has(page)) {
+              recencyIndexMap.set(page, index);
             }
-          );
+          });
+
+          candidates.sort((a, b) => {
+            const viewportScoreA = distanceToViewport(a);
+            const viewportScoreB = distanceToViewport(b);
+            if (viewportScoreA !== viewportScoreB) {
+              return viewportScoreB - viewportScoreA;
+            }
+
+            const pendingScoreA = distanceToPendingTarget(a);
+            const pendingScoreB = distanceToPendingTarget(b);
+            if (pendingScoreA !== pendingScoreB) {
+              return pendingScoreB - pendingScoreA;
+            }
+
+            const recencyA = recencyIndexMap.get(a) ?? -1;
+            const recencyB = recencyIndexMap.get(b) ?? -1;
+            return recencyA - recencyB;
+          });
+
+          const candidateToEvict = candidates[0];
+          nextSet.delete(candidateToEvict);
+          const recencyIndex = recencyQueue.indexOf(candidateToEvict);
+          if (recencyIndex >= 0) {
+            recencyQueue.splice(recencyIndex, 1);
+          }
+
+          normalizeRecencyQueue();
         }
       }
+
+      if (nextSet.size > budget) {
+        const reason = protectedPages.size > budget
+          ? 'paginas protegidas excedem o budget (visiveis + alvo pendente)'
+          : 'nao foi possivel encontrar candidatos para eviccao apos fallback por distancia';
+
+        logger.error(
+          'Scroll render cache invariant violation: cache acima do budget apos eviccoes',
+          'FloatingPDFViewer.calculateVisiblePagesFromScroll',
+          {
+            reason,
+            budget,
+            cacheSize: nextSet.size,
+            protectedPages: Array.from(protectedPages).sort((a, b) => a - b),
+            pendingTargetPage,
+            visiblePages: Array.from(visiblePages).sort((a, b) => a - b),
+            recencyQueueSize: recencyQueue.length
+          }
+        );
+      }
+
+      normalizeRecencyQueue();
 
       if (nextSet.size === prev.size) {
         let didChange = false;
