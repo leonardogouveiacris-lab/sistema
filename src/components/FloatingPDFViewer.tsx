@@ -184,6 +184,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const lastZoomTimestampRef = useRef<number>(0);
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const textSelectionDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const handlePreviousPageRef = useRef<() => void>(() => {});
+  const handleNextPageRef = useRef<() => void>(() => {});
+  const handleManualPageNavigationRef = useRef<(pageNum: number) => void>(() => {});
+  const toggleSearchRef = useRef<() => void>(() => {});
+  const totalPagesRef = useRef<number>(state.totalPages);
+  const keyboardNavigationLastTimeRef = useRef<number>(0);
 
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
@@ -2953,6 +2959,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [toggleViewMode, state.currentPage]);
 
   useEffect(() => {
+    handlePreviousPageRef.current = handlePreviousPage;
+    handleNextPageRef.current = handleNextPage;
+    handleManualPageNavigationRef.current = handleManualPageNavigation;
+    toggleSearchRef.current = toggleSearch;
+    totalPagesRef.current = state.totalPages;
+  }, [
+    handlePreviousPage,
+    handleNextPage,
+    handleManualPageNavigation,
+    state.totalPages,
+    toggleSearch
+  ]);
+
+  useEffect(() => {
     hasMountedRef.current = true;
   }, []);
 
@@ -3003,13 +3023,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * Effect para navegação por teclado com throttle para evitar navegação excessiva
    */
   useEffect(() => {
-    let lastNavigationTime = 0;
     const NAVIGATION_THROTTLE_MS = 150;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
-        toggleSearch();
+        toggleSearchRef.current();
         return;
       }
 
@@ -3025,7 +3044,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const now = Date.now();
       const isNavigationKey = ['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown'].includes(e.key);
 
-      if (isNavigationKey && e.repeat && now - lastNavigationTime < NAVIGATION_THROTTLE_MS) {
+      if (isNavigationKey && e.repeat && now - keyboardNavigationLastTimeRef.current < NAVIGATION_THROTTLE_MS) {
         e.preventDefault();
         return;
       }
@@ -3036,31 +3055,31 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           break;
         case 'ArrowLeft':
           e.preventDefault();
-          lastNavigationTime = now;
-          handlePreviousPage();
+          keyboardNavigationLastTimeRef.current = now;
+          handlePreviousPageRef.current();
           break;
         case 'ArrowRight':
           e.preventDefault();
-          lastNavigationTime = now;
-          handleNextPage();
+          keyboardNavigationLastTimeRef.current = now;
+          handleNextPageRef.current();
           break;
         case 'PageUp':
           e.preventDefault();
-          lastNavigationTime = now;
-          handlePreviousPage();
+          keyboardNavigationLastTimeRef.current = now;
+          handlePreviousPageRef.current();
           break;
         case 'PageDown':
           e.preventDefault();
-          lastNavigationTime = now;
-          handleNextPage();
+          keyboardNavigationLastTimeRef.current = now;
+          handleNextPageRef.current();
           break;
         case 'Home':
           e.preventDefault();
-          handleManualPageNavigation(1);
+          handleManualPageNavigationRef.current(1);
           break;
         case 'End':
           e.preventDefault();
-          handleManualPageNavigation(state.totalPages);
+          handleManualPageNavigationRef.current(totalPagesRef.current);
           break;
       }
     };
@@ -3070,7 +3089,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handlePreviousPage, handleNextPage, handleManualPageNavigation, state.totalPages, toggleSearch]);
+  }, []);
 
   /**
    * Callback para quando uma página é renderizada - captura suas dimensões reais
