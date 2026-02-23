@@ -2,10 +2,12 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { PDFComment, ConnectorType, PDFCommentConnector } from '../../types/PDFComment';
 import * as PDFCommentsService from '../../services/pdfComments.service';
+import { generateFlowId } from '../../utils/flowId';
 import CommentBalloon from './CommentBalloon';
 import ArrowConnector from './ArrowConnector';
 import HighlightBoxConnector from './HighlightBoxConnector';
 import ConnectorDrawer from './ConnectorDrawer';
+import logger from '../../utils/logger';
 
 interface CommentLayerProps {
   pageNumber: number;
@@ -74,18 +76,29 @@ const CommentLayer: React.FC<CommentLayerProps> = ({
     const y = (e.clientY - rect.top) / scale;
 
     try {
+      const flowId = generateFlowId();
       const newComment = await PDFCommentsService.createComment({
         processDocumentId,
         pageNumber,
         positionX: x,
         positionY: y,
         color: state.selectedCommentColor
-      });
+      }, { flowId });
 
       addComment({ ...newComment, connectors: [] });
       setCommentModeActive(false);
     } catch (error) {
-      console.error('Erro ao criar comentário:', error);
+      logger.errorWithException(
+        'Falha ao criar comentário no PDF',
+        error as Error,
+        'CommentLayer.handleLayerClick',
+        {
+          processDocumentId,
+          pageNumber,
+          positionX: x,
+          positionY: y
+        }
+      );
     }
   }, [state.isCommentModeActive, state.isDrawingConnector, state.selectedCommentColor, scale, processDocumentId, pageNumber, addComment, setCommentModeActive]);
 

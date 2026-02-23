@@ -13,11 +13,20 @@ import { logPdfEvent } from '../utils/domainLogger';
  */
 export async function createHighlight(
   data: NewPDFHighlight,
-  lancamentoId?: string
+  lancamentoId?: string,
+  options: LogOptions = {}
 ): Promise<PDFHighlight | null> {
+  const flowId = options.flowId || generateFlowId();
   try {
     if (!supabase) {
-      logger.warn('Supabase client unavailable', 'highlights.service.createHighlight');
+      logger.warn('Supabase client unavailable', 'highlights.service.createHighlight', {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          action: 'create',
+          source: 'highlights.service.createHighlight'
+        })
+      });
       return null;
     }
     logPdfEvent('Creating highlight', 'highlights.service.createHighlight', 'highlight_create_started', {
@@ -43,12 +52,26 @@ export async function createHighlight(
       .maybeSingle();
 
     if (error) {
-      logger.error('Error creating highlight', 'highlights.service.createHighlight', undefined, error);
+      logger.error('Error creating highlight', 'highlights.service.createHighlight', {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          action: 'create',
+          source: 'highlights.service.createHighlight'
+        })
+      }, error);
       return null;
     }
 
     if (!highlight) {
-      logger.warn('No highlight returned after creation', 'highlights.service.createHighlight');
+      logger.warn('No highlight returned after creation', 'highlights.service.createHighlight', {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          action: 'create',
+          source: 'highlights.service.createHighlight'
+        })
+      });
       return null;
     }
 
@@ -71,7 +94,15 @@ export async function createHighlight(
     logger.errorWithException(
       'Exception creating highlight',
       error as Error,
-      'highlights.service.createHighlight'
+      'highlights.service.createHighlight',
+      {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          action: 'create',
+          source: 'highlights.service.createHighlight'
+        })
+      }
     );
     return null;
   }
