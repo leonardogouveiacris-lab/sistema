@@ -72,6 +72,7 @@ const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
 const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
 const CONTINUOUS_RENDER_BUDGET_PAGES = 12;
+const CONTINUOUS_INACTIVE_DOCUMENT_RENDER_BUDGET_PAGES = 2;
 const CONTINUOUS_PRELOAD_RADIUS = 2;
 const CONTINUOUS_IDLE_PRELOAD_RADIUS = 4;
 const CONTINUOUS_PAGE_GAP_PX = 16;
@@ -2704,6 +2705,90 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return windows;
   }, [state.documents, state.currentPage, memoizedDocumentOffsets, documentPages, scrollBasedVisiblePages]);
 
+  const continuousCanvasPagesByDocument = useMemo(() => {
+    if (state.viewMode !== 'continuous') {
+      return new Map<string, Set<number>>();
+    }
+
+    const viewportCenter = scrollContainerRef.current
+      ? scrollContainerRef.current.scrollTop + (scrollContainerRef.current.clientHeight / 2)
+      : null;
+
+    const pagesByDocument = new Map<string, Set<number>>();
+
+    state.documents.forEach((doc) => {
+      const offset = memoizedDocumentOffsets.get(doc.id);
+      const pageWindow = continuousWindowByDocument.get(doc.id);
+
+      if (!offset || !pageWindow) {
+        return;
+      }
+
+      const { rangeStart, rangeEnd } = pageWindow;
+      const isActiveDocument = state.currentPage >= offset.startPage && state.currentPage <= offset.endPage;
+      const budget = isActiveDocument
+        ? CONTINUOUS_RENDER_BUDGET_PAGES
+        : CONTINUOUS_INACTIVE_DOCUMENT_RENDER_BUDGET_PAGES;
+
+      if (budget <= 0 || rangeStart > rangeEnd) {
+        pagesByDocument.set(doc.id, new Set<number>());
+        return;
+      }
+
+      const rankedPages: Array<{ localPageNum: number; distance: number }> = [];
+
+      for (let localPageNum = rangeStart; localPageNum <= rangeEnd; localPageNum += 1) {
+        const globalPageNum = offset.startPage + localPageNum - 1;
+        const pageTop = cumulativePageTops[globalPageNum - 1];
+        const pageBottom = cumulativePageBottoms[globalPageNum - 1];
+
+        let distanceToViewportCenter: number;
+        if (
+          viewportCenter !== null &&
+          Number.isFinite(pageTop) &&
+          Number.isFinite(pageBottom)
+        ) {
+          const pageCenter = pageTop + ((pageBottom - pageTop) / 2);
+          distanceToViewportCenter = Math.abs(pageCenter - viewportCenter);
+        } else {
+          distanceToViewportCenter = Math.abs(globalPageNum - state.currentPage) * 1000;
+        }
+
+        rankedPages.push({
+          localPageNum,
+          distance: distanceToViewportCenter
+        });
+      }
+
+      rankedPages.sort((a, b) => {
+        if (a.distance !== b.distance) {
+          return a.distance - b.distance;
+        }
+        return a.localPageNum - b.localPageNum;
+      });
+
+      const selectedPages = new Set<number>();
+      for (const rankedPage of rankedPages) {
+        selectedPages.add(rankedPage.localPageNum);
+        if (selectedPages.size >= budget) {
+          break;
+        }
+      }
+
+      pagesByDocument.set(doc.id, selectedPages);
+    });
+
+    return pagesByDocument;
+  }, [
+    state.viewMode,
+    state.documents,
+    state.currentPage,
+    memoizedDocumentOffsets,
+    continuousWindowByDocument,
+    cumulativePageTops,
+    cumulativePageBottoms
+  ]);
+
   const currentPageInfo = useMemo(() => {
     if (state.viewMode !== 'paginated' || state.totalPages === 0) return null;
     const offsets = memoizedDocumentOffsets;
@@ -4526,7 +4611,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
                               {rangePages.map((localPageNum) => {
                                 const globalPageNum = offset.startPage + localPageNum - 1;
-                                const shouldRenderCanvas = pagesToRender.has(globalPageNum);
+                                const shouldRenderCanvas = continuousCanvasPagesByDocument.get(doc.id)?.has(localPageNum) || false;
 
                                 const pageHeight = getPageHeight(globalPageNum);
                                 const pageWidth = getPageWidth(globalPageNum);
