@@ -433,7 +433,7 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
               Arraste um arquivo PDF ou clique para selecionar
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              Tamanho máximo: 200MB
+              Tamanho máximo: 350MB
             </p>
           </div>
 

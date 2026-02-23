@@ -386,7 +386,7 @@ export const uploadDocument = async (
       } else if (err.statusCode === '404' || err.message?.includes('bucket')) {
         errorMessage = 'Bucket de armazenamento não encontrado. Execute as migrações do banco.';
       } else if (err.message?.includes('size') || err.message?.includes('large')) {
-        errorMessage = 'Arquivo muito grande. Tamanho máximo: 200MB.';
+        errorMessage = 'Arquivo muito grande. Tamanho máximo: 350MB.';
       } else if (err.message?.includes('type') || err.message?.includes('mime')) {
         errorMessage = 'Tipo de arquivo inválido. Apenas PDFs são permitidos.';
       } else if (err.code === 'PGRST116' || err.message?.includes('violates')) {

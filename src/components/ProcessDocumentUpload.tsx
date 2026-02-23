@@ -308,7 +308,7 @@ const ProcessDocumentUpload: React.FC<ProcessDocumentUploadProps> = ({
               {isDragging ? 'Solte o arquivo aqui' : 'Arraste um arquivo PDF ou clique para selecionar'}
             </p>
             <p className="text-xs text-gray-600">
-              Tamanho máximo: 200MB • Apenas arquivos PDF
+              Tamanho máximo: 350MB • Apenas arquivos PDF
             </p>
           </div>
 
