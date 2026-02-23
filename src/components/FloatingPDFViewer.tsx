@@ -3495,9 +3495,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return null;
   }, [state.viewMode, state.currentPage, state.totalPages, state.documents, memoizedDocumentOffsets]);
 
-  const currentDoc = getCurrentDocument();
-  const currentDocTotalPages = currentDoc ? documentPages.get(currentDoc.id) || 0 : 0;
-
   const documentsToMountInContinuous = useMemo(() => {
     if (state.viewMode !== 'continuous') {
       return new Set<number>();
@@ -3640,6 +3637,38 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     return null;
   }, [state.documents, memoizedDocumentOffsets]);
+
+  const extractionTarget = useMemo(() => {
+    const targetByGlobalPage = findDocumentByGlobalPage(state.currentPage);
+    if (targetByGlobalPage) {
+      return targetByGlobalPage;
+    }
+
+    // Fallback temporário para cenários onde offsets ainda não foram carregados
+    const fallbackDocument = getCurrentDocument();
+    if (!fallbackDocument) {
+      return null;
+    }
+
+    const fallbackDocumentIndex = state.documents.findIndex((doc) => doc.id === fallbackDocument.id);
+    const fallbackOffset = memoizedDocumentOffsets.get(fallbackDocument.id);
+    const safeOffset = fallbackOffset || {
+      startPage: state.currentPage,
+      endPage: state.currentPage,
+    };
+
+    return {
+      document: fallbackDocument,
+      documentIndex: fallbackDocumentIndex,
+      localPage: Math.max(1, state.currentPage - safeOffset.startPage + 1),
+      offset: safeOffset,
+    };
+  }, [findDocumentByGlobalPage, state.currentPage, getCurrentDocument, state.documents, memoizedDocumentOffsets]);
+
+  const extractionTargetTotalPages = extractionTarget
+    ? documentPages.get(extractionTarget.document.id)
+      || (extractionTarget.offset.endPage - extractionTarget.offset.startPage + 1)
+    : 0;
 
   /**
    * Handler para navegação manual de página (input direto)
@@ -5428,13 +5457,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       <PageRangeRotationModal totalPages={state.totalPages} />
 
       {/* Modal de extração de páginas */}
-      {currentDoc && (
+      {extractionTarget && (
         <PageExtractionModal
           isOpen={state.isPageExtractionModalOpen}
           onClose={closePageExtractionModal}
-          documentUrl={currentDoc.url}
-          documentName={currentDoc.displayName || 'documento.pdf'}
-          totalPages={currentDocTotalPages}
+          documentUrl={extractionTarget.document.url}
+          documentName={extractionTarget.document.displayName || extractionTarget.document.fileName || 'documento.pdf'}
+          totalPages={extractionTargetTotalPages}
         />
       )}
     </>
