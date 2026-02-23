@@ -1262,6 +1262,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           }
         );
       }
+
+      const DIVERGENCE_FIX_THRESHOLD_MS = 300;
+      const pageDivergence = Math.abs(currentPage - centerPage);
+      if (divergenceDurationMs >= DIVERGENCE_FIX_THRESHOLD_MS && pageDivergence > 2) {
+        if (!isProgrammaticScrollRef.current && now > zoomBlockedUntilRef.current) {
+          scrollDivergenceStartedAtRef.current = null;
+          lastDetectedPageRef.current = centerPage;
+          lastDetectionTimeRef.current = now;
+          goToPage(centerPage);
+        }
+      }
     };
 
     const scheduleScrollReconciliation = (previousScrollTop: number, nextScrollTop: number) => {
@@ -3245,13 +3256,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       };
     }
 
-    const fallbackPage = Math.min(state.totalPages, Math.max(1, state.currentPage));
-    const start = Math.max(1, Math.min(visibleStartPageRef.current, fallbackPage));
-    const end = Math.min(state.totalPages, Math.max(visibleEndPageRef.current, fallbackPage));
+    const refStart = visibleStartPageRef.current;
+    const refEnd = visibleEndPageRef.current;
+    const hasValidRefRange = refStart >= 1 && refEnd >= refStart && refEnd <= state.totalPages;
 
+    if (hasValidRefRange) {
+      return {
+        start: refStart,
+        end: refEnd
+      };
+    }
+
+    const fallbackPage = Math.min(state.totalPages, Math.max(1, state.currentPage));
     return {
-      start: Math.min(start, end),
-      end: Math.max(start, end)
+      start: fallbackPage,
+      end: fallbackPage
     };
   }, [state.viewMode, state.totalPages, state.currentPage, fallbackVisibleRangeFromScroll]);
 
@@ -3524,9 +3543,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     }
 
-    // 3) Página atual ± 1
+    // 3) Centro visível derivado do scroll ± 1
+    const scrollBasedCenter = Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2);
+    const centerPage = scrollBasedCenter >= 1 && scrollBasedCenter <= state.totalPages
+      ? scrollBasedCenter
+      : state.currentPage;
     for (let i = -1; i <= 1; i += 1) {
-      pushCandidate(state.currentPage + i, 2);
+      pushCandidate(centerPage + i, 2);
     }
 
     // 4) Páginas forçadas
@@ -4680,7 +4703,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       const activeContainer = scrollContainerRef.current;
-      const pageAnchorEl = zoomAnchor ? pageRefs.current.get(zoomAnchor.page) : null;
+      const anchorPage = zoomAnchor?.page ?? currentPageRef.current;
+      const pageAnchorEl = pageRefs.current.get(anchorPage);
 
       const canUseAnchorPage = Boolean(zoomAnchor?.hasMeasuredPage && pageAnchorEl && pageAnchorEl.offsetHeight > 0);
 
@@ -4690,10 +4714,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const nextScrollTop = targetCenterY - activeContainer.clientHeight / 2;
         const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
         activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
+      } else if (pageAnchorEl && pageAnchorEl.offsetHeight > 0) {
+        const relativeOffset = zoomAnchor?.relativeOffsetY ?? 0.5;
+        const anchorOffsetPx = relativeOffset * pageAnchorEl.offsetHeight;
+        const targetCenterY = pageAnchorEl.offsetTop + anchorOffsetPx;
+        const nextScrollTop = targetCenterY - activeContainer.clientHeight / 2;
+        const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
+        activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
       } else {
-        const newScrollableHeight = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
-        const newScrollTop = scrollRatio * newScrollableHeight;
-        activeContainer.scrollTop = newScrollTop;
+        const estimatedTop = cumulativePageTops[anchorPage - 1] ?? 0;
+        const estimatedHeight = getPageHeight(anchorPage);
+        const relativeOffset = zoomAnchor?.relativeOffsetY ?? 0.5;
+        const targetCenterY = estimatedTop + relativeOffset * estimatedHeight;
+        const nextScrollTop = targetCenterY - activeContainer.clientHeight / 2;
+        const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
+        activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
       }
 
       const scrollWidth = activeContainer.scrollWidth;
