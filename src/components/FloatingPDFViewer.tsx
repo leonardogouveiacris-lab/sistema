@@ -718,6 +718,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         let evictionIndex = -1;
         for (let index = 0; index < recencyQueue.length; index += 1) {
           const candidate = recencyQueue[index];
+          if (visiblePages.has(candidate)) {
+            continue;
+          }
+
           if (!nextSet.has(candidate)) {
             evictionIndex = index;
             break;
@@ -732,12 +736,56 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
 
         if (evictionIndex === -1) {
-          evictionIndex = 0;
+          logger.warn(
+            'Scroll render cache: sem candidato seguro para eviccao no loop principal',
+            'FloatingPDFViewer.calculateVisiblePagesFromScroll',
+            {
+              budget: CONTINUOUS_RENDER_BUDGET_PAGES,
+              cacheSize: nextSet.size,
+              visiblePages: Array.from(visiblePages),
+              recencyQueueSize: recencyQueue.length
+            }
+          );
+          break;
         }
 
         const [evictedPage] = recencyQueue.splice(evictionIndex, 1);
         if (evictedPage !== undefined) {
           nextSet.delete(evictedPage);
+        }
+      }
+
+      if (nextSet.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
+        const activeDocumentId = getCurrentDocument()?.id;
+        let didFallbackEviction = false;
+
+        for (let index = 0; index < recencyQueue.length && nextSet.size > CONTINUOUS_RENDER_BUDGET_PAGES;) {
+          const candidate = recencyQueue[index];
+          const candidateDocumentId = getDocumentByGlobalPage(candidate)?.id;
+          const isOutsideActiveDocument = activeDocumentId ? candidateDocumentId !== activeDocumentId : true;
+
+          if (!visiblePages.has(candidate) && isOutsideActiveDocument && nextSet.has(candidate)) {
+            recencyQueue.splice(index, 1);
+            nextSet.delete(candidate);
+            didFallbackEviction = true;
+            continue;
+          }
+
+          index += 1;
+        }
+
+        if (!didFallbackEviction && nextSet.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
+          logger.warn(
+            'Scroll render cache: fallback sem candidato fora do documento ativo e fora da janela visivel',
+            'FloatingPDFViewer.calculateVisiblePagesFromScroll',
+            {
+              budget: CONTINUOUS_RENDER_BUDGET_PAGES,
+              cacheSize: nextSet.size,
+              activeDocumentId,
+              visiblePages: Array.from(visiblePages),
+              recencyQueueSize: recencyQueue.length
+            }
+          );
         }
       }
 
@@ -891,6 +939,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [
     cumulativePageBottoms,
     cumulativePageTops,
+    getCurrentDocument,
+    getDocumentByGlobalPage,
     goToPage,
     isSearchNavigationActive,
     state.currentPage,
