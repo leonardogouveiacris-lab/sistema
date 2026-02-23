@@ -72,7 +72,8 @@ const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
 const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
 const CONTINUOUS_PAGE_GAP_PX = 16;
-const PROGRAMMATIC_SCROLL_MAX_RETRIES = 60;
+const PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS = 8000;
+const PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS = 400;
 
 
 type HeavyTaskType = 'comments' | 'bookmarks';
@@ -196,6 +197,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const textExtractionProgressRef = useRef<Map<string, { current: number; total: number }>>(new Map());
   const textExtractionAbortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const highlightedPageRef = useRef<number | null>(state.highlightedPage);
+  const pendingNavigationTargetRef = useRef<{ page: number; source: 'highlight' | 'manual' | 'search'; startedAt: number } | null>(null);
   const isModeSwitchingRef = useRef(false);
   const pageBeforeModeSwitchRef = useRef<number>(state.currentPage);
   const prevViewModeRef = useRef<'continuous' | 'paginated'>(state.viewMode);
@@ -577,8 +579,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       ? Math.abs(scrollTop - options.previousScrollTop)
       : 0;
     const isLargeScrollJump = scrollDelta > viewportHeight * 2;
+    const pendingNavigationTarget = pendingNavigationTargetRef.current;
+    const hasPendingNavigationTarget = Boolean(pendingNavigationTarget);
     const allowLargeJump = Boolean(
       options?.allowLargeJump ||
+      hasPendingNavigationTarget ||
       isLargeScrollJump ||
       (state.isSearchOpen && isSearchNavigationActive()) ||
       (state.highlightedPage && state.highlightedPage === state.currentPage)
@@ -638,6 +643,36 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return prev;
     });
 
+    if (pendingNavigationTarget) {
+      const pendingElapsedMs = now - pendingNavigationTarget.startedAt;
+      const targetPage = pendingNavigationTarget.page;
+
+      if (centerPage === targetPage) {
+        lastDetectedPageRef.current = targetPage;
+        lastDetectionTimeRef.current = now;
+        if (state.currentPage !== targetPage) {
+          goToPage(targetPage);
+        }
+        pendingNavigationTargetRef.current = null;
+        return;
+      }
+
+      if (pendingElapsedMs > PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS) {
+        logger.warn(
+          `Timeout de convergencia de navegacao (${pendingNavigationTarget.source}): alvo ${targetPage} nao estabilizou apos ${pendingElapsedMs}ms`,
+          'FloatingPDFViewer.calculateVisiblePagesFromScroll'
+        );
+        pendingNavigationTargetRef.current = null;
+        isProgrammaticScrollRef.current = false;
+      } else {
+        if (lastDetectedPageRef.current !== targetPage) {
+          lastDetectedPageRef.current = targetPage;
+          lastDetectionTimeRef.current = now;
+        }
+        return;
+      }
+    }
+
     const timeSinceLastZoom = now - lastZoomTimestampRef.current;
     if (timeSinceLastZoom < ZOOM_PROTECTION_DURATION_MS || skipPageChange) {
       return;
@@ -675,6 +710,51 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     state.totalPages,
     state.viewMode
   ]);
+
+  const startProgrammaticPageNavigation = useCallback((targetPage: number, source: 'highlight' | 'manual' | 'search', syncCurrentPage = false) => {
+    if (state.viewMode !== 'continuous') {
+      if (syncCurrentPage) {
+        goToPage(targetPage);
+      }
+      return;
+    }
+
+    const startedAt = Date.now();
+    isProgrammaticScrollRef.current = true;
+    pendingNavigationTargetRef.current = { page: targetPage, source, startedAt };
+    lastDetectedPageRef.current = targetPage;
+    lastDetectionTimeRef.current = startedAt;
+
+    if (syncCurrentPage) {
+      goToPage(targetPage);
+    }
+
+    const scrollToTargetPage = () => {
+      const pageElement = pageRefs.current.get(targetPage);
+      if (pageElement && scrollContainerRef.current) {
+        pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
+        setTimeout(() => {
+          isProgrammaticScrollRef.current = false;
+        }, PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS);
+        return;
+      }
+
+      if (Date.now() - startedAt < PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS) {
+        requestAnimationFrame(scrollToTargetPage);
+      } else {
+        logger.warn(
+          `Timeout ao localizar elemento da pagina ${targetPage} para navegacao ${source}`,
+          'FloatingPDFViewer.startProgrammaticPageNavigation'
+        );
+        if (pendingNavigationTargetRef.current?.page === targetPage) {
+          pendingNavigationTargetRef.current = null;
+        }
+        isProgrammaticScrollRef.current = false;
+      }
+    };
+
+    scrollToTargetPage();
+  }, [goToPage, state.viewMode]);
 
   /**
    * Effect para detectar paginas visiveis durante scroll
@@ -2449,38 +2529,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    */
   const handleManualPageNavigation = useCallback((pageNum: number) => {
     if (state.viewMode === 'continuous') {
-      isProgrammaticScrollRef.current = true;
-      lastDetectedPageRef.current = pageNum;
-      lastDetectionTimeRef.current = Date.now();
+      startProgrammaticPageNavigation(pageNum, 'manual', true);
+      return;
     }
 
     goToPage(pageNum);
-
-    if (state.viewMode === 'continuous') {
-      let retryCount = 0;
-      const MAX_RETRIES = PROGRAMMATIC_SCROLL_MAX_RETRIES;
-
-      const scrollToTargetPage = () => {
-        const pageElement = pageRefs.current.get(pageNum);
-        if (pageElement && scrollContainerRef.current) {
-          pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
-          setTimeout(() => {
-            isProgrammaticScrollRef.current = false;
-          }, 400);
-          return;
-        }
-
-        if (retryCount < MAX_RETRIES) {
-          retryCount += 1;
-          requestAnimationFrame(scrollToTargetPage);
-        } else {
-          isProgrammaticScrollRef.current = false;
-        }
-      };
-
-      scrollToTargetPage();
-    }
-  }, [goToPage, state.viewMode]);
+  }, [goToPage, startProgrammaticPageNavigation, state.viewMode]);
 
   /**
    * Handler para cliques em links internos do PDF (ex: sumário)
@@ -3219,34 +3273,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   useEffect(() => {
     if (state.viewMode !== 'continuous' || !state.highlightedPage) return;
 
-    isProgrammaticScrollRef.current = true;
-    lastDetectedPageRef.current = state.highlightedPage;
-    lastDetectionTimeRef.current = Date.now();
-
-    const targetPage = state.highlightedPage;
-    let retryCount = 0;
-    const MAX_RETRIES = PROGRAMMATIC_SCROLL_MAX_RETRIES;
-
-    const scrollToHighlightedPage = () => {
-      const pageElement = pageRefs.current.get(targetPage);
-      if (pageElement && scrollContainerRef.current) {
-        pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
-        setTimeout(() => {
-          isProgrammaticScrollRef.current = false;
-        }, 400);
-        return;
-      }
-
-      if (retryCount < MAX_RETRIES) {
-        retryCount += 1;
-        requestAnimationFrame(scrollToHighlightedPage);
-      } else {
-        isProgrammaticScrollRef.current = false;
-      }
-    };
-
-    scrollToHighlightedPage();
-  }, [state.highlightedPage, state.viewMode]);
+    const source = state.isSearchOpen ? 'search' : 'highlight';
+    startProgrammaticPageNavigation(state.highlightedPage, source, true);
+  }, [state.highlightedPage, state.isSearchOpen, state.viewMode, startProgrammaticPageNavigation]);
 
   /**
    * Effect para manter página ativa após rotação
