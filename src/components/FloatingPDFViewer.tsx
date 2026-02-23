@@ -203,6 +203,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const keyboardNavLastInputAtRef = useRef<number>(0);
   const keyboardNavCooldownUntilRef = useRef<number>(0);
   const keyboardNavStableFramesRef = useRef<number>(0);
+  const currentPageRef = useRef<number>(state.currentPage);
+  const calculateVisiblePagesFromScrollRef = useRef<(options?: { allowLargeJump?: boolean; previousScrollTop?: number }) => void>(() => {});
+  const markInteractionStartRef = useRef<() => void>(() => {});
+  const initialScrollRecalcRafRef = useRef<number | null>(null);
+  const initialScrollRecalcRafNestedRef = useRef<number | null>(null);
+  const initialScrollRecalcTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
@@ -830,6 +836,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     scrollToTargetPage();
   }, [goToPage, state.viewMode]);
 
+  useEffect(() => {
+    calculateVisiblePagesFromScrollRef.current = calculateVisiblePagesFromScroll;
+  }, [calculateVisiblePagesFromScroll]);
+
+  useEffect(() => {
+    markInteractionStartRef.current = markInteractionStart;
+  }, [markInteractionStart]);
+
   /**
    * Effect para detectar paginas visiveis durante scroll
    * Usa throttle para performance - atualiza a cada 50ms durante scroll
@@ -844,7 +858,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
-      markInteractionStart();
+      markInteractionStartRef.current();
 
       const scrollHeight = container.scrollHeight;
       if (scrollHeight > 0 && !isProgrammaticScrollRef.current) {
@@ -859,17 +873,86 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const previousScrollTop = lastScrollTopRef.current;
       lastScrollTopRef.current = container.scrollTop;
 
-      calculateVisiblePagesFromScroll({ previousScrollTop });
+      calculateVisiblePagesFromScrollRef.current({ previousScrollTop });
+    };
+
+    const scheduleInitialScrollRecalculation = () => {
+      let hasRun = false;
+
+      const runInitialRecalculation = () => {
+        if (hasRun) {
+          return;
+        }
+
+        const activeContainer = scrollContainerRef.current;
+        if (!activeContainer || state.viewMode !== 'continuous' || totalPagesRef.current === 0) {
+          return;
+        }
+
+        const now = Date.now();
+        const hasKeyboardNavigationGuard =
+          keyboardNavTargetPageRef.current !== null ||
+          now < keyboardNavLockUntilRef.current ||
+          now < keyboardNavCooldownUntilRef.current;
+
+        if (pendingNavigationTargetRef.current || hasKeyboardNavigationGuard) {
+          return;
+        }
+
+        const { scrollHeight, clientHeight } = activeContainer;
+        const hasStableLayout = scrollHeight > 0 && clientHeight > 0 && scrollHeight >= clientHeight;
+        if (!hasStableLayout) {
+          return;
+        }
+
+        const currentPage = currentPageRef.current;
+        const windowStart = Math.max(1, currentPage - CONTINUOUS_WINDOW_BUFFER_PAGES);
+        const windowEnd = Math.min(totalPagesRef.current, currentPage + CONTINUOUS_WINDOW_BUFFER_PAGES);
+        const activeWindowPages = windowEnd >= windowStart
+          ? Array.from({ length: windowEnd - windowStart + 1 }, (_, index) => windowStart + index)
+          : [currentPage];
+
+        const mountedPagesInWindow = activeWindowPages.filter(pageNum => pageRefs.current.has(pageNum)).length;
+        const minMountedPages = Math.min(activeWindowPages.length, Math.max(1, Math.ceil(activeWindowPages.length / 2)));
+        const hasMountedActiveWindow = pageRefs.current.has(currentPage) && mountedPagesInWindow >= minMountedPages;
+
+        if (!hasMountedActiveWindow) {
+          return;
+        }
+
+        hasRun = true;
+        calculateVisiblePagesFromScrollRef.current();
+      };
+
+      initialScrollRecalcRafRef.current = requestAnimationFrame(() => {
+        initialScrollRecalcRafNestedRef.current = requestAnimationFrame(runInitialRecalculation);
+      });
+
+      initialScrollRecalcTimeoutRef.current = setTimeout(runInitialRecalculation, 96);
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
-
-    calculateVisiblePagesFromScroll();
+    scheduleInitialScrollRecalculation();
 
     return () => {
       container.removeEventListener('scroll', handleScroll);
+
+      if (initialScrollRecalcRafRef.current !== null) {
+        cancelAnimationFrame(initialScrollRecalcRafRef.current);
+        initialScrollRecalcRafRef.current = null;
+      }
+
+      if (initialScrollRecalcRafNestedRef.current !== null) {
+        cancelAnimationFrame(initialScrollRecalcRafNestedRef.current);
+        initialScrollRecalcRafNestedRef.current = null;
+      }
+
+      if (initialScrollRecalcTimeoutRef.current) {
+        clearTimeout(initialScrollRecalcTimeoutRef.current);
+        initialScrollRecalcTimeoutRef.current = null;
+      }
     };
-  }, [state.viewMode, calculateVisiblePagesFromScroll, markInteractionStart]);
+  }, [state.viewMode]);
 
   useEffect(() => {
     registerScrollContainer(scrollContainerRef.current);
@@ -880,9 +963,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   useEffect(() => {
     if (state.isSearchOpen) {
-      calculateVisiblePagesFromScroll({ allowLargeJump: true });
+      calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
     }
-  }, [state.isSearchOpen, calculateVisiblePagesFromScroll]);
+  }, [state.isSearchOpen]);
 
   /**
    * Effect para resetar Maps locais quando os documentos mudam
@@ -3103,12 +3186,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     handleNextPageRef.current = handleNextPage;
     handleManualPageNavigationRef.current = handleManualPageNavigation;
     toggleSearchRef.current = toggleSearch;
+    currentPageRef.current = state.currentPage;
     totalPagesRef.current = state.totalPages;
     keyboardNavigationThrottleMsRef.current = state.viewMode === 'continuous' ? 90 : 130;
   }, [
     handlePreviousPage,
     handleNextPage,
     handleManualPageNavigation,
+    state.currentPage,
     state.totalPages,
     state.viewMode,
     toggleSearch
