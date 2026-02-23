@@ -76,6 +76,8 @@ const PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS = 8000;
 const PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS = 400;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
+const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
+const KEYBOARD_NAV_TARGET_STABLE_FRAMES = 3;
 
 
 type HeavyTaskType = 'comments' | 'bookmarks';
@@ -195,8 +197,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const keyboardNavigationThrottleMsRef = useRef<number>(state.viewMode === 'continuous' ? 90 : 130);
   const keyboardNavigationLastTimeRef = useRef<number>(0);
   const keyboardNavTargetPageRef = useRef<number | null>(null);
+  const keyboardNavRecentTargetPageRef = useRef<number | null>(null);
   const keyboardNavLockUntilRef = useRef<number>(0);
   const keyboardNavTargetReachedAtRef = useRef<number | null>(null);
+  const keyboardNavLastInputAtRef = useRef<number>(0);
+  const keyboardNavCooldownUntilRef = useRef<number>(0);
+  const keyboardNavStableFramesRef = useRef<number>(0);
 
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
@@ -697,6 +703,39 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
       } else {
         keyboardNavTargetReachedAtRef.current = null;
+      }
+    }
+
+    const isKeyboardNavCooldownActive =
+      state.viewMode === 'continuous' && now < keyboardNavCooldownUntilRef.current;
+    const keyboardNavRecentTargetPage = keyboardNavRecentTargetPageRef.current;
+
+    if (isKeyboardNavCooldownActive && keyboardNavRecentTargetPage !== null) {
+      const currentDistanceToTarget = Math.abs(state.currentPage - keyboardNavRecentTargetPage);
+      const centerDistanceToTarget = Math.abs(centerPage - keyboardNavRecentTargetPage);
+
+      if (centerPage === keyboardNavRecentTargetPage) {
+        keyboardNavStableFramesRef.current += 1;
+
+        if (state.currentPage !== centerPage) {
+          lastDetectedPageRef.current = centerPage;
+          lastDetectionTimeRef.current = now;
+          goToPage(centerPage);
+          return;
+        }
+
+        if (keyboardNavStableFramesRef.current >= KEYBOARD_NAV_TARGET_STABLE_FRAMES) {
+          keyboardNavCooldownUntilRef.current = 0;
+          keyboardNavStableFramesRef.current = 0;
+          keyboardNavRecentTargetPageRef.current = null;
+        }
+      } else {
+        keyboardNavStableFramesRef.current = 0;
+
+        const isConvergingToRecentTarget = centerDistanceToTarget < currentDistanceToTarget;
+        if (!isConvergingToRecentTarget) {
+          return;
+        }
       }
     }
 
@@ -3021,8 +3060,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (state.viewMode === 'continuous') {
       const targetPage = state.currentPage - 1;
       keyboardNavTargetPageRef.current = targetPage;
+      keyboardNavRecentTargetPageRef.current = targetPage;
       keyboardNavLockUntilRef.current = Date.now() + KEYBOARD_NAV_LOCK_DURATION_MS;
       keyboardNavTargetReachedAtRef.current = null;
+      keyboardNavStableFramesRef.current = 0;
       isProgrammaticScrollRef.current = true;
     }
     previousPage();
@@ -3035,8 +3076,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (state.viewMode === 'continuous') {
       const targetPage = state.currentPage + 1;
       keyboardNavTargetPageRef.current = targetPage;
+      keyboardNavRecentTargetPageRef.current = targetPage;
       keyboardNavLockUntilRef.current = Date.now() + KEYBOARD_NAV_LOCK_DURATION_MS;
       keyboardNavTargetReachedAtRef.current = null;
+      keyboardNavStableFramesRef.current = 0;
       isProgrammaticScrollRef.current = true;
     }
     nextPage();
@@ -3129,6 +3172,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const handleKeyUp = (e: KeyboardEvent) => {
       if (NAVIGATION_KEYS.has(e.key)) {
         pressedNavigationKeys.delete(e.key);
+
+        const now = Date.now();
+        const elapsedSinceLastInput = now - keyboardNavLastInputAtRef.current;
+        const hasRecentKeyboardNavigation = elapsedSinceLastInput <= KEYBOARD_NAV_LOCK_DURATION_MS * 2;
+
+        if (hasRecentKeyboardNavigation) {
+          keyboardNavCooldownUntilRef.current = now + KEYBOARD_NAV_COOLDOWN_DURATION_MS;
+          keyboardNavStableFramesRef.current = 0;
+        }
       }
     };
 
@@ -3155,6 +3207,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const isNavigationKey = NAVIGATION_KEYS.has(e.key);
 
       if (isNavigationKey) {
+        keyboardNavLastInputAtRef.current = now;
         const wasPressed = pressedNavigationKeys.has(e.key);
         pressedNavigationKeys.add(e.key);
 
