@@ -78,6 +78,11 @@ const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
 const KEYBOARD_NAV_TARGET_STABLE_FRAMES = 3;
+const DOCUMENT_MOUNT_HYSTERESIS_TTL_MS = 3200;
+const DOCUMENT_REMOUNT_RECONCILIATION_BLOCK_MS = 900;
+const DOCUMENT_REMOUNT_CENTER_FREEZE_MS = 1200;
+const REMOUNT_ANOMALOUS_PAGE_DELTA = 4;
+const RECENT_NAVIGATION_WINDOW_MS = 2200;
 
 
 type HeavyTaskType = 'comments' | 'bookmarks';
@@ -209,6 +214,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const initialScrollRecalcRafRef = useRef<number | null>(null);
   const initialScrollRecalcRafNestedRef = useRef<number | null>(null);
   const initialScrollRecalcTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const documentMountLastSeenAtRef = useRef<Map<string, number>>(new Map());
+  const documentConfirmedHeightsRef = useRef<Map<string, number>>(new Map());
+  const previouslyMountedDocumentsRef = useRef<Set<string>>(new Set());
+  const offsetRebuildBlockUntilRef = useRef<number>(0);
+  const centerPageFreezeUntilRef = useRef<number>(0);
 
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
@@ -749,8 +759,22 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       now < keyboardNavLockUntilRef.current &&
       state.viewMode === 'continuous';
 
+    const hasRecentKeyboardNavigation = (now - keyboardNavLastInputAtRef.current) <= RECENT_NAVIGATION_WINDOW_MS;
+    const isCenterPageAnomalousDuringRemount =
+      now < centerPageFreezeUntilRef.current &&
+      hasRecentKeyboardNavigation &&
+      Math.abs(centerPage - state.currentPage) >= REMOUNT_ANOMALOUS_PAGE_DELTA;
+
+    if (isCenterPageAnomalousDuringRemount) {
+      logger.info(
+        `Congelando centerPage durante remount: center=${centerPage}, current=${state.currentPage}`,
+        'FloatingPDFViewer.calculateVisiblePagesFromScroll'
+      );
+      return;
+    }
+
     const timeSinceLastZoom = now - lastZoomTimestampRef.current;
-    if (timeSinceLastZoom < ZOOM_PROTECTION_DURATION_MS || skipPageChange) {
+    if (timeSinceLastZoom < ZOOM_PROTECTION_DURATION_MS || skipPageChange || now < offsetRebuildBlockUntilRef.current) {
       return;
     }
 
@@ -895,7 +919,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           now < keyboardNavLockUntilRef.current ||
           now < keyboardNavCooldownUntilRef.current;
 
-        if (pendingNavigationTargetRef.current || hasKeyboardNavigationGuard) {
+        if (pendingNavigationTargetRef.current || hasKeyboardNavigationGuard || now < offsetRebuildBlockUntilRef.current) {
           return;
         }
 
@@ -1009,6 +1033,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       setDocumentBookmarks(new Map());
       loadedDocumentRefsByGenerationRef.current.clear();
       proxyGenerationByDocumentRef.current.clear();
+      documentMountLastSeenAtRef.current.clear();
+      documentConfirmedHeightsRef.current.clear();
+      previouslyMountedDocumentsRef.current.clear();
+      offsetRebuildBlockUntilRef.current = 0;
+      centerPageFreezeUntilRef.current = 0;
       setBookmarks([]);
       setIsLoadingBookmarks(false);
       return;
@@ -1026,6 +1055,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       bookmarkExtractionInFlightRef.current.clear();
       loadedDocumentRefsByGenerationRef.current.clear();
       proxyGenerationByDocumentRef.current.clear();
+      documentMountLastSeenAtRef.current.clear();
+      documentConfirmedHeightsRef.current.clear();
+      previouslyMountedDocumentsRef.current.clear();
+      offsetRebuildBlockUntilRef.current = 0;
+      centerPageFreezeUntilRef.current = 0;
 
       setBookmarks([]);
       setIsLoadingBookmarks(false);
@@ -2587,6 +2621,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return new Set<number>();
     }
 
+    const now = Date.now();
     const baseDocumentIndices = new Set<number>();
     const candidatePages = new Set<number>([
       ...Array.from(scrollBasedVisiblePages),
@@ -2630,19 +2665,69 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     });
 
-    return expandedWindowIndices;
+    const hysteresisWindowIndices = new Set<number>(expandedWindowIndices);
+    state.documents.forEach((doc, docIndex) => {
+      if (expandedWindowIndices.has(docIndex)) {
+        documentMountLastSeenAtRef.current.set(doc.id, now);
+        return;
+      }
+
+      const lastSeenAt = documentMountLastSeenAtRef.current.get(doc.id);
+      if (lastSeenAt && now - lastSeenAt <= DOCUMENT_MOUNT_HYSTERESIS_TTL_MS) {
+        hysteresisWindowIndices.add(docIndex);
+      }
+    });
+
+    return hysteresisWindowIndices;
   }, [state.viewMode, state.currentPage, state.totalPages, state.documents, memoizedDocumentOffsets, scrollBasedVisiblePages, pagesToRender]);
+
+  useEffect(() => {
+    if (state.viewMode !== 'continuous') {
+      previouslyMountedDocumentsRef.current.clear();
+      return;
+    }
+
+    const now = Date.now();
+    const currentMountedDocuments = new Set<string>();
+
+    state.documents.forEach((doc, docIndex) => {
+      if (documentsToMountInContinuous.has(docIndex)) {
+        currentMountedDocuments.add(doc.id);
+      }
+    });
+
+    currentMountedDocuments.forEach((docId) => {
+      const wasMounted = previouslyMountedDocumentsRef.current.has(docId);
+      const lastSeenAt = documentMountLastSeenAtRef.current.get(docId);
+      const isRemountWithinTtl = !wasMounted && Boolean(lastSeenAt) && (now - (lastSeenAt || 0) <= DOCUMENT_MOUNT_HYSTERESIS_TTL_MS);
+
+      if (isRemountWithinTtl) {
+        offsetRebuildBlockUntilRef.current = Math.max(
+          offsetRebuildBlockUntilRef.current,
+          now + DOCUMENT_REMOUNT_RECONCILIATION_BLOCK_MS
+        );
+        centerPageFreezeUntilRef.current = Math.max(
+          centerPageFreezeUntilRef.current,
+          now + DOCUMENT_REMOUNT_CENTER_FREEZE_MS
+        );
+      }
+    });
+
+    previouslyMountedDocumentsRef.current = currentMountedDocuments;
+  }, [state.viewMode, state.documents, documentsToMountInContinuous]);
 
   const estimatedDocumentHeights = useMemo(() => {
     const heights = new Map<string, number>();
 
-    state.documents.forEach((doc) => {
+    state.documents.forEach((doc, docIndex) => {
       const offset = memoizedDocumentOffsets.get(doc.id);
       const loadedPages = documentPages.get(doc.id) || 0;
       const pageCount = loadedPages || (offset ? (offset.endPage - offset.startPage + 1) : 1);
+      const confirmedHeight = documentConfirmedHeightsRef.current.get(doc.id);
+      const isDocumentMounted = state.viewMode !== 'continuous' || documentsToMountInContinuous.has(docIndex);
 
       if (!offset || pageCount <= 0) {
-        heights.set(doc.id, 920);
+        heights.set(doc.id, confirmedHeight || 920);
         return;
       }
 
@@ -2652,12 +2737,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         totalHeight += getPageHeight(globalPage);
       }
 
-      const gapHeight = Math.max(pageCount - 1, 0) * 8;
-      heights.set(doc.id, Math.max(920, totalHeight + gapHeight));
+      const gapHeight = Math.max(pageCount - 1, 0) * CONTINUOUS_PAGE_GAP_PX;
+      const computedHeight = Math.max(920, totalHeight + gapHeight);
+
+      if (isDocumentMounted) {
+        documentConfirmedHeightsRef.current.set(doc.id, computedHeight);
+        heights.set(doc.id, computedHeight);
+        return;
+      }
+
+      heights.set(doc.id, confirmedHeight || computedHeight);
     });
 
     return heights;
-  }, [state.documents, memoizedDocumentOffsets, documentPages, getPageHeight]);
+  }, [state.documents, state.viewMode, memoizedDocumentOffsets, documentPages, documentsToMountInContinuous, getPageHeight]);
 
   /**
    * Encontra qual documento contém uma determinada página global
