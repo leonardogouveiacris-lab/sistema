@@ -172,6 +172,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const [visitedPages, setVisitedPages] = useState<Set<number>>(new Set());
   const [forceRenderPages, setForceRenderPages] = useState<Set<number>>(new Set());
   const [scrollBasedVisiblePages, setScrollBasedVisiblePages] = useState<Set<number>>(new Set());
+  const [scrollRenderCache, setScrollRenderCache] = useState<Set<number>>(new Set());
   const [pageInputValue, setPageInputValue] = useState<string>('');
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const isSelectingTextRef = useRef(false);
@@ -185,6 +186,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const pageDetectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProgrammaticScrollRef = useRef(false);
+  const scrollRenderCacheRecencyQueueRef = useRef<number[]>([]);
   const lastDetectedPageRef = useRef<number>(1);
   const lastDetectionTimeRef = useRef<number>(0);
   const idleCallbackIdRef = useRef<number | null>(null);
@@ -672,6 +674,76 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (!prev.has(page)) return visiblePages;
       }
       return prev;
+    });
+
+    setScrollRenderCache(prev => {
+      if (visiblePages.size === 0) {
+        return prev;
+      }
+
+      const nextSet = new Set(prev);
+      const recencyQueue = scrollRenderCacheRecencyQueueRef.current;
+
+      visiblePages.forEach(page => {
+        if (page < 1 || page > state.totalPages) {
+          return;
+        }
+
+        nextSet.add(page);
+        const existingIndex = recencyQueue.indexOf(page);
+        if (existingIndex >= 0) {
+          recencyQueue.splice(existingIndex, 1);
+        }
+        recencyQueue.push(page);
+      });
+
+      while (nextSet.size > CONTINUOUS_RENDER_BUDGET_PAGES && recencyQueue.length > 0) {
+        const viewportAnchoredPages = new Set<number>();
+        visiblePages.forEach(page => {
+          viewportAnchoredPages.add(page);
+          if (page - 1 >= 1) viewportAnchoredPages.add(page - 1);
+          if (page + 1 <= state.totalPages) viewportAnchoredPages.add(page + 1);
+        });
+
+        let evictionIndex = -1;
+        for (let index = 0; index < recencyQueue.length; index += 1) {
+          const candidate = recencyQueue[index];
+          if (!nextSet.has(candidate)) {
+            evictionIndex = index;
+            break;
+          }
+
+          if (viewportAnchoredPages.has(candidate)) {
+            continue;
+          }
+
+          evictionIndex = index;
+          break;
+        }
+
+        if (evictionIndex === -1) {
+          evictionIndex = 0;
+        }
+
+        const [evictedPage] = recencyQueue.splice(evictionIndex, 1);
+        if (evictedPage !== undefined) {
+          nextSet.delete(evictedPage);
+        }
+      }
+
+      if (nextSet.size === prev.size) {
+        let didChange = false;
+        nextSet.forEach(page => {
+          if (!prev.has(page)) {
+            didChange = true;
+          }
+        });
+        if (!didChange) {
+          return prev;
+        }
+      }
+
+      return nextSet;
     });
 
     if (pendingNavigationTarget) {
@@ -2493,20 +2565,53 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (state.viewMode !== 'continuous') return new Set<number>();
 
     const pages = new Set<number>();
-
-    scrollBasedVisiblePages.forEach(page => pages.add(page));
-    idlePages.forEach(page => pages.add(page));
-    forceRenderPages.forEach(page => pages.add(page));
-
-    for (let i = -1; i <= 1; i++) {
-      const page = state.currentPage + i;
-      if (page >= 1 && page <= state.totalPages) {
-        pages.add(page);
+    const orderedCandidates: number[] = [];
+    const pushCandidate = (page: number) => {
+      if (page < 1 || page > state.totalPages || pages.has(page)) {
+        return;
       }
+
+      pages.add(page);
+      orderedCandidates.push(page);
+    };
+
+    scrollBasedVisiblePages.forEach(pushCandidate);
+
+    for (let i = -1; i <= 1; i += 1) {
+      pushCandidate(state.currentPage + i);
+    }
+
+    scrollRenderCache.forEach(pushCandidate);
+
+    if (pages.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
+      const keep = new Set<number>();
+      for (const page of orderedCandidates) {
+        keep.add(page);
+        if (keep.size >= CONTINUOUS_RENDER_BUDGET_PAGES) {
+          break;
+        }
+      }
+      return keep;
+    }
+
+    if (!pages.has(state.currentPage)) {
+      // fallback de segurança: mantém forceRenderPages apenas se necessário
+      forceRenderPages.forEach(pushCandidate);
+    }
+
+    if (pages.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
+      const keep = new Set<number>();
+      for (const page of orderedCandidates) {
+        keep.add(page);
+        if (keep.size >= CONTINUOUS_RENDER_BUDGET_PAGES) {
+          break;
+        }
+      }
+      return keep;
     }
 
     return pages;
-  }, [state.viewMode, state.currentPage, state.totalPages, scrollBasedVisiblePages, idlePages, forceRenderPages]);
+  }, [state.viewMode, state.currentPage, state.totalPages, scrollBasedVisiblePages, scrollRenderCache, forceRenderPages]);
 
   const pageArraysByDocument = useMemo(() => {
     const arrays = new Map<string, number[]>();
