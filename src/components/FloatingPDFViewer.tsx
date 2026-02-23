@@ -3197,17 +3197,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         case 'ArrowDown':
           break;
         case 'ArrowLeft':
-          e.preventDefault();
-          handlePreviousPageRef.current();
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          handleNextPageRef.current();
-          break;
         case 'PageUp':
           e.preventDefault();
           handlePreviousPageRef.current();
           break;
+        case 'ArrowRight':
         case 'PageDown':
           e.preventDefault();
           handleNextPageRef.current();
@@ -3230,6 +3224,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
+    // Intencionalmente sem dependências: os callbacks são sempre lidos via refs
+    // sincronizadas para evitar re-attach dos listeners durante navegação.
   }, []);
 
   /**
