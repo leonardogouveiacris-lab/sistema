@@ -184,6 +184,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const lastZoomTimestampRef = useRef<number>(0);
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const textSelectionDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const handlePreviousPageRef = useRef<() => void>(() => {});
+  const handleNextPageRef = useRef<() => void>(() => {});
+  const handleManualPageNavigationRef = useRef<(pageNum: number) => void>(() => {});
+  const toggleSearchRef = useRef<() => void>(() => {});
+  const totalPagesRef = useRef<number>(state.totalPages);
+  const keyboardNavigationLastTimeRef = useRef<number>(0);
 
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
@@ -2953,6 +2959,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [toggleViewMode, state.currentPage]);
 
   useEffect(() => {
+    handlePreviousPageRef.current = handlePreviousPage;
+    handleNextPageRef.current = handleNextPage;
+    handleManualPageNavigationRef.current = handleManualPageNavigation;
+    toggleSearchRef.current = toggleSearch;
+    totalPagesRef.current = state.totalPages;
+  }, [
+    handlePreviousPage,
+    handleNextPage,
+    handleManualPageNavigation,
+    state.totalPages,
+    toggleSearch
+  ]);
+
+  useEffect(() => {
     hasMountedRef.current = true;
   }, []);
 
@@ -3017,7 +3037,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
-        toggleSearch();
+        toggleSearchRef.current();
         return;
       }
 
@@ -3092,11 +3112,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           break;
         case 'Home':
           e.preventDefault();
-          handleManualPageNavigation(1);
+          handleManualPageNavigationRef.current(1);
           break;
         case 'End':
           e.preventDefault();
-          handleManualPageNavigation(state.totalPages);
+          handleManualPageNavigationRef.current(totalPagesRef.current);
           break;
       }
     };
