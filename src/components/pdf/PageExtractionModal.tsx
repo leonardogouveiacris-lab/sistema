@@ -4,7 +4,6 @@ import { X, Download, FileOutput, Check, Loader2, AlertCircle, FileText, Trash2 
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
-  parsePageRanges,
   formatPageRanges,
   extractPagesFromPDF,
   downloadPDF,
@@ -46,6 +45,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   const [isExtracting, setIsExtracting] = useState(false);
   const [progress, setProgress] = useState<ExtractionProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rangeValidationError, setRangeValidationError] = useState<string | null>(null);
   const [isPreviewDocumentReady, setIsPreviewDocumentReady] = useState(false);
   const [thumbnailsToRender, setThumbnailsToRender] = useState(0);
 
@@ -58,6 +58,52 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     [selectedPages]
   );
   const shouldUseIncrementalLoading = sortedSelectedPages.length > PERFORMANCE_PAGE_THRESHOLD;
+
+  const parsePageRangesStrict = useCallback((input: string): number[] => {
+    const pages = new Set<number>();
+    const parts = input.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
+
+    for (const part of parts) {
+      if (part.includes('-')) {
+        const [startStr, endStr] = part.split('-').map((segment) => segment.trim());
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+
+        if (isNaN(start) || isNaN(end)) {
+          throw new Error(`Intervalo invalido: "${part}"`);
+        }
+        if (start < 1 || end < 1) {
+          throw new Error('Numeros de pagina devem ser maiores que 0');
+        }
+        if (start > totalPages || end > totalPages) {
+          throw new Error(`Pagina ${Math.max(start, end)} excede o total de ${totalPages}`);
+        }
+        if (start > end) {
+          throw new Error(`Intervalo invertido: "${part}". Use ${end}-${start}`);
+        }
+
+        for (let page = start; page <= end; page++) {
+          pages.add(page);
+        }
+        continue;
+      }
+
+      const pageNum = parseInt(part, 10);
+      if (isNaN(pageNum)) {
+        throw new Error(`Numero invalido: "${part}"`);
+      }
+      if (pageNum < 1) {
+        throw new Error('Numeros de pagina devem ser maiores que 0');
+      }
+      if (pageNum > totalPages) {
+        throw new Error(`Pagina ${pageNum} excede o total de ${totalPages}`);
+      }
+
+      pages.add(pageNum);
+    }
+
+    return Array.from(pages).sort((a, b) => a - b);
+  }, [totalPages]);
 
   const currentLocalPage = useMemo(() => {
     if (totalPages <= 0) {
@@ -81,6 +127,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       }
 
       setError(null);
+      setRangeValidationError(null);
       setProgress(null);
       setIsPreviewDocumentReady(false);
       setThumbnailsToRender(0);
@@ -103,16 +150,21 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   const handlePageRangeChange = useCallback((input: string) => {
     setPageRangeInput(input);
 
+    if (!input.trim()) {
+      setSelectedPages(new Set());
+      setRangeValidationError(null);
+      return;
+    }
+
     try {
-      const pages = parsePageRanges(input, totalPages);
+      const pages = parsePageRangesStrict(input);
       setSelectedPages(new Set(pages));
-      setError(null);
+      setRangeValidationError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Intervalo de paginas invalido';
-      setSelectedPages(new Set());
-      setError(message);
+      setRangeValidationError(message);
     }
-  }, [totalPages]);
+  }, [parsePageRangesStrict]);
 
   const handleSelectAll = useCallback(() => {
     const allPages = new Set<number>();
@@ -121,6 +173,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     }
     setSelectedPages(allPages);
     setPageRangeInput(`1-${totalPages}`);
+    setRangeValidationError(null);
   }, [totalPages]);
 
   const handleSelectCurrentPage = useCallback(() => {
@@ -131,16 +184,19 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     if (clampedCurrentLocalPage === null) {
       setSelectedPages(new Set());
       setPageRangeInput('');
+      setRangeValidationError(null);
       return;
     }
 
     setSelectedPages(new Set([clampedCurrentLocalPage]));
     setPageRangeInput(String(clampedCurrentLocalPage));
+    setRangeValidationError(null);
   }, [currentLocalPage, totalPages]);
 
   const handleClearSelection = useCallback(() => {
     setSelectedPages(new Set());
     setPageRangeInput('');
+    setRangeValidationError(null);
   }, []);
 
   const handleRemovePage = useCallback((pageNum: number) => {
@@ -151,15 +207,16 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     });
     setPageRangeInput(prev => {
       try {
-        const currentPages = parsePageRanges(prev, totalPages);
+        const currentPages = parsePageRangesStrict(prev);
         const filtered = currentPages.filter(p => p !== pageNum);
         setError(null);
+        setRangeValidationError(null);
         return formatPageRanges(filtered);
       } catch {
         return '';
       }
     });
-  }, [totalPages]);
+  }, [parsePageRangesStrict]);
 
   const handleExtract = useCallback(async () => {
     if (selectedPages.size === 0) {
@@ -337,9 +394,19 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
                   value={pageRangeInput}
                   onChange={(e) => handlePageRangeChange(e.target.value)}
                   placeholder="Digite os intervalos de paginas..."
-                  className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+                  className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:ring-2 transition-shadow ${
+                    rangeValidationError
+                      ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                      : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                  }`}
                   disabled={isExtracting}
                 />
+                {rangeValidationError && (
+                  <div className="flex items-start gap-1.5 mt-2 text-xs text-red-600">
+                    <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                    <span>{rangeValidationError}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-2">
