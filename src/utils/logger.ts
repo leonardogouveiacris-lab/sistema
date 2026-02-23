@@ -8,6 +8,22 @@ export enum LogLevel {
   SUCCESS = 'SUCCESS'
 }
 
+const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
+  [LogLevel.DEBUG]: 10,
+  [LogLevel.INFO]: 20,
+  [LogLevel.SUCCESS]: 25,
+  [LogLevel.WARN]: 30,
+  [LogLevel.ERROR]: 40
+};
+
+const LOG_LEVEL_ENV_MAP: Record<string, LogLevel> = {
+  DEBUG: LogLevel.DEBUG,
+  INFO: LogLevel.INFO,
+  SUCCESS: LogLevel.SUCCESS,
+  WARN: LogLevel.WARN,
+  ERROR: LogLevel.ERROR
+};
+
 export enum LogCategory {
   UI = 'ui',
   REALTIME = 'realtime',
@@ -109,7 +125,7 @@ class Logger {
         console.warn(formattedMessage, ...extra);
         break;
       case LogLevel.ERROR:
-        console.log(`[ERROR] ${formattedMessage}`, ...extra);
+        console.error(`[ERROR] ${formattedMessage}`, ...extra);
         break;
       case LogLevel.SUCCESS:
         console.log(formattedMessage, ...extra);
