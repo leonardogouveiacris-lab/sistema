@@ -218,6 +218,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const lastScrollTopRef = useRef<number>(0);
   const scrollReconciliationRafRef = useRef<number | null>(null);
   const scrollReconciliationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollBasedVisiblePagesRef = useRef<Set<number>>(scrollBasedVisiblePages);
+  const scrollFallbackVisibleRangeRef = useRef<{ start: number; end: number } | null>(scrollFallbackVisibleRange);
   const scrollDivergenceStartedAtRef = useRef<number | null>(null);
   const scrollDivergenceLastLogAtRef = useRef<number>(0);
   const currentPageVisibleDivergenceStartedAtRef = useRef<number | null>(null);
@@ -1464,7 +1466,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         emptyVisiblePagesScrollFramesRef.current = 0;
       }, SCROLL_ACTIVITY_IDLE_TIMEOUT_MS);
 
-      if (scrollBasedVisiblePages.size === 0) {
+      if (scrollBasedVisiblePagesRef.current.size === 0) {
         emptyVisiblePagesScrollFramesRef.current += 1;
         if (emptyVisiblePagesScrollFramesRef.current > EMPTY_VISIBLE_PAGES_SCROLL_FRAME_THRESHOLD) {
           const fallbackRange = deriveVisibleRangeFromContainer();
@@ -1475,12 +1477,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             if (prev?.start === fallbackRange.start && prev?.end === fallbackRange.end) {
               return prev;
             }
+            scrollFallbackVisibleRangeRef.current = fallbackRange;
             return fallbackRange;
           });
         }
       } else {
         emptyVisiblePagesScrollFramesRef.current = 0;
-        setScrollFallbackVisibleRange(prev => (prev === null ? prev : null));
+        if (scrollFallbackVisibleRangeRef.current !== null) {
+          setScrollFallbackVisibleRange(() => {
+            scrollFallbackVisibleRangeRef.current = null;
+            return null;
+          });
+        }
       }
 
       const shouldBlockForDrag =
@@ -1606,9 +1614,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       isUserScrollingRef.current = false;
       emptyVisiblePagesScrollFramesRef.current = 0;
+      scrollFallbackVisibleRangeRef.current = null;
       setScrollFallbackVisibleRange(null);
     };
-  }, [deriveVisibleRangeFromContainer, scrollBasedVisiblePages, scrollContainerElement, state.viewMode]);
+  }, [deriveVisibleRangeFromContainer, scrollContainerElement, state.viewMode]);
 
   useEffect(() => {
     registerScrollContainer(scrollContainerElement);
@@ -4681,6 +4690,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     state.viewMode,
     toggleSearch
   ]);
+
+  useEffect(() => {
+    scrollBasedVisiblePagesRef.current = scrollBasedVisiblePages;
+  }, [scrollBasedVisiblePages]);
+
+  useEffect(() => {
+    scrollFallbackVisibleRangeRef.current = scrollFallbackVisibleRange;
+  }, [scrollFallbackVisibleRange]);
 
   useEffect(() => {
     hasMountedRef.current = true;
