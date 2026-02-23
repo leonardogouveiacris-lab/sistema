@@ -196,6 +196,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const renderFallbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollThrottleRef = useRef<number>(0);
   const lastScrollTopRef = useRef<number>(0);
+  const scrollReconciliationRafRef = useRef<number | null>(null);
+  const scrollReconciliationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollDivergenceStartedAtRef = useRef<number | null>(null);
+  const scrollDivergenceLastLogAtRef = useRef<number>(0);
   const prevZoomRef = useRef<number>(state.zoom);
   const prevDisplayZoomRef = useRef<number>(state.displayZoom);
   const isZoomChangingRef = useRef(false);
@@ -218,6 +222,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const keyboardNavStableFramesRef = useRef<number>(0);
   const currentPageRef = useRef<number>(state.currentPage);
   const calculateVisiblePagesFromScrollRef = useRef<(options?: { allowLargeJump?: boolean; previousScrollTop?: number }) => void>(() => {});
+  const estimateCenterPageFromScrollRef = useRef<(scrollTop: number, viewportHeight: number) => number>(() => 1);
   const markInteractionStartRef = useRef<() => void>(() => {});
   const initialScrollRecalcRafRef = useRef<number | null>(null);
   const initialScrollRecalcRafNestedRef = useRef<number | null>(null);
@@ -1037,6 +1042,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [calculateVisiblePagesFromScroll]);
 
   useEffect(() => {
+    estimateCenterPageFromScrollRef.current = (scrollTop: number, viewportHeight: number) => {
+      if (state.totalPages === 0 || cumulativePageBottoms.length === 0) {
+        return 1;
+      }
+
+      const viewportCenter = scrollTop + viewportHeight / 2;
+      const centerIndex = findFirstIndexByBottom(cumulativePageBottoms, viewportCenter);
+      return Math.min(state.totalPages, Math.max(1, centerIndex >= state.totalPages ? state.totalPages : centerIndex + 1));
+    };
+  }, [cumulativePageBottoms, state.totalPages]);
+
+  useEffect(() => {
     markInteractionStartRef.current = markInteractionStart;
   }, [markInteractionStart]);
 
@@ -1048,6 +1065,88 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (state.viewMode !== 'continuous' || !scrollContainerRef.current) return;
 
     const container = scrollContainerRef.current;
+
+    const clearScrollReconciliation = () => {
+      if (scrollReconciliationRafRef.current !== null) {
+        cancelAnimationFrame(scrollReconciliationRafRef.current);
+        scrollReconciliationRafRef.current = null;
+      }
+
+      if (scrollReconciliationTimeoutRef.current) {
+        clearTimeout(scrollReconciliationTimeoutRef.current);
+        scrollReconciliationTimeoutRef.current = null;
+      }
+    };
+
+    const trackDivergence = (scrollTop: number, centerPage: number) => {
+      const currentPage = currentPageRef.current;
+      if (currentPage === centerPage) {
+        scrollDivergenceStartedAtRef.current = null;
+        return;
+      }
+
+      const now = Date.now();
+      if (scrollDivergenceStartedAtRef.current === null) {
+        scrollDivergenceStartedAtRef.current = now;
+        return;
+      }
+
+      const divergenceDurationMs = now - scrollDivergenceStartedAtRef.current;
+      const shouldLog = divergenceDurationMs > 500 && now - scrollDivergenceLastLogAtRef.current > 500;
+
+      if (shouldLog) {
+        scrollDivergenceLastLogAtRef.current = now;
+        logger.info(
+          'DEBUG TEMP scroll divergence detectada no fallback de reconciliação',
+          'FloatingPDFViewer.handleScrollReconciliation',
+          {
+            scrollTop,
+            currentPage,
+            centerPage,
+            divergenceDurationMs
+          }
+        );
+      }
+    };
+
+    const scheduleScrollReconciliation = (previousScrollTop: number, nextScrollTop: number) => {
+      if (Math.abs(nextScrollTop - previousScrollTop) < 1) {
+        return;
+      }
+
+      clearScrollReconciliation();
+      let hasReconciled = false;
+
+      const runReconciliation = () => {
+        if (hasReconciled) {
+          return;
+        }
+        hasReconciled = true;
+
+        if (scrollReconciliationTimeoutRef.current) {
+          clearTimeout(scrollReconciliationTimeoutRef.current);
+        }
+        scrollReconciliationRafRef.current = null;
+        scrollReconciliationTimeoutRef.current = null;
+
+        if (!scrollContainerRef.current || state.viewMode !== 'continuous') {
+          return;
+        }
+
+        if (isModeSwitchingRef.current || state.isRotating) {
+          return;
+        }
+
+        const activeScrollTop = scrollContainerRef.current.scrollTop;
+        const centerPage = estimateCenterPageFromScrollRef.current(activeScrollTop, scrollContainerRef.current.clientHeight);
+
+        calculateVisiblePagesFromScrollRef.current({ previousScrollTop });
+        trackDivergence(activeScrollTop, centerPage);
+      };
+
+      scrollReconciliationRafRef.current = requestAnimationFrame(runReconciliation);
+      scrollReconciliationTimeoutRef.current = setTimeout(runReconciliation, 48);
+    };
 
     const handleScroll = () => {
       if (isPointerDownRef.current) {
@@ -1062,12 +1161,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       const now = Date.now();
+      const previousScrollTop = lastScrollTopRef.current;
+      const nextScrollTop = container.scrollTop;
+      lastScrollTopRef.current = nextScrollTop;
+
+      scheduleScrollReconciliation(previousScrollTop, nextScrollTop);
+
       if (now - scrollThrottleRef.current < 80) {
         return;
       }
       scrollThrottleRef.current = now;
-      const previousScrollTop = lastScrollTopRef.current;
-      lastScrollTopRef.current = container.scrollTop;
 
       calculateVisiblePagesFromScrollRef.current({ previousScrollTop });
     };
@@ -1132,6 +1235,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     return () => {
       container.removeEventListener('scroll', handleScroll);
+      clearScrollReconciliation();
+      scrollDivergenceStartedAtRef.current = null;
 
       if (initialScrollRecalcRafRef.current !== null) {
         cancelAnimationFrame(initialScrollRecalcRafRef.current);
