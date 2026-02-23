@@ -252,9 +252,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const offsetRebuildBlockUntilRef = useRef<number>(0);
   const centerPageFreezeUntilRef = useRef<number>(0);
 
-  const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
-  const zoomAnchorRef = useRef<{ page: number; relativeOffsetY: number } | null>(null);
+  const zoomAnchorRef = useRef<{ page: number; relativeOffsetY: number; hasMeasuredPage: boolean } | null>(null);
   const visibleStartPageRef = useRef<number>(1);
   const visibleEndPageRef = useRef<number>(1);
   const textExtractionProgressRef = useRef<Map<string, { current: number; total: number }>>(new Map());
@@ -485,12 +484,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     processHeavyTaskQueue();
   }, [processHeavyTaskQueue]);
-
-  useEffect(() => {
-    if (!isZoomChangingRef.current) {
-      pageBeforeZoomRef.current = state.currentPage;
-    }
-  }, [state.currentPage]);
 
   useEffect(() => {
     highlightedPageRef.current = state.highlightedPage;
@@ -4534,58 +4527,39 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    const centerY = container.clientHeight / 2;
-    const mountedPages = Array.from(pageRefs.current.entries())
-      .map(([pageNum, pageEl]) => ({
-        pageNum,
-        top: pageEl.offsetTop - container.scrollTop,
-        height: pageEl.offsetHeight
-      }))
-      .filter(page => page.height > 0)
-      .sort((a, b) => a.pageNum - b.pageNum);
+    calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
 
-    if (mountedPages.length === 0) {
-      zoomAnchorRef.current = null;
-      return;
-    }
+    const visibleRange = deriveVisibleRangeFromContainer();
+    const fallbackRange = {
+      start: visibleStartPageRef.current,
+      end: visibleEndPageRef.current
+    };
+    const range = visibleRange ?? fallbackRange;
+    const anchorPage = Math.min(
+      state.totalPages,
+      Math.max(1, Math.round((range.start + range.end) / 2))
+    );
 
-    const pageAtCenter = mountedPages.find(page => centerY >= page.top && centerY <= page.top + page.height);
-    if (pageAtCenter) {
-      const offsetInsidePage = centerY - pageAtCenter.top;
-      const relativeOffsetY = pageAtCenter.height > 0
-        ? Math.min(1, Math.max(0, offsetInsidePage / pageAtCenter.height))
-        : 0;
-
+    const anchorPageElement = pageRefs.current.get(anchorPage);
+    if (!anchorPageElement || anchorPageElement.offsetHeight <= 0) {
       zoomAnchorRef.current = {
-        page: pageAtCenter.pageNum,
-        relativeOffsetY
+        page: anchorPage,
+        relativeOffsetY: 0.5,
+        hasMeasuredPage: false
       };
       return;
     }
 
-    const nearestPage = mountedPages.reduce((closest, page) => {
-      const centerDistance = Math.abs((page.top + page.height / 2) - centerY);
-      if (!closest || centerDistance < closest.distance) {
-        return { page, distance: centerDistance };
-      }
-      return closest;
-    }, null as { page: { pageNum: number; top: number; height: number }; distance: number } | null);
-
-    if (!nearestPage) {
-      zoomAnchorRef.current = null;
-      return;
-    }
-
-    const offsetInsideNearestPage = centerY - nearestPage.page.top;
-    const relativeOffsetY = nearestPage.page.height > 0
-      ? Math.min(1, Math.max(0, offsetInsideNearestPage / nearestPage.page.height))
-      : 0;
+    const viewportCenterY = container.scrollTop + container.clientHeight / 2;
+    const offsetInsidePage = viewportCenterY - anchorPageElement.offsetTop;
+    const relativeOffsetY = Math.min(1, Math.max(0, offsetInsidePage / anchorPageElement.offsetHeight));
 
     zoomAnchorRef.current = {
-      page: nearestPage.page.pageNum,
-      relativeOffsetY
+      page: anchorPage,
+      relativeOffsetY,
+      hasMeasuredPage: true
     };
-  }, []);
+  }, [deriveVisibleRangeFromContainer, state.totalPages]);
 
   useEffect(() => {
     if (state.viewMode !== 'continuous' || !scrollContainerRef.current) {
@@ -4611,7 +4585,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const activeContainer = scrollContainerRef.current;
       const pageAnchorEl = zoomAnchor ? pageRefs.current.get(zoomAnchor.page) : null;
 
-      if (zoomAnchor && pageAnchorEl && pageAnchorEl.offsetHeight > 0) {
+      const canUseAnchorPage = Boolean(zoomAnchor?.hasMeasuredPage && pageAnchorEl && pageAnchorEl.offsetHeight > 0);
+
+      if (canUseAnchorPage && zoomAnchor && pageAnchorEl) {
         const anchorOffsetPx = zoomAnchor.relativeOffsetY * pageAnchorEl.offsetHeight;
         const targetCenterY = pageAnchorEl.offsetTop + anchorOffsetPx;
         const nextScrollTop = targetCenterY - activeContainer.clientHeight / 2;
@@ -4637,12 +4613,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         Math.max(1, Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2))
       );
       const derivedRange = deriveVisibleRangeFromContainer();
-      const targetPageDetected = derivedRange
+      const derivedAnchorPage = zoomAnchor?.page ?? null;
+      const targetPageDetected = derivedAnchorPage ?? (derivedRange
         ? Math.min(
             state.totalPages,
             Math.max(1, Math.round((derivedRange.start + derivedRange.end) / 2))
           )
-        : detectedFromVisibleRange;
+        : detectedFromVisibleRange);
 
       const pageDivergence = Math.abs(targetPageDetected - state.currentPage);
       if (pageDivergence <= ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES) {
