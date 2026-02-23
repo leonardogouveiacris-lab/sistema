@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { ConnectorType, PDFCommentConnector } from '../../types/PDFComment';
 import * as PDFCommentsService from '../../services/pdfComments.service';
+import logger from '../../utils/logger';
 
 interface ConnectorDrawerProps {
   commentId: string;
@@ -85,7 +86,19 @@ const ConnectorDrawer: React.FC<ConnectorDrawerProps> = ({
 
       onComplete(connector);
     } catch (error) {
-      console.error('Erro ao criar conector:', error);
+      logger.errorWithException(
+        'Falha ao criar conector de comentário no PDF',
+        error as Error,
+        'ConnectorDrawer.handleMouseUp',
+        {
+          commentId,
+          connectorType,
+          startX,
+          startY,
+          endX,
+          endY,
+        }
+      );
       onCancel();
     }
 

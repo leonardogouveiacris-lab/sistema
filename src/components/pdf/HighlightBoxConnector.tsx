@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { PDFCommentConnector, COMMENT_COLOR_VALUES, CommentColor } from '../../types/PDFComment';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
+import logger from '../../utils/logger';
 
 interface HighlightBoxConnectorProps {
   connector: PDFCommentConnector;
@@ -53,7 +54,12 @@ const HighlightBoxConnector: React.FC<HighlightBoxConnectorProps> = ({
       await PDFCommentsService.deleteConnector(connector.id);
       removeConnectorFromComment(commentId, connector.id);
     } catch (error) {
-      console.error('Erro ao excluir conector:', error);
+      logger.errorWithException(
+        'Falha ao excluir conector de comentário no PDF',
+        error as Error,
+        'HighlightBoxConnector.handleDelete',
+        { commentId, connectorId: connector.id }
+      );
     }
   };
 
@@ -168,7 +174,17 @@ const HighlightBoxConnector: React.FC<HighlightBoxConnectorProps> = ({
           endY: connector.endY
         });
       } catch (error) {
-        console.error('Erro ao salvar posição:', error);
+        logger.errorWithException(
+          'Falha ao salvar posição do destaque no PDF',
+          error as Error,
+          'HighlightBoxConnector.handleMouseUp.drag',
+          {
+            commentId,
+            connectorId: connector.id,
+            endX: connector.endX,
+            endY: connector.endY
+          }
+        );
       }
     }
 
@@ -183,7 +199,19 @@ const HighlightBoxConnector: React.FC<HighlightBoxConnectorProps> = ({
           boxHeight: connector.boxHeight
         });
       } catch (error) {
-        console.error('Erro ao salvar dimensões:', error);
+        logger.errorWithException(
+          'Falha ao salvar dimensões do destaque no PDF',
+          error as Error,
+          'HighlightBoxConnector.handleMouseUp.resize',
+          {
+            commentId,
+            connectorId: connector.id,
+            endX: connector.endX,
+            endY: connector.endY,
+            boxWidth: connector.boxWidth,
+            boxHeight: connector.boxHeight
+          }
+        );
       }
     }
   }, [isDragging, isResizing, connector]);
