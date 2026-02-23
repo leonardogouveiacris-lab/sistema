@@ -3164,31 +3164,43 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           const navigationThrottleMs = keyboardNavigationThrottleMsRef.current;
 
           if (elapsed < navigationThrottleMs) {
-            logger.debug('[FloatingPDFViewer] Keyboard navigation throttled', {
-              key: e.key,
-              reason: 'repeat/hold interval too short',
-              elapsed,
-              throttleMs: navigationThrottleMs,
-              isRepeat: e.repeat,
-              wasPressed
-            });
+            logger.info(
+              'Keyboard navigation throttled',
+              'FloatingPDFViewer.handleKeyDown',
+              {
+                key: e.key,
+                reason: 'repeat/hold interval too short',
+                elapsed,
+                throttleMs: navigationThrottleMs,
+                isRepeat: e.repeat,
+                wasPressed
+              }
+            );
             e.preventDefault();
             return;
           }
 
-          logger.info('[FloatingPDFViewer] Keyboard navigation repeat/hold allowed', {
-            key: e.key,
-            elapsed,
-            throttleMs: navigationThrottleMs,
-            isRepeat: e.repeat,
-            wasPressed
-          });
+          logger.info(
+            'Keyboard navigation repeat/hold allowed',
+            'FloatingPDFViewer.handleKeyDown',
+            {
+              key: e.key,
+              elapsed,
+              throttleMs: navigationThrottleMs,
+              isRepeat: e.repeat,
+              wasPressed
+            }
+          );
           lastHandledRepeatByKey.set(e.key, now);
         } else {
-          logger.info('[FloatingPDFViewer] Keyboard navigation discrete tap allowed', {
-            key: e.key,
-            throttleMs: keyboardNavigationThrottleMsRef.current
-          });
+          logger.info(
+            'Keyboard navigation discrete tap allowed',
+            'FloatingPDFViewer.handleKeyDown',
+            {
+              key: e.key,
+              throttleMs: keyboardNavigationThrottleMsRef.current
+            }
+          );
         }
       }
 
