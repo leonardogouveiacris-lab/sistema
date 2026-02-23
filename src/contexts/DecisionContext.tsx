@@ -3,6 +3,7 @@ import { Decision, NewDecision } from '../types/Decision';
 import { logger, ValidationUtils, translateSupabaseError } from '../utils';
 import { DecisionsService } from '../services';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
+import { logRealtimeEvent } from '../utils/domainLogger';
 
 export interface OperationResult {
   success: boolean;
@@ -63,7 +64,7 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
         const data = await DecisionsService.getAll();
         completed = true;
         setDecisions(data);
-        logger.success(`${data.length} decisões carregadas`, 'DecisionContext');
+        logger.debug(`${data.length} decisões carregadas`, 'DecisionContext');
       } catch (err) {
         completed = true;
         const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
@@ -82,12 +83,12 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
       clearTimeout(refreshTimeoutRef.current);
     }
     refreshTimeoutRef.current = setTimeout(async () => {
-      logger.info('Realtime: Refreshing decisions', 'DecisionContext');
+      logRealtimeEvent('Realtime refresh requested', 'DecisionContext', 'refresh_requested', { table: 'decisions' });
       try {
         const data = await DecisionsService.getAll();
         setDecisions(data);
-      } catch (err) {
-        logger.error('Realtime: Failed to refresh decisions', 'DecisionContext');
+      } catch {
+        logRealtimeEvent('Realtime refresh failed', 'DecisionContext', 'refresh_failed', { table: 'decisions' }, 'error');
       }
     }, 100);
   }, []);

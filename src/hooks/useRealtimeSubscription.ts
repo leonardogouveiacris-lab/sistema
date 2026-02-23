@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import logger from '../utils/logger';
+import { logRealtimeEvent } from '../utils/domainLogger';
 
 type PostgresChangeEvent = 'INSERT' | 'UPDATE' | 'DELETE' | '*';
 
@@ -38,9 +38,10 @@ export const useRealtimeSubscription = <T extends { id: string }>({
   const handleChange = useCallback((payload: RealtimePostgresChangesPayload<T>) => {
     const { onInsert, onUpdate, onDelete, onAnyChange } = callbacksRef.current;
 
-    logger.info(
-      `Realtime event: ${payload.eventType} on ${table}`,
+    logRealtimeEvent(
+      'Realtime event received',
       'useRealtimeSubscription',
+      'change_received',
       { eventType: payload.eventType, table }
     );
 
@@ -109,14 +110,20 @@ export const useRealtimeSubscription = <T extends { id: string }>({
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          logger.success(
-            `Realtime subscription active for ${table}`,
-            'useRealtimeSubscription'
+          logRealtimeEvent(
+            'Realtime subscription active',
+            'useRealtimeSubscription',
+            'subscription_active',
+            { table, schema, event, filter },
+            'info'
           );
         } else if (status === 'CHANNEL_ERROR') {
-          logger.error(
-            `Realtime subscription error for ${table}`,
-            'useRealtimeSubscription'
+          logRealtimeEvent(
+            'Realtime subscription error',
+            'useRealtimeSubscription',
+            'subscription_error',
+            { table, schema, event, filter },
+            'error'
           );
         }
       });

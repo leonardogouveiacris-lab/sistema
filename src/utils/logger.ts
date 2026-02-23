@@ -8,12 +8,13 @@ export enum LogLevel {
   SUCCESS = 'SUCCESS'
 }
 
-export interface LogMetadata {
-  flowId: string;
-  entityType: string;
-  entityId?: string;
-  action: string;
-  source: string;
+export enum LogCategory {
+  UI = 'ui',
+  REALTIME = 'realtime',
+  NETWORK = 'network',
+  PDF_RENDER = 'pdf-render',
+  STORAGE = 'storage',
+  USER_ACTION = 'user-action'
 }
 
 export type LogContext = string;
