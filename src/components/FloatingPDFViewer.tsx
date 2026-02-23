@@ -2724,11 +2724,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       const { rangeStart, rangeEnd } = pageWindow;
       const isActiveDocument = activeDocumentId === doc.id;
-      const budget = isActiveDocument
-        ? CONTINUOUS_RENDER_BUDGET_PAGES
-        : CONTINUOUS_INACTIVE_DOCUMENT_RENDER_BUDGET_PAGES;
 
-      if (budget <= 0 || rangeStart > rangeEnd) {
+      if (rangeStart > rangeEnd) {
         pagesByDocument.set(doc.id, new Set<number>());
         return;
       }
@@ -2743,56 +2740,57 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const baseEndGlobalRaw = Math.min(offset.endPage, globalRange.end);
       const hasBaseInDocument = baseStartGlobalRaw <= baseEndGlobalRaw;
 
-      const baseStartGlobal = hasBaseInDocument ? baseStartGlobalRaw : fallbackAnchorGlobal;
-      const baseEndGlobal = hasBaseInDocument ? baseEndGlobalRaw : fallbackAnchorGlobal;
+      const baseStartGlobal = hasBaseInDocument
+        ? Math.max(windowStartGlobal, baseStartGlobalRaw)
+        : Math.min(windowEndGlobal, Math.max(windowStartGlobal, fallbackAnchorGlobal));
+      const baseEndGlobal = hasBaseInDocument
+        ? Math.min(windowEndGlobal, baseEndGlobalRaw)
+        : Math.min(windowEndGlobal, Math.max(windowStartGlobal, fallbackAnchorGlobal));
 
-      let selectionStartGlobal = Math.max(windowStartGlobal, Math.min(baseStartGlobal, baseEndGlobal));
-      let selectionEndGlobal = Math.min(windowEndGlobal, Math.max(baseStartGlobal, baseEndGlobal));
+      const selectedPagesGlobal = new Set<number>();
+      const optionalPagesGlobal: number[] = [];
 
-      if (selectionStartGlobal > selectionEndGlobal) {
-        selectionStartGlobal = Math.min(windowEndGlobal, Math.max(windowStartGlobal, fallbackAnchorGlobal));
-        selectionEndGlobal = selectionStartGlobal;
+      // Núcleo obrigatório: manter 100% das páginas visíveis no viewport para este documento.
+      for (let globalPage = baseStartGlobal; globalPage <= baseEndGlobal; globalPage += 1) {
+        selectedPagesGlobal.add(globalPage);
       }
 
-      for (let i = 0; i < overscanPages; i += 1) {
-        if (selectionStartGlobal > windowStartGlobal) {
-          selectionStartGlobal -= 1;
+      // Camada opcional: overscan/preload em torno do núcleo.
+      for (let i = 1; i <= overscanPages; i += 1) {
+        const beforePage = baseStartGlobal - i;
+        const afterPage = baseEndGlobal + i;
+
+        if (beforePage >= windowStartGlobal) {
+          optionalPagesGlobal.push(beforePage);
         }
-        if (selectionEndGlobal < windowEndGlobal) {
-          selectionEndGlobal += 1;
+
+        if (afterPage <= windowEndGlobal) {
+          optionalPagesGlobal.push(afterPage);
         }
       }
 
-      let currentSize = selectionEndGlobal - selectionStartGlobal + 1;
-      if (currentSize > budget) {
-        const baseCenter = Math.round((baseStartGlobal + baseEndGlobal) / 2);
-        selectionStartGlobal = Math.max(
-          windowStartGlobal,
-          Math.min(baseCenter - Math.floor((budget - 1) / 2), windowEndGlobal - budget + 1)
-        );
-        selectionEndGlobal = selectionStartGlobal + budget - 1;
-      } else {
-        let expandForward = true;
-        while (currentSize < budget && (selectionStartGlobal > windowStartGlobal || selectionEndGlobal < windowEndGlobal)) {
-          if (expandForward && selectionEndGlobal < windowEndGlobal) {
-            selectionEndGlobal += 1;
-          } else if (!expandForward && selectionStartGlobal > windowStartGlobal) {
-            selectionStartGlobal -= 1;
-          } else if (selectionEndGlobal < windowEndGlobal) {
-            selectionEndGlobal += 1;
-          } else if (selectionStartGlobal > windowStartGlobal) {
-            selectionStartGlobal -= 1;
-          }
+      const viewportPageCount = Math.max(1, baseEndGlobal - baseStartGlobal + 1);
+      const optionalBudget = hasVisibleIntersection
+        ? Math.max(
+          overscanPages * 2,
+          isActiveDocument
+            ? CONTINUOUS_RENDER_BUDGET_PAGES + Math.ceil(viewportPageCount / 2)
+            : Math.ceil(viewportPageCount / 2)
+        )
+        : CONTINUOUS_INACTIVE_DOCUMENT_RENDER_BUDGET_PAGES;
 
-          expandForward = !expandForward;
-          currentSize = selectionEndGlobal - selectionStartGlobal + 1;
+      for (const globalPage of optionalPagesGlobal) {
+        if (selectedPagesGlobal.size >= viewportPageCount + optionalBudget) {
+          break;
         }
+
+        selectedPagesGlobal.add(globalPage);
       }
 
       const selectedPages = new Set<number>();
-      for (let globalPage = selectionStartGlobal; globalPage <= selectionEndGlobal; globalPage += 1) {
+      selectedPagesGlobal.forEach((globalPage) => {
         selectedPages.add(globalPage - offset.startPage + 1);
-      }
+      });
 
       pagesByDocument.set(doc.id, selectedPages);
     });
