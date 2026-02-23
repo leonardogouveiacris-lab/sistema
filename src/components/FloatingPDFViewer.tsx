@@ -4740,27 +4740,42 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
 
-      const detectedFromVisibleRange = Math.min(
-        state.totalPages,
-        Math.max(1, Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2))
-      );
+      const hasVisibleRangeSnapshot = visibleStartPageRef.current > 0 && visibleEndPageRef.current > 0;
+      const detectedFromVisibleRange = hasVisibleRangeSnapshot
+        ? Math.min(
+            state.totalPages,
+            Math.max(1, Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2))
+          )
+        : null;
       const derivedRange = deriveVisibleRangeFromContainer();
-      const derivedAnchorPage = zoomAnchor?.page ?? null;
-      const targetPageDetected = derivedAnchorPage ?? (derivedRange
+      const targetPageSnapshot = zoomAnchor?.page ?? currentPageRef.current;
+      const derivedPageAfterZoom = derivedRange
         ? Math.min(
             state.totalPages,
             Math.max(1, Math.round((derivedRange.start + derivedRange.end) / 2))
           )
-        : detectedFromVisibleRange);
+        : null;
+      const targetPageDetected = derivedPageAfterZoom ?? detectedFromVisibleRange ?? targetPageSnapshot;
+      const currentPageBeforeSync = state.currentPage;
 
-      const pageDivergence = Math.abs(targetPageDetected - state.currentPage);
+      logger.info(
+        'DEBUG TEMP sincronização de página após zoom',
+        'FloatingPDFViewer.zoomSync',
+        {
+          targetPageSnapshot,
+          derivedPageAfterZoom,
+          currentPageBeforeSync
+        }
+      );
+
+      const pageDivergence = Math.abs(targetPageDetected - currentPageBeforeSync);
       if (pageDivergence <= ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES) {
         zoomBlockedUntilRef.current = Date.now() + ZOOM_POST_BLOCK_DURATION_MS;
       }
 
       lastDetectedPageRef.current = targetPageDetected;
       lastDetectionTimeRef.current = Date.now();
-      if (targetPageDetected !== state.currentPage) {
+      if (targetPageDetected !== currentPageBeforeSync) {
         goToPage(targetPageDetected);
       }
 
