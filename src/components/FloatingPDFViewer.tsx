@@ -101,6 +101,8 @@ const EMPTY_VISIBLE_PAGES_SCROLL_FRAME_THRESHOLD = 4;
 const SCROLL_ACTIVITY_IDLE_TIMEOUT_MS = 160;
 const CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES = 3;
 const FORCED_RECONCILIATION_DIVERGENCE_DURATION_MS = 500;
+const PDF_DEBUG_THROTTLE_MS = 3000;
+const PDF_DIAGNOSTIC_DEBUG_ENABLED = import.meta.env.VITE_DEBUG_PDF === 'true';
 
 
 type HeavyTaskType = 'comments' | 'bookmarks';
@@ -299,6 +301,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     totalRunMs: 0,
     maxBacklog: 0
   });
+  const pdfDebugEventLastLogAtRef = useRef<Map<string, number>>(new Map());
   const INTERACTION_DEBOUNCE_MS = 500;
   const ZOOM_PROTECTION_DURATION_MS = 500;
   const MAX_PAGE_JUMP = 30;
@@ -320,6 +323,44 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const cumulativePageBottoms = useMemo(() => {
     return cumulativePageTops.map((top, index) => top + getPageHeight(index + 1));
   }, [cumulativePageTops, getPageHeight]);
+
+  const logPdfDebugEvent = useCallback((
+    event: string,
+    payload: {
+      page?: number | null;
+      currentPage?: number | null;
+      mode?: 'continuous' | 'paginated';
+      reason?: string;
+      [key: string]: unknown;
+    },
+    options?: { throttleMs?: number; throttleKey?: string }
+  ) => {
+    if (!PDF_DIAGNOSTIC_DEBUG_ENABLED) {
+      return;
+    }
+
+    const throttleKey = options?.throttleKey ?? event;
+    const throttleMs = options?.throttleMs ?? PDF_DEBUG_THROTTLE_MS;
+    const now = Date.now();
+    const lastLoggedAt = pdfDebugEventLastLogAtRef.current.get(throttleKey) ?? 0;
+
+    if (now - lastLoggedAt < throttleMs) {
+      return;
+    }
+
+    pdfDebugEventLastLogAtRef.current.set(throttleKey, now);
+
+    const { page, currentPage, mode, reason, ...extra } = payload;
+
+    logger.debug('PDF diagnostic event', 'FloatingPDFViewer.debug', {
+      event,
+      page: page ?? null,
+      currentPage: currentPage ?? null,
+      mode: mode ?? null,
+      reason: reason ?? 'n/a',
+      ...extra
+    });
+  }, []);
 
   const startPhaseTimer = useCallback((phase: string) => {
     phaseTimersRef.current.set(phase, performance.now());
@@ -1265,15 +1306,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (shouldLog) {
         scrollDivergenceLastLogAtRef.current = now;
-        logger.info(
-          'DEBUG TEMP scroll divergence detectada no fallback de reconciliação',
-          'FloatingPDFViewer.handleScrollReconciliation',
+        logPdfDebugEvent(
+          'scroll_reconciliation_divergence',
           {
-            scrollTop,
+            page: centerPage,
             currentPage,
-            centerPage,
+            mode: state.viewMode,
+            reason: 'fallback-divergence',
+            scrollTop,
             divergenceDurationMs
-          }
+          },
+          { throttleMs: 3000 }
         );
       }
 
@@ -2388,10 +2431,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
-      logger.info(
-        `DEBUG TEMP ${flagName} true -> false`,
-        'FloatingPDFViewer.textSelectionGuards',
-        { reason }
+      logPdfDebugEvent(
+        'text_selection_guard_reset',
+        {
+          page: currentPageRef.current,
+          currentPage: currentPageRef.current,
+          mode: state.viewMode,
+          reason,
+          flagName
+        },
+        { throttleKey: `text_selection_guard_reset:${flagName}:${reason}`, throttleMs: 2000 }
       );
     };
 
@@ -2554,7 +2603,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         pointerDownSafetyTimeoutRef.current = null;
       }
     };
-  }, []);
+  }, [logPdfDebugEvent, state.viewMode]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -2565,9 +2614,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const selectionActivatedAt = textSelectionActivatedAtRef.current;
       if (!selectionActivatedAt) {
         if (isSelectingTextRef.current) {
-          logger.info('DEBUG TEMP isSelectingTextRef true -> false', 'FloatingPDFViewer.textSelectionGuards', {
-            reason: 'stale-selection-without-activation'
-          });
+          logPdfDebugEvent(
+            'text_selection_guard_reset',
+            {
+              page: currentPageRef.current,
+              currentPage: currentPageRef.current,
+              mode: state.viewMode,
+              reason: 'stale-selection-without-activation',
+              flagName: 'isSelectingTextRef'
+            },
+            { throttleKey: 'text_selection_guard_reset:isSelectingTextRef:stale-selection-without-activation', throttleMs: 2000 }
+          );
         }
         isSelectingTextRef.current = false;
         return;
@@ -2575,9 +2632,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (Date.now() - selectionActivatedAt > TEXT_SELECTION_STALE_RESET_MS) {
         if (isSelectingTextRef.current) {
-          logger.info('DEBUG TEMP isSelectingTextRef true -> false', 'FloatingPDFViewer.textSelectionGuards', {
-            reason: 'stale-selection-interval-timeout'
-          });
+          logPdfDebugEvent(
+            'text_selection_guard_reset',
+            {
+              page: currentPageRef.current,
+              currentPage: currentPageRef.current,
+              mode: state.viewMode,
+              reason: 'stale-selection-interval-timeout',
+              flagName: 'isSelectingTextRef'
+            },
+            { throttleKey: 'text_selection_guard_reset:isSelectingTextRef:stale-selection-interval-timeout', throttleMs: 2000 }
+          );
         }
         isSelectingTextRef.current = false;
         textSelectionActivatedAtRef.current = null;
@@ -2588,7 +2653,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return () => {
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [logPdfDebugEvent, state.viewMode]);
 
   /**
    * Effect para preload imediato de páginas vizinhas + cache de páginas visitadas
@@ -4852,14 +4917,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const targetPageDetected = derivedPageAfterZoom ?? detectedFromVisibleRange ?? targetPageSnapshot;
       const currentPageBeforeSync = state.currentPage;
 
-      logger.info(
-        'DEBUG TEMP sincronização de página após zoom',
-        'FloatingPDFViewer.zoomSync',
+      logPdfDebugEvent(
+        'zoom_page_sync',
         {
+          page: targetPageDetected,
+          currentPage: currentPageBeforeSync,
+          mode: state.viewMode,
+          reason: 'post-zoom-reconciliation',
           targetPageSnapshot,
-          derivedPageAfterZoom,
-          currentPageBeforeSync
-        }
+          derivedPageAfterZoom
+        },
+        { throttleMs: 3000 }
       );
 
       const pageDivergence = Math.abs(targetPageDetected - currentPageBeforeSync);

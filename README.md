@@ -180,6 +180,25 @@ npm run preview  # Preview do build
 npm run lint     # Linting
 ```
 
+### 🧭 Troubleshooting / Logging
+
+As variáveis abaixo permitem ajustar o volume e destino dos logs da aplicação:
+
+```env
+# Nível mínimo de log no cliente: DEBUG, INFO, WARN ou ERROR
+# Padrão: DEBUG em desenvolvimento e WARN em produção
+VITE_LOG_LEVEL=INFO
+
+# Liga/desliga logs no console do navegador
+# Padrão: true
+VITE_ENABLE_CONSOLE_LOGS=true
+```
+
+Recomendações práticas:
+- **Desenvolvimento local**: use `VITE_LOG_LEVEL=DEBUG` para rastrear fluxos detalhados.
+- **Produção**: mantenha pelo menos `WARN` (ou `ERROR`) para reduzir ruído sem perder incidentes importantes.
+- **Silenciar console**: configure `VITE_ENABLE_CONSOLE_LOGS=false` quando quiser manter apenas integração com coletor remoto (quando habilitado).
+
 ### Estrutura de Commits
 - feat: Nova funcionalidade
 - fix: Correção de bug

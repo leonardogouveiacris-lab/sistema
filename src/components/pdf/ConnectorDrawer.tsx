@@ -87,7 +87,19 @@ const ConnectorDrawer: React.FC<ConnectorDrawerProps> = ({
 
       onComplete(connector);
     } catch (error) {
-      console.error('Erro ao criar conector:', error);
+      logger.errorWithException(
+        'Falha ao criar conector de comentário no PDF',
+        error as Error,
+        'ConnectorDrawer.handleMouseUp',
+        {
+          commentId,
+          connectorType,
+          startX,
+          startY,
+          endX,
+          endY,
+        }
+      );
       onCancel();
     }
 

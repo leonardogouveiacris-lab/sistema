@@ -929,7 +929,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     try {
       localStorage.setItem('pdfViewerPanelWidth', validWidth.toString());
     } catch (error) {
-      logger.warn('Erro ao salvar largura do painel', error);
+      logger.errorWithException('Erro ao salvar largura do painel', error as Error, 'PDFViewerContext.setPanelWidth');
     }
   }, []);
 
@@ -943,7 +943,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     try {
       localStorage.setItem('pdfViewerViewMode', mode);
     } catch (error) {
-      logger.warn('Erro ao salvar modo de visualização', error);
+      logger.errorWithException('Erro ao salvar modo de visualização', error as Error, 'PDFViewerContext.setViewMode');
     }
 
     logger.info(`Modo de visualização alterado para: ${mode}`, 'PDFViewerContext.setViewMode');
@@ -960,7 +960,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       try {
         localStorage.setItem('pdfViewerViewMode', newMode);
       } catch (error) {
-        logger.warn('Erro ao salvar modo de visualização', error);
+        logger.errorWithException('Erro ao salvar modo de visualização', error as Error, 'PDFViewerContext.toggleViewMode');
       }
 
       logger.info(`Modo de visualização alternado para: ${newMode}`, 'PDFViewerContext.toggleViewMode');
@@ -1258,7 +1258,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       try {
         localStorage.setItem('pdfBookmarkPanelVisible', newVisible.toString());
       } catch (error) {
-        logger.warn('Erro ao salvar visibilidade do painel de bookmarks', error);
+        logger.errorWithException('Erro ao salvar visibilidade do painel de bookmarks', error as Error, 'PDFViewerContext.toggleBookmarkPanel');
       }
 
       logger.info(`Painel de bookmarks ${newVisible ? 'exibido' : 'ocultado'}`, 'PDFViewerContext.toggleBookmarkPanel');
@@ -1277,7 +1277,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     try {
       localStorage.setItem('pdfBookmarkPanelVisible', visible.toString());
     } catch (error) {
-      logger.warn('Erro ao salvar visibilidade do painel de bookmarks', error);
+      logger.errorWithException('Erro ao salvar visibilidade do painel de bookmarks', error as Error, 'PDFViewerContext.setBookmarkPanelVisible');
     }
   }, []);
 
@@ -1292,7 +1292,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     try {
       localStorage.setItem('pdfBookmarkPanelWidth', validWidth.toString());
     } catch (error) {
-      logger.warn('Erro ao salvar largura do painel de bookmarks', error);
+      logger.errorWithException('Erro ao salvar largura do painel de bookmarks', error as Error, 'PDFViewerContext.setBookmarkPanelWidth');
     }
   }, []);
 
@@ -1614,7 +1614,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     try {
       localStorage.setItem('pdfRenderRange', validRange.toString());
     } catch (error) {
-      logger.warn('Erro ao salvar range de renderização', error);
+      logger.errorWithException('Erro ao salvar range de renderização', error as Error, 'PDFViewerContext.setRenderRange');
     }
   }, []);
 

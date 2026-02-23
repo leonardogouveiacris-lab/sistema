@@ -3,6 +3,7 @@ import { FileText, X } from 'lucide-react';
 import { DocumentoLancamento, DocumentoLancamentoCreateInput, DocumentoLancamentoUpdateInput } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { RichTextEditor, ExpandedTextModal } from './ui';
+import logger from '../utils/logger';
 
 interface DocumentoLancamentoFormProps {
   processId: string;
@@ -74,7 +75,16 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
         resetForm();
       }
     } catch (error) {
-      console.error('Error submitting document launch:', error);
+      logger.errorWithException(
+        'Falha ao salvar lançamento de documento',
+        error as Error,
+        'DocumentoLancamentoForm.handleSubmit',
+        {
+          processId,
+          editingDocumentoId: editingDocumento?.id,
+          paginaVinculada: paginaVinculada ? parseInt(paginaVinculada) : undefined,
+        }
+      );
     } finally {
       setIsSubmitting(false);
     }
