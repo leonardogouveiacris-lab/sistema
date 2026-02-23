@@ -89,6 +89,9 @@ const DOCUMENT_REMOUNT_CENTER_FREEZE_MS = 1200;
 const REMOUNT_ANOMALOUS_PAGE_DELTA = 4;
 const RECENT_NAVIGATION_WINDOW_MS = 2200;
 const TEXT_SELECTION_STALE_RESET_MS = 2500;
+const DRAG_SCROLL_BLOCK_WINDOW_MS = 400;
+const POINTER_DOWN_SAFETY_RESET_MS = 450;
+const TEXT_SELECTION_SAFETY_RESET_MS = 450;
 
 
 type HeavyTaskType = 'comments' | 'bookmarks';
@@ -181,6 +184,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const isSelectingTextRef = useRef(false);
   const isPointerDownInPdfRef = useRef(false);
   const isPointerDownRef = useRef(false);
+  const dragScrollBlockUntilRef = useRef<number>(0);
+  const pointerDownSafetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const textSelectionSafetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const startedInsidePdfRef = useRef(false);
   const hasDragRef = useRef(false);
   const activeCaretElementRef = useRef<HTMLElement | null>(null);
@@ -1149,7 +1155,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     const handleScroll = () => {
-      if (isPointerDownRef.current) {
+      const now = Date.now();
+      const shouldBlockForDrag =
+        isPointerDownRef.current &&
+        hasDragRef.current &&
+        now < dragScrollBlockUntilRef.current;
+
+      if (shouldBlockForDrag) {
         return;
       }
 
@@ -1160,7 +1172,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         scrollRatioBeforeZoomRef.current = container.scrollTop / scrollHeight;
       }
 
-      const now = Date.now();
       const previousScrollTop = lastScrollTopRef.current;
       const nextScrollTop = container.scrollTop;
       lastScrollTopRef.current = nextScrollTop;
@@ -2153,6 +2164,72 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * para evitar problemas de timing onde o ref não está disponível na montagem inicial
    */
   useEffect(() => {
+    const logFlagTransition = (flagName: 'isPointerDownRef' | 'isSelectingTextRef', previous: boolean, next: boolean, reason: string) => {
+      if (!(previous && !next)) {
+        return;
+      }
+
+      logger.info(
+        `DEBUG TEMP ${flagName} true -> false`,
+        'FloatingPDFViewer.textSelectionGuards',
+        { reason }
+      );
+    };
+
+    const setPointerDownFlag = (nextValue: boolean, reason: string) => {
+      const previous = isPointerDownRef.current;
+      if (previous === nextValue) {
+        return;
+      }
+
+      isPointerDownRef.current = nextValue;
+      logFlagTransition('isPointerDownRef', previous, nextValue, reason);
+    };
+
+    const setSelectingTextFlag = (nextValue: boolean, reason: string) => {
+      const previous = isSelectingTextRef.current;
+      if (previous === nextValue) {
+        return;
+      }
+
+      isSelectingTextRef.current = nextValue;
+      logFlagTransition('isSelectingTextRef', previous, nextValue, reason);
+    };
+
+    const schedulePointerDownSafetyReset = () => {
+      if (pointerDownSafetyTimeoutRef.current) {
+        clearTimeout(pointerDownSafetyTimeoutRef.current);
+      }
+
+      pointerDownSafetyTimeoutRef.current = setTimeout(() => {
+        setPointerDownFlag(false, 'pointerdown-safety-timeout');
+        isPointerDownInPdfRef.current = false;
+        hasDragRef.current = false;
+      }, POINTER_DOWN_SAFETY_RESET_MS);
+    };
+
+    const scheduleSelectionSafetyReset = (reason: string) => {
+      if (textSelectionSafetyTimeoutRef.current) {
+        clearTimeout(textSelectionSafetyTimeoutRef.current);
+      }
+
+      textSelectionSafetyTimeoutRef.current = setTimeout(() => {
+        const scrollContainer = scrollContainerRef.current;
+        const selection = window.getSelection();
+        const selectedText = extractTextFromSelection(selection);
+        const hasValidSelection = selectedText.length > 0;
+        const anchorInPdf = !!(scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode));
+        const focusInPdf = !!(scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode));
+        const hasSelectionInPdf = hasValidSelection && anchorInPdf && focusInPdf;
+
+        if (!hasSelectionInPdf) {
+          setSelectingTextFlag(false, `${reason}-safety-timeout`);
+          textSelectionActivatedAtRef.current = null;
+          startedInsidePdfRef.current = false;
+        }
+      }, TEXT_SELECTION_SAFETY_RESET_MS);
+    };
+
     const updateSelectionStateFromDom = () => {
       const scrollContainer = scrollContainerRef.current;
       const selection = window.getSelection();
@@ -2162,18 +2239,101 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const focusInPdf = !!(scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode));
       const hasSelectionInPdf = hasValidSelection && anchorInPdf && focusInPdf;
 
-      isSelectingTextRef.current = hasSelectionInPdf;
+      setSelectingTextFlag(hasSelectionInPdf, 'selectionchange');
       textSelectionActivatedAtRef.current = hasSelectionInPdf ? Date.now() : null;
+      scheduleSelectionSafetyReset('selectionchange');
 
       if (!hasSelectionInPdf) {
         startedInsidePdfRef.current = false;
       }
     };
 
+    const handlePointerDown = (e: PointerEvent) => {
+      const scrollContainer = scrollContainerRef.current;
+      if (!scrollContainer) return;
+
+      setPointerDownFlag(true, 'pointerdown');
+      schedulePointerDownSafetyReset();
+
+      const target = e.target as HTMLElement;
+      const isInsidePdf = scrollContainer.contains(target);
+      const isInTextLayer = !!target.closest('.textLayer');
+      const isInReactPdfPage = !!target.closest('.react-pdf__Page');
+      startedInsidePdfRef.current = isInsidePdf || isInTextLayer || isInReactPdfPage;
+
+      if (startedInsidePdfRef.current) {
+        isPointerDownInPdfRef.current = true;
+        hasDragRef.current = false;
+      }
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (isPointerDownInPdfRef.current && (e.buttons === 1 || e.pressure > 0)) {
+        schedulePointerDownSafetyReset();
+
+        if (!hasDragRef.current) {
+          hasDragRef.current = true;
+          setSelectingTextFlag(true, 'pointermove-start-drag');
+        }
+
+        textSelectionActivatedAtRef.current = Date.now();
+        dragScrollBlockUntilRef.current = Date.now() + DRAG_SCROLL_BLOCK_WINDOW_MS;
+        scheduleSelectionSafetyReset('pointermove');
+      }
+    };
+
+    const handlePointerUp = () => {
+      const scrollContainer = scrollContainerRef.current;
+
+      if (pointerDownSafetyTimeoutRef.current) {
+        clearTimeout(pointerDownSafetyTimeoutRef.current);
+        pointerDownSafetyTimeoutRef.current = null;
+      }
+
+      setPointerDownFlag(false, 'pointerup');
+
+      const selection = window.getSelection();
+      const selectedText = extractTextFromSelection(selection);
+      const hasValidSelection = selectedText.length > 0;
+      const anchorInPdf = !!(scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode));
+      const focusInPdf = !!(scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode));
+      const hasSelectionInPdf = hasValidSelection && anchorInPdf && focusInPdf;
+
+      if (anchorInPdf && focusInPdf && hasSelectionInPdf) {
+        setSelectingTextFlag(true, 'pointerup-valid-selection');
+        textSelectionActivatedAtRef.current = Date.now();
+      } else {
+        setSelectingTextFlag(false, 'pointerup-invalid-selection');
+        textSelectionActivatedAtRef.current = null;
+        startedInsidePdfRef.current = false;
+      }
+
+      scheduleSelectionSafetyReset('pointerup');
+
+      isPointerDownInPdfRef.current = false;
+      hasDragRef.current = false;
+    };
+
     document.addEventListener('selectionchange', updateSelectionStateFromDom);
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
 
     return () => {
       document.removeEventListener('selectionchange', updateSelectionStateFromDom);
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+
+      if (textSelectionSafetyTimeoutRef.current) {
+        clearTimeout(textSelectionSafetyTimeoutRef.current);
+        textSelectionSafetyTimeoutRef.current = null;
+      }
+
+      if (pointerDownSafetyTimeoutRef.current) {
+        clearTimeout(pointerDownSafetyTimeoutRef.current);
+        pointerDownSafetyTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -2185,11 +2345,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       const selectionActivatedAt = textSelectionActivatedAtRef.current;
       if (!selectionActivatedAt) {
+        if (isSelectingTextRef.current) {
+          logger.info('DEBUG TEMP isSelectingTextRef true -> false', 'FloatingPDFViewer.textSelectionGuards', {
+            reason: 'stale-selection-without-activation'
+          });
+        }
         isSelectingTextRef.current = false;
         return;
       }
 
       if (Date.now() - selectionActivatedAt > TEXT_SELECTION_STALE_RESET_MS) {
+        if (isSelectingTextRef.current) {
+          logger.info('DEBUG TEMP isSelectingTextRef true -> false', 'FloatingPDFViewer.textSelectionGuards', {
+            reason: 'stale-selection-interval-timeout'
+          });
+        }
         isSelectingTextRef.current = false;
         textSelectionActivatedAtRef.current = null;
         startedInsidePdfRef.current = false;
@@ -2198,71 +2368,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     return () => {
       window.clearInterval(intervalId);
-    };
-  }, []);
-
-  useEffect(() => {
-    const handlePointerDown = (e: PointerEvent) => {
-      const scrollContainer = scrollContainerRef.current;
-      if (!scrollContainer) return;
-
-      isPointerDownRef.current = true;
-      const target = e.target as HTMLElement;
-      const isInsidePdf = scrollContainer.contains(target);
-      const isInTextLayer = !!target.closest('.textLayer');
-      const isInReactPdfPage = !!target.closest('.react-pdf__Page');
-      startedInsidePdfRef.current = isInsidePdf || isInTextLayer || isInReactPdfPage;
-
-      if (startedInsidePdfRef.current) {
-        isPointerDownInPdfRef.current = true;
-        hasDragRef.current = false;
-      }
-
-    };
-
-    const handlePointerMove = (e: PointerEvent) => {
-      if (isPointerDownInPdfRef.current && (e.buttons === 1 || e.pressure > 0)) {
-        if (!hasDragRef.current) {
-          hasDragRef.current = true;
-          isSelectingTextRef.current = true;
-          textSelectionActivatedAtRef.current = Date.now();
-        }
-      }
-    };
-
-    const handlePointerUp = () => {
-      const scrollContainer = scrollContainerRef.current;
-
-      isPointerDownRef.current = false;
-
-      const selection = window.getSelection();
-      const selectedText = extractTextFromSelection(selection);
-      const hasValidSelection = selectedText.length > 0;
-      const anchorInPdf = !!(scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode));
-      const focusInPdf = !!(scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode));
-      const hasSelectionInPdf = hasValidSelection && anchorInPdf && focusInPdf;
-
-      if (hasSelectionInPdf) {
-        isSelectingTextRef.current = true;
-        textSelectionActivatedAtRef.current = Date.now();
-      } else {
-        isSelectingTextRef.current = false;
-        textSelectionActivatedAtRef.current = null;
-        startedInsidePdfRef.current = false;
-      }
-
-      isPointerDownInPdfRef.current = false;
-      hasDragRef.current = false;
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('pointermove', handlePointerMove);
-    document.addEventListener('pointerup', handlePointerUp);
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('pointermove', handlePointerMove);
-      document.removeEventListener('pointerup', handlePointerUp);
     };
   }, []);
 
