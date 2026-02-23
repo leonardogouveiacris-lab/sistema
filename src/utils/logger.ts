@@ -115,7 +115,7 @@ class Logger {
         console.warn(formattedMessage, ...extra);
         break;
       case LogLevel.ERROR:
-        console.error(formattedMessage, ...extra);
+        console.log(`[ERROR] ${formattedMessage}`, ...extra);
         break;
       case LogLevel.SUCCESS:
         console.log(formattedMessage, ...extra);
@@ -132,6 +132,10 @@ class Logger {
 
   info(message: string, context?: LogContext, data?: LogData): void {
     this.log(LogLevel.INFO, message, context, data);
+  }
+
+  debug(message: string, context?: LogContext, data?: LogData): void {
+    this.log(LogLevel.DEBUG, message, context, data);
   }
 
   success(message: string, context?: LogContext, data?: LogData): void {
@@ -156,6 +160,7 @@ const logger = new Logger();
 export default logger;
 export const debug = logger.debug.bind(logger);
 export const info = logger.info.bind(logger);
+export const debug = logger.debug.bind(logger);
 export const success = logger.success.bind(logger);
 export const warn = logger.warn.bind(logger);
 export const error = logger.error.bind(logger);
