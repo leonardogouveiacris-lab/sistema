@@ -678,6 +678,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       visibleEndPageRef.current = centerPage;
     }
 
+    const scrollHeight = container.scrollHeight;
+    if (scrollHeight > viewportHeight && centerPage === 1 && scrollTop > viewportHeight * 0.5) {
+      const scrollRatio = scrollTop / (scrollHeight - viewportHeight);
+      const estimatedPage = Math.max(1, Math.min(state.totalPages, Math.round(1 + scrollRatio * (state.totalPages - 1))));
+      centerPage = estimatedPage;
+      visibleStartPageRef.current = Math.max(1, estimatedPage - 2);
+      visibleEndPageRef.current = Math.min(state.totalPages, estimatedPage + 2);
+    }
+
     const guaranteedStart = Math.max(1, centerPage - 2);
     const guaranteedEnd = Math.min(state.totalPages, centerPage + 2);
     for (let pageNum = guaranteedStart; pageNum <= guaranteedEnd; pageNum++) {
@@ -922,11 +931,22 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const timeSinceLastZoom = now - lastZoomTimestampRef.current;
-    if (timeSinceLastZoom < ZOOM_PROTECTION_DURATION_MS || skipPageChange || now < offsetRebuildBlockUntilRef.current) {
+    const largeDriftFromCurrentPage = Math.abs(centerPage - state.currentPage) >= 3;
+    const shouldForcePageUpdate = largeDriftFromCurrentPage && timeSinceLastZoom >= ZOOM_PROTECTION_DURATION_MS;
+
+    if (!shouldForcePageUpdate && (timeSinceLastZoom < ZOOM_PROTECTION_DURATION_MS || skipPageChange || now < offsetRebuildBlockUntilRef.current)) {
       return;
     }
 
-    if (isKeyboardNavLockActive && centerPage !== keyboardNavTargetPageRef.current) {
+    if (shouldForcePageUpdate) {
+      if (isProgrammaticScrollRef.current) {
+        isProgrammaticScrollRef.current = false;
+      }
+      keyboardNavTargetPageRef.current = null;
+      keyboardNavLockUntilRef.current = 0;
+    }
+
+    if (!shouldForcePageUpdate && isKeyboardNavLockActive && centerPage !== keyboardNavTargetPageRef.current) {
       return;
     }
 
@@ -934,11 +954,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const pageDifference = Math.abs(centerPage - lastDetectedPageRef.current);
     const jumpFromCurrentPage = Math.abs(centerPage - state.currentPage);
 
-    if (pageDifference === 1 && timeSinceLastDetection < 300) {
+    if (!shouldForcePageUpdate && pageDifference === 1 && timeSinceLastDetection < 300) {
       return;
     }
 
-    if (jumpFromCurrentPage > MAX_PAGE_JUMP && !allowLargeJump) {
+    if (!shouldForcePageUpdate && jumpFromCurrentPage > MAX_PAGE_JUMP && !allowLargeJump) {
       logger.warn(
         `Bloqueado pulo de pagina invalido: ${state.currentPage} -> ${centerPage} (${jumpFromCurrentPage} paginas)`,
         'FloatingPDFViewer.calculateVisiblePagesFromScroll'
