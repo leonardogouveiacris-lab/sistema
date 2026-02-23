@@ -3192,12 +3192,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       let firstVisibleLocalPage: number | null = null;
       let lastVisibleLocalPage: number | null = null;
+      let hasScrollDerivedRangeForDocument = false;
 
       effectiveVisiblePages.forEach((globalPageNum) => {
         if (globalPageNum < offset.startPage || globalPageNum > offset.endPage) {
           return;
         }
 
+        hasScrollDerivedRangeForDocument = true;
         const localPageNum = globalPageNum - offset.startPage + 1;
         if (firstVisibleLocalPage === null || localPageNum < firstVisibleLocalPage) {
           firstVisibleLocalPage = localPageNum;
@@ -3217,6 +3219,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const fallbackEnd = Math.min(offset.endPage, fallbackVisibleRangeFromScroll.end);
 
         if (fallbackStart <= fallbackEnd) {
+          hasScrollDerivedRangeForDocument = true;
           firstVisibleLocalPage = fallbackStart - offset.startPage + 1;
           lastVisibleLocalPage = fallbackEnd - offset.startPage + 1;
         }
@@ -3232,7 +3235,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
       }
 
-      if (localCurrentPage !== null) {
+      if (localCurrentPage !== null && !hasScrollDerivedRangeForDocument) {
         const isCurrentNearVisibleWindow =
           localCurrentPage >= firstVisibleLocalPage - CONTINUOUS_WINDOW_BUFFER_PAGES &&
           localCurrentPage <= lastVisibleLocalPage + CONTINUOUS_WINDOW_BUFFER_PAGES;
@@ -3262,6 +3265,27 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return null;
     }
 
+    if (scrollBasedVisiblePages.size > 0) {
+      let minVisiblePage = Number.POSITIVE_INFINITY;
+      let maxVisiblePage = Number.NEGATIVE_INFINITY;
+
+      scrollBasedVisiblePages.forEach((page) => {
+        if (page < minVisiblePage) {
+          minVisiblePage = page;
+        }
+        if (page > maxVisiblePage) {
+          maxVisiblePage = page;
+        }
+      });
+
+      if (Number.isFinite(minVisiblePage) && Number.isFinite(maxVisiblePage)) {
+        return {
+          start: Math.max(1, Math.min(state.totalPages, minVisiblePage)),
+          end: Math.max(1, Math.min(state.totalPages, maxVisiblePage))
+        };
+      }
+    }
+
     if (fallbackVisibleRangeFromScroll) {
       return {
         start: Math.max(1, Math.min(state.totalPages, fallbackVisibleRangeFromScroll.start)),
@@ -3285,7 +3309,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       start: fallbackPage,
       end: fallbackPage
     };
-  }, [state.viewMode, state.totalPages, state.currentPage, fallbackVisibleRangeFromScroll]);
+  }, [state.viewMode, state.totalPages, state.currentPage, fallbackVisibleRangeFromScroll, scrollBasedVisiblePages]);
 
   const continuousCanvasPipeline = useMemo(() => {
     if (state.viewMode !== 'continuous') {
@@ -3521,6 +3545,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const candidatePriority = new Map<number, number>();
     const viewportCorePages = new Set<number>();
+    const strictViewportPages = new Set<number>();
     const pushCandidate = (page: number, priority: number) => {
       if (page < 1 || page > state.totalPages) {
         return;
@@ -3541,6 +3566,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     // 1) Prioridade máxima: páginas visíveis no viewport atual
     effectiveVisiblePages.forEach((page) => {
+      strictViewportPages.add(page);
+      viewportCorePages.add(page);
       pushCandidate(page, 0);
     });
 
@@ -3594,12 +3621,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     if (rankedCandidates.length > CONTINUOUS_RENDER_BUDGET_PAGES) {
       const selectedPages = new Set<number>(viewportCorePages);
+      strictViewportPages.forEach((page) => {
+        selectedPages.add(page);
+      });
 
       for (const candidate of rankedCandidates) {
         if (selectedPages.has(candidate.page)) {
           continue;
         }
-        if (selectedPages.size >= CONTINUOUS_RENDER_BUDGET_PAGES && viewportCorePages.size <= CONTINUOUS_RENDER_BUDGET_PAGES) {
+        if (selectedPages.size >= CONTINUOUS_RENDER_BUDGET_PAGES && strictViewportPages.size <= CONTINUOUS_RENDER_BUDGET_PAGES) {
           break;
         }
         selectedPages.add(candidate.page);
