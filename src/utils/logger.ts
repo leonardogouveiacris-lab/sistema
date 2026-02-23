@@ -37,6 +37,15 @@ export type LogContext = string;
 export type LogData = Record<string, unknown> | unknown;
 export type LogError = unknown;
 
+export interface LogMetadata {
+  flowId: string;
+  entityType: string;
+  entityId?: string;
+  action: string;
+  source: string;
+  [key: string]: unknown;
+}
+
 class Logger {
   private readonly minLevel: LogLevel;
   private readonly consoleEnabled: boolean;
