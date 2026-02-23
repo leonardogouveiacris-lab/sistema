@@ -21,6 +21,8 @@ interface PageExtractionModalProps {
   documentUrl: string;
   documentName: string;
   totalPages: number;
+  globalPageStart: number;
+  globalPageEnd: number;
 }
 
 const THUMBNAIL_SCALE = 0.18;
@@ -34,7 +36,9 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   onClose,
   documentUrl,
   documentName,
-  totalPages
+  totalPages,
+  globalPageStart,
+  globalPageEnd
 }) => {
   const { state, getLocalPageNumber } = usePDFViewer();
   const toast = useToast();
@@ -63,6 +67,22 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     const pages = new Set<number>();
     const parts = input.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
 
+    const toLocalPageNumber = (pageNumber: number): number => {
+      if (pageNumber >= globalPageStart && pageNumber <= globalPageEnd) {
+        return pageNumber - globalPageStart + 1;
+      }
+
+      if (pageNumber >= 1 && pageNumber <= totalPages) {
+        return pageNumber;
+      }
+
+      if (pageNumber >= 1 && pageNumber <= state.totalPages) {
+        throw new Error('Intervalo pertence a outro documento anexado');
+      }
+
+      throw new Error(`Pagina ${pageNumber} excede o total de ${totalPages}`);
+    };
+
     for (const part of parts) {
       if (part.includes('-')) {
         const [startStr, endStr] = part.split('-').map((segment) => segment.trim());
@@ -75,14 +95,15 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
         if (start < 1 || end < 1) {
           throw new Error('Numeros de pagina devem ser maiores que 0');
         }
-        if (start > totalPages || end > totalPages) {
-          throw new Error(`Pagina ${Math.max(start, end)} excede o total de ${totalPages}`);
-        }
-        if (start > end) {
+
+        const localStart = toLocalPageNumber(start);
+        const localEnd = toLocalPageNumber(end);
+
+        if (localStart > localEnd) {
           throw new Error(`Intervalo invertido: "${part}". Use ${end}-${start}`);
         }
 
-        for (let page = start; page <= end; page++) {
+        for (let page = localStart; page <= localEnd; page++) {
           pages.add(page);
         }
         continue;
@@ -95,15 +116,12 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       if (pageNum < 1) {
         throw new Error('Numeros de pagina devem ser maiores que 0');
       }
-      if (pageNum > totalPages) {
-        throw new Error(`Pagina ${pageNum} excede o total de ${totalPages}`);
-      }
 
-      pages.add(pageNum);
+      pages.add(toLocalPageNumber(pageNum));
     }
 
     return Array.from(pages).sort((a, b) => a - b);
-  }, [totalPages]);
+  }, [globalPageEnd, globalPageStart, state.totalPages, totalPages]);
 
   const currentLocalPage = useMemo(() => {
     if (totalPages <= 0) {
@@ -386,7 +404,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
             <div className="flex flex-wrap gap-3 items-end">
               <div className="flex-1 min-w-[250px]">
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                  Paginas para extrair (ex: 1-5, 8, 10-12)
+                  Paginas para extrair (ex: 1-5, 8, 10-12) — aceita paginas globais ou locais do documento atual
                 </label>
                 <input
                   ref={inputRef}

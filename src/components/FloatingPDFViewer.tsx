@@ -5464,6 +5464,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           documentUrl={extractionTarget.document.url}
           documentName={extractionTarget.document.displayName || extractionTarget.document.fileName || 'documento.pdf'}
           totalPages={extractionTargetTotalPages}
+          globalPageStart={extractionTarget.offset.startPage}
+          globalPageEnd={extractionTarget.offset.endPage}
         />
       )}
     </>
