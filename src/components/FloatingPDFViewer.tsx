@@ -2570,58 +2570,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
   }, [state.documents, memoizedDocumentOffsets, documentPages, setDocumentPageInfo, setTotalPages]);
 
-  const pagesToRender = useMemo(() => {
-    if (state.viewMode !== 'continuous') return new Set<number>();
-
-    const pages = new Set<number>();
-    const orderedCandidates: number[] = [];
-    const pushCandidate = (page: number) => {
-      if (page < 1 || page > state.totalPages || pages.has(page)) {
-        return;
-      }
-
-      pages.add(page);
-      orderedCandidates.push(page);
-    };
-
-    scrollBasedVisiblePages.forEach(pushCandidate);
-
-    for (let i = -1; i <= 1; i += 1) {
-      pushCandidate(state.currentPage + i);
-    }
-
-    scrollRenderCache.forEach(pushCandidate);
-
-    if (pages.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
-      const keep = new Set<number>();
-      for (const page of orderedCandidates) {
-        keep.add(page);
-        if (keep.size >= CONTINUOUS_RENDER_BUDGET_PAGES) {
-          break;
-        }
-      }
-      return keep;
-    }
-
-    if (!pages.has(state.currentPage)) {
-      // fallback de segurança: mantém forceRenderPages apenas se necessário
-      forceRenderPages.forEach(pushCandidate);
-    }
-
-    if (pages.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
-      const keep = new Set<number>();
-      for (const page of orderedCandidates) {
-        keep.add(page);
-        if (keep.size >= CONTINUOUS_RENDER_BUDGET_PAGES) {
-          break;
-        }
-      }
-      return keep;
-    }
-
-    return pages;
-  }, [state.viewMode, state.currentPage, state.totalPages, scrollBasedVisiblePages, scrollRenderCache, forceRenderPages]);
-
   const pageArraysByDocument = useMemo(() => {
     const arrays = new Map<string, number[]>();
     for (const doc of state.documents) {
@@ -2713,16 +2661,52 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return windows;
   }, [state.documents, state.currentPage, memoizedDocumentOffsets, documentPages, scrollBasedVisiblePages]);
 
-  const continuousCanvasPagesByDocument = useMemo(() => {
-    if (state.viewMode !== 'continuous') {
-      return new Map<string, Set<number>>();
+  const continuousGlobalVisibleRange = useMemo(() => {
+    if (state.viewMode !== 'continuous' || state.totalPages <= 0) {
+      return null;
     }
 
-    const globalVisibleStartPage = visibleStartPageRef.current;
-    const globalVisibleEndPage = visibleEndPageRef.current;
-    const overscanPages = 2;
+    const fallbackPage = Math.min(state.totalPages, Math.max(1, state.currentPage));
+    const start = Math.max(1, Math.min(visibleStartPageRef.current, fallbackPage));
+    const end = Math.min(state.totalPages, Math.max(visibleEndPageRef.current, fallbackPage));
 
+    return {
+      start: Math.min(start, end),
+      end: Math.max(start, end)
+    };
+  }, [state.viewMode, state.totalPages, state.currentPage, scrollBasedVisiblePages]);
+
+  const continuousCanvasPipeline = useMemo(() => {
+    if (state.viewMode !== 'continuous') {
+      return {
+        pagesByDocument: new Map<string, Set<number>>(),
+        activeDocumentId: null as string | null,
+        visibleDocumentIds: new Set<string>()
+      };
+    }
+
+    // Arquitetura (fonte única):
+    // 1) calcular faixa visível global
+    // 2) distribuir orçamento por documento ativo/inativo
+    // 3) produzir o conjunto final continuousCanvasPagesByDocument
+    // pagesToRender deve ser usado apenas para mount/preload (nunca como decisão primária de canvas).
+    const fallbackPage = Math.min(Math.max(state.totalPages, 1), Math.max(1, state.currentPage));
+    const globalRange = continuousGlobalVisibleRange || {
+      start: fallbackPage,
+      end: fallbackPage
+    };
+    const overscanPages = 2;
     const pagesByDocument = new Map<string, Set<number>>();
+    const visibleDocumentIds = new Set<string>();
+
+    let activeDocumentId: string | null = null;
+    for (const doc of state.documents) {
+      const offset = memoizedDocumentOffsets.get(doc.id);
+      if (offset && state.currentPage >= offset.startPage && state.currentPage <= offset.endPage) {
+        activeDocumentId = doc.id;
+        break;
+      }
+    }
 
     state.documents.forEach((doc) => {
       const offset = memoizedDocumentOffsets.get(doc.id);
@@ -2732,8 +2716,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
+      const hasVisibleIntersection = globalRange.start <= offset.endPage && globalRange.end >= offset.startPage;
+      if (hasVisibleIntersection) {
+        visibleDocumentIds.add(doc.id);
+      }
+
       const { rangeStart, rangeEnd } = pageWindow;
-      const isActiveDocument = state.currentPage >= offset.startPage && state.currentPage <= offset.endPage;
+      const isActiveDocument = activeDocumentId === doc.id;
       const budget = isActiveDocument
         ? CONTINUOUS_RENDER_BUDGET_PAGES
         : CONTINUOUS_INACTIVE_DOCUMENT_RENDER_BUDGET_PAGES;
@@ -2747,13 +2736,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const windowEndGlobal = offset.startPage + rangeEnd - 1;
       const fallbackAnchorGlobal = isActiveDocument
         ? state.currentPage
-        : Math.min(
-            offset.endPage,
-            Math.max(offset.startPage, Math.round((globalVisibleStartPage + globalVisibleEndPage) / 2))
-          );
+        : Math.min(offset.endPage, Math.max(offset.startPage, Math.round((globalRange.start + globalRange.end) / 2)));
 
-      const baseStartGlobalRaw = Math.max(offset.startPage, globalVisibleStartPage);
-      const baseEndGlobalRaw = Math.min(offset.endPage, globalVisibleEndPage);
+      const baseStartGlobalRaw = Math.max(offset.startPage, globalRange.start);
+      const baseEndGlobalRaw = Math.min(offset.endPage, globalRange.end);
       const hasBaseInDocument = baseStartGlobalRaw <= baseEndGlobalRaw;
 
       const baseStartGlobal = hasBaseInDocument ? baseStartGlobalRaw : fallbackAnchorGlobal;
@@ -2810,14 +2796,67 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       pagesByDocument.set(doc.id, selectedPages);
     });
 
-    return pagesByDocument;
+    return {
+      pagesByDocument,
+      activeDocumentId,
+      visibleDocumentIds
+    };
   }, [
     state.viewMode,
     state.documents,
     state.currentPage,
+    state.totalPages,
     memoizedDocumentOffsets,
-    continuousWindowByDocument
+    continuousWindowByDocument,
+    continuousGlobalVisibleRange
   ]);
+
+  const continuousCanvasPagesByDocument = useMemo(() => {
+    return continuousCanvasPipeline.pagesByDocument;
+  }, [continuousCanvasPipeline]);
+
+  const pagesToRender = useMemo(() => {
+    if (state.viewMode !== 'continuous') return new Set<number>();
+
+    const pages = new Set<number>();
+    const orderedCandidates: number[] = [];
+    const pushCandidate = (page: number) => {
+      if (page < 1 || page > state.totalPages || pages.has(page)) {
+        return;
+      }
+
+      pages.add(page);
+      orderedCandidates.push(page);
+    };
+
+    continuousCanvasPipeline.pagesByDocument.forEach((localPages, docId) => {
+      const offset = memoizedDocumentOffsets.get(docId);
+      if (!offset) return;
+      localPages.forEach((localPage) => {
+        pushCandidate(offset.startPage + localPage - 1);
+      });
+    });
+
+    for (let i = -1; i <= 1; i += 1) {
+      pushCandidate(state.currentPage + i);
+    }
+
+    scrollRenderCache.forEach(pushCandidate);
+    forceRenderPages.forEach(pushCandidate);
+
+    if (pages.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
+      const keep = new Set<number>();
+      for (const page of orderedCandidates) {
+        keep.add(page);
+        if (keep.size >= CONTINUOUS_RENDER_BUDGET_PAGES) {
+          break;
+        }
+      }
+      return keep;
+    }
+
+    return pages;
+  }, [state.viewMode, state.currentPage, state.totalPages, continuousCanvasPipeline, memoizedDocumentOffsets, scrollRenderCache, forceRenderPages]);
 
   const currentPageInfo = useMemo(() => {
     if (state.viewMode !== 'paginated' || state.totalPages === 0) return null;
@@ -2846,34 +2885,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const now = Date.now();
     const baseDocumentIndices = new Set<number>();
-    const candidatePages = new Set<number>([
-      ...Array.from(scrollBasedVisiblePages),
-      ...Array.from(pagesToRender)
-    ]);
-
-    for (let i = -1; i <= 1; i++) {
-      const page = state.currentPage + i;
-      if (page >= 1 && page <= state.totalPages) {
-        candidatePages.add(page);
-      }
-    }
-
-    candidatePages.forEach((globalPage) => {
-      for (const [docIndex, doc] of state.documents.entries()) {
-        const offset = memoizedDocumentOffsets.get(doc.id);
-        if (offset && globalPage >= offset.startPage && globalPage <= offset.endPage) {
-          baseDocumentIndices.add(docIndex);
-          break;
-        }
+    state.documents.forEach((doc, docIndex) => {
+      if (continuousCanvasPipeline.visibleDocumentIds.has(doc.id) || continuousCanvasPipeline.activeDocumentId === doc.id) {
+        baseDocumentIndices.add(docIndex);
       }
     });
 
     if (baseDocumentIndices.size === 0) {
-      for (const [docIndex, doc] of state.documents.entries()) {
-        const offset = memoizedDocumentOffsets.get(doc.id);
-        if (offset && state.currentPage >= offset.startPage && state.currentPage <= offset.endPage) {
-          baseDocumentIndices.add(docIndex);
-          break;
+      for (const globalPage of pagesToRender) {
+        for (const [docIndex, doc] of state.documents.entries()) {
+          const offset = memoizedDocumentOffsets.get(doc.id);
+          if (offset && globalPage >= offset.startPage && globalPage <= offset.endPage) {
+            baseDocumentIndices.add(docIndex);
+            break;
+          }
         }
       }
     }
@@ -2902,7 +2927,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     });
 
     return hysteresisWindowIndices;
-  }, [state.viewMode, state.currentPage, state.totalPages, state.documents, memoizedDocumentOffsets, scrollBasedVisiblePages, pagesToRender]);
+  }, [state.viewMode, state.documents, memoizedDocumentOffsets, continuousCanvasPipeline, pagesToRender]);
 
   useEffect(() => {
     if (state.viewMode !== 'continuous') {
