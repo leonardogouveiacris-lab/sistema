@@ -102,8 +102,16 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
 
   const handlePageRangeChange = useCallback((input: string) => {
     setPageRangeInput(input);
-    const pages = parsePageRanges(input, totalPages);
-    setSelectedPages(new Set(pages));
+
+    try {
+      const pages = parsePageRanges(input, totalPages);
+      setSelectedPages(new Set(pages));
+      setError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Intervalo de paginas invalido';
+      setSelectedPages(new Set());
+      setError(message);
+    }
   }, [totalPages]);
 
   const handleSelectAll = useCallback(() => {
@@ -142,9 +150,14 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       return newSet;
     });
     setPageRangeInput(prev => {
-      const currentPages = parsePageRanges(prev, totalPages);
-      const filtered = currentPages.filter(p => p !== pageNum);
-      return formatPageRanges(filtered);
+      try {
+        const currentPages = parsePageRanges(prev, totalPages);
+        const filtered = currentPages.filter(p => p !== pageNum);
+        setError(null);
+        return formatPageRanges(filtered);
+      } catch {
+        return '';
+      }
     });
   }, [totalPages]);
 
