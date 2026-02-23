@@ -8,6 +8,12 @@ import {
   CreateConnectorInput,
   UpdateConnectorInput
 } from '../types/PDFComment';
+import logger from '../utils/logger';
+import { createFlowContext, generateFlowId } from '../utils/flowId';
+
+interface LogOptions {
+  flowId?: string;
+}
 
 const mapCommentFromDB = (row: Record<string, unknown>): PDFComment => ({
   id: row.id as string,
@@ -135,8 +141,28 @@ export async function getCommentsWithConnectorsByDocument(
   }));
 }
 
-export async function createComment(input: CreateCommentInput): Promise<PDFComment> {
+export async function createComment(input: CreateCommentInput, options: LogOptions = {}): Promise<PDFComment> {
+  const flowId = options.flowId || generateFlowId();
+  logger.info('Creating comment', 'PDFCommentsService.createComment', {
+    metadata: createFlowContext({
+      flowId,
+      entityType: 'comment',
+      entityId: input.processDocumentId,
+      action: 'create',
+      source: 'PDFCommentsService.createComment'
+    }),
+    pageNumber: input.pageNumber
+  });
+
   if (!supabase) {
+    logger.warn('Supabase client unavailable', 'PDFCommentsService.createComment', {
+      metadata: createFlowContext({
+        flowId,
+        entityType: 'comment',
+        action: 'create',
+        source: 'PDFCommentsService.createComment'
+      })
+    });
     throw new SystemError(
       'Supabase não configurado',
       ErrorType.SYSTEM,
@@ -158,8 +184,29 @@ export async function createComment(input: CreateCommentInput): Promise<PDFComme
     .select()
     .single();
 
-  if (error) throw error;
-  return mapCommentFromDB(data);
+  if (error) {
+    logger.error('Error creating comment', 'PDFCommentsService.createComment', {
+      metadata: createFlowContext({
+        flowId,
+        entityType: 'comment',
+        action: 'create',
+        source: 'PDFCommentsService.createComment'
+      })
+    }, error);
+    throw error;
+  }
+
+  const createdComment = mapCommentFromDB(data);
+  logger.success('Comment created', 'PDFCommentsService.createComment', {
+    metadata: createFlowContext({
+      flowId,
+      entityType: 'comment',
+      entityId: createdComment.id,
+      action: 'create',
+      source: 'PDFCommentsService.createComment'
+    })
+  });
+  return createdComment;
 }
 
 export async function updateComment(
@@ -226,8 +273,28 @@ export async function getConnectorsByComment(commentId: string): Promise<PDFComm
   return (data || []).map(mapConnectorFromDB);
 }
 
-export async function createConnector(input: CreateConnectorInput): Promise<PDFCommentConnector> {
+export async function createConnector(input: CreateConnectorInput, options: LogOptions = {}): Promise<PDFCommentConnector> {
+  const flowId = options.flowId || generateFlowId();
+  logger.info('Creating connector', 'PDFCommentsService.createConnector', {
+    metadata: createFlowContext({
+      flowId,
+      entityType: 'connector',
+      entityId: input.commentId,
+      action: 'create',
+      source: 'PDFCommentsService.createConnector'
+    }),
+    connectorType: input.connectorType
+  });
+
   if (!supabase) {
+    logger.warn('Supabase client unavailable', 'PDFCommentsService.createConnector', {
+      metadata: createFlowContext({
+        flowId,
+        entityType: 'connector',
+        action: 'create',
+        source: 'PDFCommentsService.createConnector'
+      })
+    });
     throw new SystemError(
       'Supabase não configurado',
       ErrorType.SYSTEM,
@@ -256,8 +323,30 @@ export async function createConnector(input: CreateConnectorInput): Promise<PDFC
     .select()
     .single();
 
-  if (error) throw error;
-  return mapConnectorFromDB(data);
+  if (error) {
+    logger.error('Error creating connector', 'PDFCommentsService.createConnector', {
+      metadata: createFlowContext({
+        flowId,
+        entityType: 'connector',
+        action: 'create',
+        source: 'PDFCommentsService.createConnector'
+      })
+    }, error);
+    throw error;
+  }
+
+  const createdConnector = mapConnectorFromDB(data);
+  logger.success('Connector created', 'PDFCommentsService.createConnector', {
+    metadata: createFlowContext({
+      flowId,
+      entityType: 'connector',
+      entityId: createdConnector.id,
+      action: 'create',
+      source: 'PDFCommentsService.createConnector'
+    })
+  });
+
+  return createdConnector;
 }
 
 export async function updateConnector(

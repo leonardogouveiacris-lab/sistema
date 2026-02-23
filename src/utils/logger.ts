@@ -8,20 +8,13 @@ export enum LogLevel {
   SUCCESS = 'SUCCESS'
 }
 
-const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
-  [LogLevel.DEBUG]: 10,
-  [LogLevel.INFO]: 20,
-  [LogLevel.SUCCESS]: 20,
-  [LogLevel.WARN]: 30,
-  [LogLevel.ERROR]: 40
-};
-
-const LOG_LEVEL_ENV_MAP: Record<string, LogLevel> = {
-  DEBUG: LogLevel.DEBUG,
-  INFO: LogLevel.INFO,
-  WARN: LogLevel.WARN,
-  ERROR: LogLevel.ERROR
-};
+export interface LogMetadata {
+  flowId: string;
+  entityType: string;
+  entityId?: string;
+  action: string;
+  source: string;
+}
 
 export type LogContext = string;
 export type LogData = Record<string, unknown> | unknown;
