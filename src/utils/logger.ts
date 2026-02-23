@@ -128,10 +128,6 @@ class Logger {
     this.log(LogLevel.INFO, message, context, data);
   }
 
-  debug(message: string, context?: LogContext, data?: LogData): void {
-    this.log(LogLevel.DEBUG, message, context, data);
-  }
-
   success(message: string, context?: LogContext, data?: LogData): void {
     this.log(LogLevel.SUCCESS, message, context, data);
   }
@@ -154,7 +150,6 @@ const logger = new Logger();
 export default logger;
 export const debug = logger.debug.bind(logger);
 export const info = logger.info.bind(logger);
-export const debug = logger.debug.bind(logger);
 export const success = logger.success.bind(logger);
 export const warn = logger.warn.bind(logger);
 export const error = logger.error.bind(logger);
