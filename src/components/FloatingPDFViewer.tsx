@@ -3246,6 +3246,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }>();
 
     state.documents.forEach((doc) => {
+      const pendingNavigationTarget = pendingNavigationTargetRef.current;
       const offset = memoizedDocumentOffsets.get(doc.id);
       if (!offset) {
         return;
@@ -3279,6 +3280,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const localCurrentPage = isCurrentPageInDocument
         ? state.currentPage - offset.startPage + 1
         : null;
+      const isPendingTargetInDocument = Boolean(
+        pendingNavigationTarget &&
+        pendingNavigationTarget.page >= offset.startPage &&
+        pendingNavigationTarget.page <= offset.endPage
+      );
+
+      if (isPendingTargetInDocument) {
+        const pendingLocalPage = pendingNavigationTarget!.page - offset.startPage + 1;
+        const pendingWindowRadius = 1;
+        firstVisibleLocalPage = Math.max(1, pendingLocalPage - pendingWindowRadius);
+        lastVisibleLocalPage = Math.min(numPages, pendingLocalPage + pendingWindowRadius);
+      }
 
       if ((firstVisibleLocalPage === null || lastVisibleLocalPage === null) && fallbackVisibleRangeFromScroll) {
         const fallbackStart = Math.max(offset.startPage, fallbackVisibleRangeFromScroll.start);
@@ -3425,6 +3438,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     state.documents.forEach((doc) => {
+      const pendingNavigationTarget = pendingNavigationTargetRef.current;
       const offset = memoizedDocumentOffsets.get(doc.id);
       const pageWindow = continuousWindowByDocument.get(doc.id);
 
@@ -3468,6 +3482,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       // Núcleo obrigatório: manter 100% das páginas visíveis no viewport para este documento.
       for (let globalPage = baseStartGlobal; globalPage <= baseEndGlobal; globalPage += 1) {
         selectedPagesGlobal.add(globalPage);
+      }
+
+      if (
+        pendingNavigationTarget &&
+        pendingNavigationTarget.page >= offset.startPage &&
+        pendingNavigationTarget.page <= offset.endPage
+      ) {
+        selectedPagesGlobal.add(pendingNavigationTarget.page);
       }
 
       // Camada opcional: overscan/preload em torno do núcleo.
@@ -3736,6 +3758,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         baseDocumentIndices.add(docIndex);
       }
     });
+
+    const pendingNavigationTarget = pendingNavigationTargetRef.current;
+    if (pendingNavigationTarget) {
+      const pendingTargetDocumentIndex = state.documents.findIndex((doc) => {
+        const offset = memoizedDocumentOffsets.get(doc.id);
+        return Boolean(offset && pendingNavigationTarget.page >= offset.startPage && pendingNavigationTarget.page <= offset.endPage);
+      });
+
+      if (pendingTargetDocumentIndex >= 0) {
+        baseDocumentIndices.add(pendingTargetDocumentIndex);
+      }
+    }
 
     if (baseDocumentIndices.size === 0) {
       for (const globalPage of pagesToRender) {
