@@ -11,9 +11,9 @@
  * - Estados minimizado e expandido
  *
  * Otimizações de Performance V4 (Modo Contínuo Rápido):
- * - RENDERIZAÇÃO EXPANDIDA: página atual ± 2 vizinhas (total 5 páginas)
- * - PRELOAD IMEDIATO: páginas +-2 carregadas instantaneamente (sem esperar idle)
- * - IDLE PRELOAD SECUNDÁRIO: páginas +-3,+-4 via requestIdleCallback
+ * - RENDERIZAÇÃO EXPANDIDA: orçamento explícito com limite total de páginas
+ * - PRELOAD IMEDIATO: páginas vizinhas dentro de CONTINUOUS_PRELOAD_RADIUS
+ * - IDLE PRELOAD SECUNDÁRIO: faixa adicional até CONTINUOUS_IDLE_PRELOAD_RADIUS via requestIdleCallback
  * - CACHE DE VISITADAS: últimas 10 páginas mantidas em memória para navegação rápida
  * - FALLBACK DE RENDER: timeout de 500ms garante página atual sempre renderizada
  * - IntersectionObserver com rootMargin expandido (200px) para detecção antecipada
@@ -71,6 +71,9 @@ const BOOKMARKS_IDLE_TIMEOUT_MS = 1000;
 const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
 const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
+const CONTINUOUS_RENDER_BUDGET_PAGES = 12;
+const CONTINUOUS_PRELOAD_RADIUS = 2;
+const CONTINUOUS_IDLE_PRELOAD_RADIUS = 4;
 const CONTINUOUS_PAGE_GAP_PX = 16;
 const PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS = 8000;
 const PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS = 400;
@@ -1939,7 +1942,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   /**
    * Effect para preload imediato de páginas vizinhas + cache de páginas visitadas
-   * V4: Preload imediato para +-2 páginas, idle para +-3,+-4
+   * V4: Preload imediato via CONTINUOUS_PRELOAD_RADIUS e idle até CONTINUOUS_IDLE_PRELOAD_RADIUS
    * Cache mantém últimas 10 páginas visitadas para navegação rápida
    */
   useEffect(() => {
@@ -1971,7 +1974,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     });
 
     const immediatePagesToPreload = new Set<number>();
-    for (let offset = -1; offset <= 1; offset++) {
+    for (let offset = -CONTINUOUS_PRELOAD_RADIUS; offset <= CONTINUOUS_PRELOAD_RADIUS; offset++) {
       const page = state.currentPage + offset;
       if (page >= 1 && page <= state.totalPages) {
         immediatePagesToPreload.add(page);
@@ -1985,8 +1988,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     idleCallbackIdRef.current = requestIdleCallback(() => {
       const additionalPages = new Set<number>();
 
-      for (let offset = -2; offset <= 2; offset++) {
-        if (Math.abs(offset) > 1) {
+      for (let offset = -CONTINUOUS_IDLE_PRELOAD_RADIUS; offset <= CONTINUOUS_IDLE_PRELOAD_RADIUS; offset++) {
+        if (Math.abs(offset) > CONTINUOUS_PRELOAD_RADIUS) {
           const page = state.currentPage + offset;
           if (page >= 1 && page <= state.totalPages) {
             additionalPages.add(page);
@@ -3552,11 +3555,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         setForceRenderPages(prev => {
           const newSet = new Set(prev);
           newSet.add(state.currentPage);
-          if (newSet.size > 5) {
+          if (newSet.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
             for (const page of newSet) {
               if (page !== state.currentPage) {
                 newSet.delete(page);
-                if (newSet.size <= 5) break;
+                if (newSet.size <= CONTINUOUS_RENDER_BUDGET_PAGES) break;
               }
             }
           }
