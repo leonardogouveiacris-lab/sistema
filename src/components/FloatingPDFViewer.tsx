@@ -74,6 +74,8 @@ const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
 const CONTINUOUS_PAGE_GAP_PX = 16;
 const PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS = 8000;
 const PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS = 400;
+const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
+const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 
 
 type HeavyTaskType = 'comments' | 'bookmarks';
@@ -192,6 +194,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const totalPagesRef = useRef<number>(state.totalPages);
   const keyboardNavigationThrottleMsRef = useRef<number>(state.viewMode === 'continuous' ? 90 : 130);
   const keyboardNavigationLastTimeRef = useRef<number>(0);
+  const keyboardNavTargetPageRef = useRef<number | null>(null);
+  const keyboardNavLockUntilRef = useRef<number>(0);
+  const keyboardNavTargetReachedAtRef = useRef<number | null>(null);
 
   const pageBeforeZoomRef = useRef<number>(1);
   const zoomBlockedUntilRef = useRef<number>(0);
@@ -674,8 +679,37 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     }
 
+    const keyboardNavTargetPage = keyboardNavTargetPageRef.current;
+    if (keyboardNavTargetPage !== null && state.viewMode === 'continuous') {
+      if (now >= keyboardNavLockUntilRef.current) {
+        keyboardNavTargetPageRef.current = null;
+        keyboardNavTargetReachedAtRef.current = null;
+        isProgrammaticScrollRef.current = false;
+      } else if (centerPage === keyboardNavTargetPage) {
+        if (keyboardNavTargetReachedAtRef.current === null) {
+          keyboardNavTargetReachedAtRef.current = now;
+        }
+
+        if (now - keyboardNavTargetReachedAtRef.current >= KEYBOARD_NAV_SETTLE_DURATION_MS) {
+          keyboardNavTargetPageRef.current = null;
+          keyboardNavTargetReachedAtRef.current = null;
+          isProgrammaticScrollRef.current = false;
+        }
+      } else {
+        keyboardNavTargetReachedAtRef.current = null;
+      }
+    }
+
+    const isKeyboardNavLockActive = keyboardNavTargetPageRef.current !== null &&
+      now < keyboardNavLockUntilRef.current &&
+      state.viewMode === 'continuous';
+
     const timeSinceLastZoom = now - lastZoomTimestampRef.current;
     if (timeSinceLastZoom < ZOOM_PROTECTION_DURATION_MS || skipPageChange) {
+      return;
+    }
+
+    if (isKeyboardNavLockActive && centerPage !== keyboardNavTargetPageRef.current) {
       return;
     }
 
@@ -2985,6 +3019,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (state.currentPage <= 1) return;
 
     if (state.viewMode === 'continuous') {
+      const targetPage = state.currentPage - 1;
+      keyboardNavTargetPageRef.current = targetPage;
+      keyboardNavLockUntilRef.current = Date.now() + KEYBOARD_NAV_LOCK_DURATION_MS;
+      keyboardNavTargetReachedAtRef.current = null;
       isProgrammaticScrollRef.current = true;
     }
     previousPage();
@@ -2995,6 +3033,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (state.currentPage >= state.totalPages) return;
 
     if (state.viewMode === 'continuous') {
+      const targetPage = state.currentPage + 1;
+      keyboardNavTargetPageRef.current = targetPage;
+      keyboardNavLockUntilRef.current = Date.now() + KEYBOARD_NAV_LOCK_DURATION_MS;
+      keyboardNavTargetReachedAtRef.current = null;
       isProgrammaticScrollRef.current = true;
     }
     nextPage();
