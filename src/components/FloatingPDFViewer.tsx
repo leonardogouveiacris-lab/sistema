@@ -678,7 +678,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       visibleEndPageRef.current = centerPage;
     }
 
+    if (visiblePages.size === 0 || !visiblePages.has(centerPage)) {
+      const fallbackStart = Math.max(1, centerPage - 2);
+      const fallbackEnd = Math.min(state.totalPages, centerPage + 2);
+      for (let pageNum = fallbackStart; pageNum <= fallbackEnd; pageNum++) {
+        visiblePages.add(pageNum);
+      }
+      visibleStartPageRef.current = fallbackStart;
+      visibleEndPageRef.current = fallbackEnd;
+    }
+
     setScrollBasedVisiblePages(prev => {
+      if (visiblePages.size === 0) {
+        return prev;
+      }
       if (prev.size !== visiblePages.size) return visiblePages;
       for (const page of visiblePages) {
         if (!prev.has(page)) return visiblePages;
