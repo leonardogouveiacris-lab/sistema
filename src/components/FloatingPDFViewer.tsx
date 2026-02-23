@@ -3023,7 +3023,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * Effect para navegação por teclado com throttle para evitar navegação excessiva
    */
   useEffect(() => {
-    const NAVIGATION_THROTTLE_MS = 150;
+    const lastHandledRepeatByKey = new Map<string, number>();
+    const pressedNavigationKeys = new Set<string>();
+    const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
+    const NAVIGATION_THROTTLE_MS = state.viewMode === 'continuous' ? 90 : 130;
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (NAVIGATION_KEYS.has(e.key)) {
+        pressedNavigationKeys.delete(e.key);
+      }
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
@@ -3042,11 +3051,43 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       const now = Date.now();
-      const isNavigationKey = ['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown'].includes(e.key);
+      const isNavigationKey = NAVIGATION_KEYS.has(e.key);
 
-      if (isNavigationKey && e.repeat && now - keyboardNavigationLastTimeRef.current < NAVIGATION_THROTTLE_MS) {
-        e.preventDefault();
-        return;
+      if (isNavigationKey) {
+        const wasPressed = pressedNavigationKeys.has(e.key);
+        pressedNavigationKeys.add(e.key);
+
+        if (e.repeat || wasPressed) {
+          const lastHandledAt = lastHandledRepeatByKey.get(e.key) ?? 0;
+          const elapsed = now - lastHandledAt;
+
+          if (elapsed < NAVIGATION_THROTTLE_MS) {
+            logger.debug('[FloatingPDFViewer] Keyboard navigation throttled', {
+              key: e.key,
+              reason: 'repeat/hold interval too short',
+              elapsed,
+              throttleMs: NAVIGATION_THROTTLE_MS,
+              isRepeat: e.repeat,
+              wasPressed
+            });
+            e.preventDefault();
+            return;
+          }
+
+          logger.debug('[FloatingPDFViewer] Keyboard navigation repeat/hold allowed', {
+            key: e.key,
+            elapsed,
+            throttleMs: NAVIGATION_THROTTLE_MS,
+            isRepeat: e.repeat,
+            wasPressed
+          });
+          lastHandledRepeatByKey.set(e.key, now);
+        } else {
+          logger.debug('[FloatingPDFViewer] Keyboard navigation discrete tap allowed', {
+            key: e.key,
+            throttleMs: NAVIGATION_THROTTLE_MS
+          });
+        }
       }
 
       switch (e.key) {
@@ -3055,23 +3096,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           break;
         case 'ArrowLeft':
           e.preventDefault();
-          keyboardNavigationLastTimeRef.current = now;
-          handlePreviousPageRef.current();
+          handlePreviousPage();
           break;
         case 'ArrowRight':
           e.preventDefault();
-          keyboardNavigationLastTimeRef.current = now;
-          handleNextPageRef.current();
+          handleNextPage();
           break;
         case 'PageUp':
           e.preventDefault();
-          keyboardNavigationLastTimeRef.current = now;
-          handlePreviousPageRef.current();
+          handlePreviousPage();
           break;
         case 'PageDown':
           e.preventDefault();
-          keyboardNavigationLastTimeRef.current = now;
-          handleNextPageRef.current();
+          handleNextPage();
           break;
         case 'Home':
           e.preventDefault();
@@ -3085,11 +3122,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [handlePreviousPage, handleNextPage, handleManualPageNavigation, state.totalPages, state.viewMode, toggleSearch]);
 
   /**
    * Callback para quando uma página é renderizada - captura suas dimensões reais
