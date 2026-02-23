@@ -3346,6 +3346,22 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const lastHandledRepeatByKey = new Map<string, number>();
     const pressedNavigationKeys = new Set<string>();
     const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
+    const KEYBOARD_LOG_CONTEXT = 'FloatingPDFViewer.handleKeyDown';
+
+    const getKeyboardLogPayload = (key: string, elapsed: number, throttle: number) => ({
+      key,
+      elapsed,
+      throttle,
+      lockState: {
+        targetPage: keyboardNavTargetPageRef.current,
+        lockUntil: keyboardNavLockUntilRef.current,
+        cooldownUntil: keyboardNavCooldownUntilRef.current,
+        isLockActive: Date.now() < keyboardNavLockUntilRef.current,
+        isCooldownActive: Date.now() < keyboardNavCooldownUntilRef.current,
+        stableFrames: keyboardNavStableFramesRef.current
+      },
+      pendingTarget: pendingNavigationTargetRef.current
+    });
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (NAVIGATION_KEYS.has(e.key)) {
@@ -3354,10 +3370,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const now = Date.now();
         const elapsedSinceLastInput = now - keyboardNavLastInputAtRef.current;
         const hasRecentKeyboardNavigation = elapsedSinceLastInput <= KEYBOARD_NAV_LOCK_DURATION_MS * 2;
+        const throttle = keyboardNavigationThrottleMsRef.current;
 
         if (hasRecentKeyboardNavigation) {
           keyboardNavCooldownUntilRef.current = now + KEYBOARD_NAV_COOLDOWN_DURATION_MS;
           keyboardNavStableFramesRef.current = 0;
+
+          logger.info(
+            'Keyboard navigation lock/cooldown release armed on keyup',
+            KEYBOARD_LOG_CONTEXT,
+            getKeyboardLogPayload(e.key, elapsedSinceLastInput, throttle)
+          );
         }
       }
     };
@@ -3397,12 +3420,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           if (elapsed < navigationThrottleMs) {
             logger.info(
               'Keyboard navigation throttled',
-              'FloatingPDFViewer.handleKeyDown',
+              KEYBOARD_LOG_CONTEXT,
               {
-                key: e.key,
+                ...getKeyboardLogPayload(e.key, elapsed, navigationThrottleMs),
                 reason: 'repeat/hold interval too short',
-                elapsed,
-                throttleMs: navigationThrottleMs,
                 isRepeat: e.repeat,
                 wasPressed
               }
@@ -3413,11 +3434,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
           logger.info(
             'Keyboard navigation repeat/hold allowed',
-            'FloatingPDFViewer.handleKeyDown',
+            KEYBOARD_LOG_CONTEXT,
             {
-              key: e.key,
-              elapsed,
-              throttleMs: navigationThrottleMs,
+              ...getKeyboardLogPayload(e.key, elapsed, navigationThrottleMs),
               isRepeat: e.repeat,
               wasPressed
             }
@@ -3426,10 +3445,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         } else {
           logger.info(
             'Keyboard navigation discrete tap allowed',
-            'FloatingPDFViewer.handleKeyDown',
+            KEYBOARD_LOG_CONTEXT,
             {
-              key: e.key,
-              throttleMs: keyboardNavigationThrottleMsRef.current
+              ...getKeyboardLogPayload(e.key, 0, keyboardNavigationThrottleMsRef.current),
+              isRepeat: e.repeat,
+              wasPressed: false
             }
           );
         }
