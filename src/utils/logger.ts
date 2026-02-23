@@ -1,10 +1,20 @@
 const isProduction = import.meta.env.PROD;
 
 export enum LogLevel {
+  DEBUG = 'DEBUG',
   INFO = 'INFO',
   WARN = 'WARN',
   ERROR = 'ERROR',
   SUCCESS = 'SUCCESS'
+}
+
+export enum LogCategory {
+  UI = 'ui',
+  REALTIME = 'realtime',
+  NETWORK = 'network',
+  PDF_RENDER = 'pdf-render',
+  STORAGE = 'storage',
+  USER_ACTION = 'user-action'
 }
 
 export type LogContext = string;
@@ -34,6 +44,9 @@ class Logger {
     }
 
     switch (level) {
+      case LogLevel.DEBUG:
+        console.debug(formattedMessage, ...extra);
+        break;
       case LogLevel.INFO:
         console.info(formattedMessage, ...extra);
         break;
@@ -50,6 +63,10 @@ class Logger {
         console.log(formattedMessage, ...extra);
         break;
     }
+  }
+
+  debug(message: string, context?: LogContext, data?: LogData): void {
+    this.log(LogLevel.DEBUG, message, context, data);
   }
 
   info(message: string, context?: LogContext, data?: LogData): void {
@@ -76,6 +93,7 @@ class Logger {
 const logger = new Logger();
 
 export default logger;
+export const debug = logger.debug.bind(logger);
 export const info = logger.info.bind(logger);
 export const success = logger.success.bind(logger);
 export const warn = logger.warn.bind(logger);

@@ -6,6 +6,7 @@
 import { supabase } from '../lib/supabase';
 import { PDFHighlight, NewPDFHighlight, HighlightFilter } from '../types/Highlight';
 import logger from '../utils/logger';
+import { logPdfEvent } from '../utils/domainLogger';
 
 /**
  * Create a new highlight
@@ -19,7 +20,7 @@ export async function createHighlight(
       logger.warn('Supabase client unavailable', 'highlights.service.createHighlight');
       return null;
     }
-    logger.info('Creating highlight', 'highlights.service.createHighlight', {
+    logPdfEvent('Creating highlight', 'highlights.service.createHighlight', 'highlight_create_started', {
       processId: data.processId,
       pageNumber: data.pageNumber,
       color: data.color,
@@ -51,7 +52,7 @@ export async function createHighlight(
       return null;
     }
 
-    logger.success('Highlight created successfully', 'highlights.service.createHighlight', { id: highlight.id });
+    logPdfEvent('Highlight created successfully', 'highlights.service.createHighlight', 'highlight_created', { id: highlight.id });
 
     return {
       id: highlight.id,
@@ -85,7 +86,7 @@ export async function getHighlights(filter: HighlightFilter = {}): Promise<PDFHi
       logger.warn('Supabase client unavailable', 'highlights.service.getHighlights');
       return [];
     }
-    logger.info('Fetching highlights', 'highlights.service.getHighlights', filter);
+    logPdfEvent('Fetching highlights', 'highlights.service.getHighlights', 'highlight_fetch_started', filter, 'debug');
 
     let query = supabase
       .from('pdf_highlights')
@@ -117,14 +118,16 @@ export async function getHighlights(filter: HighlightFilter = {}): Promise<PDFHi
     }
 
     if (!data || data.length === 0) {
-      logger.info('No highlights found', 'highlights.service.getHighlights', filter);
+      logPdfEvent('No highlights found', 'highlights.service.getHighlights', 'highlight_fetch_empty', filter, 'debug');
       return [];
     }
 
-    logger.success(
+    logPdfEvent(
       `Fetched ${data.length} highlights`,
       'highlights.service.getHighlights',
-      { count: data.length }
+      'highlight_fetch_completed',
+      { count: data.length },
+      'debug'
     );
 
     return data.map((highlight) => {
@@ -164,7 +167,7 @@ export async function updateHighlightColor(
       logger.warn('Supabase client unavailable', 'highlights.service.updateHighlightColor');
       return false;
     }
-    logger.info('Updating highlight color', 'highlights.service.updateHighlightColor', { id, color });
+    logPdfEvent('Updating highlight color', 'highlights.service.updateHighlightColor', 'highlight_update_started', { id, color });
 
     const { error } = await supabase
       .from('pdf_highlights')
@@ -179,7 +182,7 @@ export async function updateHighlightColor(
       return false;
     }
 
-    logger.success('Highlight color updated successfully', 'highlights.service.updateHighlightColor', { id });
+    logPdfEvent('Highlight color updated successfully', 'highlights.service.updateHighlightColor', 'highlight_updated', { id });
     return true;
   } catch (error) {
     logger.errorWithException(
@@ -200,7 +203,7 @@ export async function deleteHighlight(id: string): Promise<boolean> {
       logger.warn('Supabase client unavailable', 'highlights.service.deleteHighlight');
       return false;
     }
-    logger.info('Deleting highlight', 'highlights.service.deleteHighlight', { id });
+    logPdfEvent('Deleting highlight', 'highlights.service.deleteHighlight', 'highlight_delete_started', { id });
 
     const { data: existing, error: checkError } = await supabase
       .from('pdf_highlights')
@@ -252,7 +255,7 @@ export async function deleteHighlight(id: string): Promise<boolean> {
       return false;
     }
 
-    logger.success('Highlight deleted successfully', 'highlights.service.deleteHighlight', {
+    logPdfEvent('Highlight deleted successfully', 'highlights.service.deleteHighlight', 'highlight_deleted', {
       id,
       deletedCount: count
     });
@@ -277,7 +280,7 @@ export async function deleteHighlightsByProcess(processId: string): Promise<bool
       logger.warn('Supabase client unavailable', 'highlights.service.deleteHighlightsByProcess');
       return false;
     }
-    logger.info('Deleting highlights for process', 'highlights.service.deleteHighlightsByProcess', {
+    logPdfEvent('Deleting highlights for process', 'highlights.service.deleteHighlightsByProcess', 'highlight_bulk_delete_process_started', {
       processId
     });
 
@@ -295,9 +298,10 @@ export async function deleteHighlightsByProcess(processId: string): Promise<bool
       return false;
     }
 
-    logger.success(
+    logPdfEvent(
       'Highlights deleted successfully for process',
       'highlights.service.deleteHighlightsByProcess',
+      'highlight_bulk_delete_process_completed',
       { processId }
     );
     return true;
@@ -320,9 +324,10 @@ export async function deleteHighlightsByDocument(processDocumentId: string): Pro
       logger.warn('Supabase client unavailable', 'highlights.service.deleteHighlightsByDocument');
       return false;
     }
-    logger.info(
+    logPdfEvent(
       'Deleting highlights for document',
       'highlights.service.deleteHighlightsByDocument',
+      'highlight_bulk_delete_document_started',
       { processDocumentId }
     );
 
@@ -340,9 +345,10 @@ export async function deleteHighlightsByDocument(processDocumentId: string): Pro
       return false;
     }
 
-    logger.success(
+    logPdfEvent(
       'Highlights deleted successfully for document',
       'highlights.service.deleteHighlightsByDocument',
+      'highlight_bulk_delete_document_completed',
       { processDocumentId }
     );
     return true;
@@ -365,7 +371,7 @@ export async function getHighlightByLancamentoId(lancamentoId: string): Promise<
       logger.warn('Supabase client unavailable', 'highlights.service.getHighlightByLancamentoId');
       return null;
     }
-    logger.info('Fetching highlight by lancamento ID', 'highlights.service.getHighlightByLancamentoId', {
+    logPdfEvent('Fetching highlight by lancamento ID', 'highlights.service.getHighlightByLancamentoId', 'highlight_fetch_by_lancamento_started', {
       lancamentoId
     });
 
@@ -386,13 +392,13 @@ export async function getHighlightByLancamentoId(lancamentoId: string): Promise<
     }
 
     if (!data) {
-      logger.info('No highlight found for lancamento ID', 'highlights.service.getHighlightByLancamentoId', {
+      logPdfEvent('No highlight found for lancamento ID', 'highlights.service.getHighlightByLancamentoId', 'highlight_fetch_by_lancamento_empty', {
         lancamentoId
       });
       return null;
     }
 
-    logger.success('Highlight found for lancamento ID', 'highlights.service.getHighlightByLancamentoId', {
+    logPdfEvent('Highlight found for lancamento ID', 'highlights.service.getHighlightByLancamentoId', 'highlight_fetch_by_lancamento_completed', {
       highlightId: data.id
     });
 

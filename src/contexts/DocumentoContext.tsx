@@ -3,6 +3,7 @@ import { Documento, NewDocumento } from '../types/Documento';
 import { logger, translateSupabaseError } from '../utils';
 import { DocumentosService } from '../services';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
+import { logRealtimeEvent } from '../utils/domainLogger';
 
 export interface OperationResult {
   success: boolean;
@@ -61,7 +62,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
         const data = await DocumentosService.getAll();
         completed = true;
         setDocumentos(data);
-        logger.success(`${data.length} documentos carregados`, 'DocumentoContext');
+        logger.debug(`${data.length} documentos carregados`, 'DocumentoContext');
       } catch (err) {
         completed = true;
         const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
@@ -80,12 +81,12 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
       clearTimeout(refreshTimeoutRef.current);
     }
     refreshTimeoutRef.current = setTimeout(async () => {
-      logger.info('Realtime: Refreshing documentos', 'DocumentoContext');
+      logRealtimeEvent('Realtime refresh requested', 'DocumentoContext', 'refresh_requested', { table: 'documentos' });
       try {
         const data = await DocumentosService.getAll();
         setDocumentos(data);
-      } catch (err) {
-        logger.error('Realtime: Failed to refresh documentos', 'DocumentoContext');
+      } catch {
+        logRealtimeEvent('Realtime refresh failed', 'DocumentoContext', 'refresh_failed', { table: 'documentos' }, 'error');
       }
     }, 100);
   }, []);

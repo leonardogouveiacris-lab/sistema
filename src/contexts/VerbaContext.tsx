@@ -3,6 +3,7 @@ import { Verba, VerbaLancamento, NewVerbaComLancamento, NewVerbaLancamento } fro
 import { logger, ValidationUtils, translateSupabaseError } from '../utils';
 import { VerbasService } from '../services';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
+import { logRealtimeEvent } from '../utils/domainLogger';
 
 export interface OperationResult {
   success: boolean;
@@ -65,7 +66,7 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const data = await VerbasService.getAll();
         completed = true;
         setVerbas(data);
-        logger.success(`${data.length} verbas carregadas`, 'VerbaContext');
+        logger.debug(`${data.length} verbas carregadas`, 'VerbaContext');
       } catch (err) {
         completed = true;
         const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
@@ -84,12 +85,12 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       clearTimeout(refreshTimeoutRef.current);
     }
     refreshTimeoutRef.current = setTimeout(async () => {
-      logger.info('Realtime: Refreshing verbas', 'VerbaContext');
+      logRealtimeEvent('Realtime refresh requested', 'VerbaContext', 'refresh_requested', { table: 'verbas' });
       try {
         const data = await VerbasService.getAll();
         setVerbas(data);
-      } catch (err) {
-        logger.error('Realtime: Failed to refresh verbas', 'VerbaContext');
+      } catch {
+        logRealtimeEvent('Realtime refresh failed', 'VerbaContext', 'refresh_failed', { table: 'verbas' }, 'error');
       }
     }, 100);
   }, []);
