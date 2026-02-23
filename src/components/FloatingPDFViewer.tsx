@@ -3554,13 +3554,22 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   ]);
 
   useEffect(() => {
-    if (state.viewMode !== 'continuous' || !continuousGlobalVisibleRange) {
+    if (state.viewMode !== 'continuous') {
       currentPageVisibleDivergenceStartedAtRef.current = null;
+      currentPageVisibleDivergenceLastLogAtRef.current = 0;
       return;
     }
 
     const now = Date.now();
-    const { start, end } = continuousGlobalVisibleRange;
+    const derivedContainerRange = deriveVisibleRangeFromContainer();
+    const effectiveVisibleRange = continuousGlobalVisibleRange || fallbackVisibleRangeFromScroll || derivedContainerRange;
+
+    if (!effectiveVisibleRange) {
+      currentPageVisibleDivergenceStartedAtRef.current = null;
+      return;
+    }
+
+    const { start, end } = effectiveVisibleRange;
     const distanceToVisibleRange = state.currentPage < start
       ? start - state.currentPage
       : state.currentPage > end
@@ -3578,22 +3587,84 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const divergenceDurationMs = now - currentPageVisibleDivergenceStartedAtRef.current;
-    if (divergenceDurationMs >= 500 && now - currentPageVisibleDivergenceLastLogAtRef.current >= 500) {
-      currentPageVisibleDivergenceLastLogAtRef.current = now;
-      logger.info(
-        'Métrica: currentPage divergente do range visível por mais de 500ms',
-        'FloatingPDFViewer.currentPageVisibleDivergence',
+    if (divergenceDurationMs >= FORCED_RECONCILIATION_DIVERGENCE_DURATION_MS) {
+      const shouldLogMetric = now - currentPageVisibleDivergenceLastLogAtRef.current >= 500;
+
+      if (shouldLogMetric) {
+        currentPageVisibleDivergenceLastLogAtRef.current = now;
+        logger.info(
+          'Métrica: currentPage divergente do range visível por mais de 500ms',
+          'FloatingPDFViewer.currentPageVisibleDivergence',
+          {
+            currentPage: state.currentPage,
+            visibleStart: start,
+            visibleEnd: end,
+            distanceToVisibleRange,
+            divergenceDurationMs,
+            usedFallbackVisibleRange: Boolean(fallbackVisibleRangeFromScroll),
+            usedContainerDerivedRange: Boolean(!continuousGlobalVisibleRange && derivedContainerRange)
+          }
+        );
+      }
+
+      if (state.isRotating || isModeTransitioning) {
+        return;
+      }
+
+      const reconciledPage = Math.min(
+        Math.max(state.totalPages, 1),
+        Math.max(1, Math.round((start + end) / 2))
+      );
+
+      logger.warn(
+        'Ação corretiva: reconciliação de currentPage após divergência prolongada',
+        'FloatingPDFViewer.currentPageVisibleDivergenceCorrection',
         {
           currentPage: state.currentPage,
+          reconciledPage,
           visibleStart: start,
           visibleEnd: end,
           distanceToVisibleRange,
           divergenceDurationMs,
-          usedFallbackVisibleRange: Boolean(fallbackVisibleRangeFromScroll)
+          bypassedNonCriticalLocks: true,
+          isRotating: state.isRotating,
+          isModeTransitioning
         }
       );
+
+      pendingNavigationTargetRef.current = null;
+      keyboardNavTargetPageRef.current = null;
+      keyboardNavTargetReachedAtRef.current = null;
+      keyboardNavRecentTargetPageRef.current = null;
+      keyboardNavStableFramesRef.current = 0;
+      keyboardNavLockUntilRef.current = 0;
+      keyboardNavCooldownUntilRef.current = 0;
+      forcedReconciliationDivergenceStartedAtRef.current = null;
+      scrollDivergenceStartedAtRef.current = null;
+      scrollDivergenceLastLogAtRef.current = 0;
+      zoomBlockedUntilRef.current = 0;
+      offsetRebuildBlockUntilRef.current = 0;
+      centerPageFreezeUntilRef.current = 0;
+
+      lastDetectedPageRef.current = reconciledPage;
+      lastDetectionTimeRef.current = now;
+      currentPageVisibleDivergenceStartedAtRef.current = null;
+      currentPageVisibleDivergenceLastLogAtRef.current = now;
+      releaseProgrammaticScroll('current-page-visible-divergence-correction');
+      goToPage(reconciledPage);
     }
-  }, [state.viewMode, state.currentPage, continuousGlobalVisibleRange, fallbackVisibleRangeFromScroll]);
+  }, [
+    state.viewMode,
+    state.currentPage,
+    state.totalPages,
+    state.isRotating,
+    continuousGlobalVisibleRange,
+    fallbackVisibleRangeFromScroll,
+    deriveVisibleRangeFromContainer,
+    releaseProgrammaticScroll,
+    goToPage,
+    isModeTransitioning
+  ]);
 
   const continuousCanvasPagesByDocument = useMemo(() => {
     const pagesByDocument = continuousCanvasPipeline.pagesByDocument;
