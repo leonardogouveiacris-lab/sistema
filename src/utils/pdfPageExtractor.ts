@@ -17,27 +17,37 @@ export function parsePageRanges(input: string, totalPages: number): number[] {
   const pages = new Set<number>();
   const parts = input.split(',').map(p => p.trim()).filter(Boolean);
 
+  const createValidationError = (part: string) =>
+    new Error(`Intervalo de paginas invalido: "${part}". Use valores entre 1 e ${totalPages}.`);
+
   for (const part of parts) {
     if (part.includes('-')) {
       const [startStr, endStr] = part.split('-').map(s => s.trim());
       const start = parseInt(startStr, 10);
       const end = parseInt(endStr, 10);
 
-      if (!isNaN(start) && !isNaN(end)) {
-        const validStart = Math.max(1, Math.min(start, totalPages));
-        const validEnd = Math.max(1, Math.min(end, totalPages));
-        const actualStart = Math.min(validStart, validEnd);
-        const actualEnd = Math.max(validStart, validEnd);
+      if (isNaN(start) || isNaN(end)) {
+        throw createValidationError(part);
+      }
 
-        for (let i = actualStart; i <= actualEnd; i++) {
-          pages.add(i);
-        }
+      if (start < 1 || end < 1 || start > totalPages || end > totalPages) {
+        throw createValidationError(part);
+      }
+
+      const actualStart = Math.min(start, end);
+      const actualEnd = Math.max(start, end);
+
+      for (let i = actualStart; i <= actualEnd; i++) {
+        pages.add(i);
       }
     } else {
       const page = parseInt(part, 10);
-      if (!isNaN(page) && page >= 1 && page <= totalPages) {
-        pages.add(page);
+
+      if (isNaN(page) || page < 1 || page > totalPages) {
+        throw createValidationError(part);
       }
+
+      pages.add(page);
     }
   }
 
