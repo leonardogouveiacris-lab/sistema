@@ -189,6 +189,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const handleManualPageNavigationRef = useRef<(pageNum: number) => void>(() => {});
   const toggleSearchRef = useRef<() => void>(() => {});
   const totalPagesRef = useRef<number>(state.totalPages);
+  const keyboardNavigationThrottleMsRef = useRef<number>(state.viewMode === 'continuous' ? 90 : 130);
   const keyboardNavigationLastTimeRef = useRef<number>(0);
 
   const pageBeforeZoomRef = useRef<number>(1);
@@ -2964,11 +2965,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     handleManualPageNavigationRef.current = handleManualPageNavigation;
     toggleSearchRef.current = toggleSearch;
     totalPagesRef.current = state.totalPages;
+    keyboardNavigationThrottleMsRef.current = state.viewMode === 'continuous' ? 90 : 130;
   }, [
     handlePreviousPage,
     handleNextPage,
     handleManualPageNavigation,
     state.totalPages,
+    state.viewMode,
     toggleSearch
   ]);
 
@@ -3026,7 +3029,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const lastHandledRepeatByKey = new Map<string, number>();
     const pressedNavigationKeys = new Set<string>();
     const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
-    const NAVIGATION_THROTTLE_MS = state.viewMode === 'continuous' ? 90 : 130;
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (NAVIGATION_KEYS.has(e.key)) {
@@ -3060,13 +3062,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (e.repeat || wasPressed) {
           const lastHandledAt = lastHandledRepeatByKey.get(e.key) ?? 0;
           const elapsed = now - lastHandledAt;
+          const navigationThrottleMs = keyboardNavigationThrottleMsRef.current;
 
-          if (elapsed < NAVIGATION_THROTTLE_MS) {
+          if (elapsed < navigationThrottleMs) {
             logger.debug('[FloatingPDFViewer] Keyboard navigation throttled', {
               key: e.key,
               reason: 'repeat/hold interval too short',
               elapsed,
-              throttleMs: NAVIGATION_THROTTLE_MS,
+              throttleMs: navigationThrottleMs,
               isRepeat: e.repeat,
               wasPressed
             });
@@ -3077,7 +3080,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           logger.debug('[FloatingPDFViewer] Keyboard navigation repeat/hold allowed', {
             key: e.key,
             elapsed,
-            throttleMs: NAVIGATION_THROTTLE_MS,
+            throttleMs: navigationThrottleMs,
             isRepeat: e.repeat,
             wasPressed
           });
@@ -3085,7 +3088,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         } else {
           logger.debug('[FloatingPDFViewer] Keyboard navigation discrete tap allowed', {
             key: e.key,
-            throttleMs: NAVIGATION_THROTTLE_MS
+            throttleMs: keyboardNavigationThrottleMsRef.current
           });
         }
       }
@@ -3096,19 +3099,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           break;
         case 'ArrowLeft':
           e.preventDefault();
-          handlePreviousPage();
+          handlePreviousPageRef.current();
           break;
         case 'ArrowRight':
           e.preventDefault();
-          handleNextPage();
+          handleNextPageRef.current();
           break;
         case 'PageUp':
           e.preventDefault();
-          handlePreviousPage();
+          handlePreviousPageRef.current();
           break;
         case 'PageDown':
           e.preventDefault();
-          handleNextPage();
+          handleNextPageRef.current();
           break;
         case 'Home':
           e.preventDefault();
@@ -3128,7 +3131,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [handlePreviousPage, handleNextPage, handleManualPageNavigation, state.totalPages, state.viewMode, toggleSearch]);
+  }, []);
 
   /**
    * Callback para quando uma página é renderizada - captura suas dimensões reais
