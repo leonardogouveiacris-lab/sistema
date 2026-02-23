@@ -88,6 +88,7 @@ const DOCUMENT_REMOUNT_RECONCILIATION_BLOCK_MS = 900;
 const DOCUMENT_REMOUNT_CENTER_FREEZE_MS = 1200;
 const REMOUNT_ANOMALOUS_PAGE_DELTA = 4;
 const RECENT_NAVIGATION_WINDOW_MS = 2200;
+const TEXT_SELECTION_STALE_RESET_MS = 2500;
 
 
 type HeavyTaskType = 'comments' | 'bookmarks';
@@ -236,6 +237,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const highlightedPageRef = useRef<number | null>(state.highlightedPage);
   const pendingNavigationTargetRef = useRef<{ page: number; source: 'highlight' | 'manual' | 'search'; startedAt: number } | null>(null);
   const isModeSwitchingRef = useRef(false);
+  const textSelectionActivatedAtRef = useRef<number | null>(null);
   const pageBeforeModeSwitchRef = useRef<number>(state.currentPage);
   const prevViewModeRef = useRef<'continuous' | 'paginated'>(state.viewMode);
   const hasMountedRef = useRef(false);
@@ -1048,7 +1050,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const container = scrollContainerRef.current;
 
     const handleScroll = () => {
-      if (isPointerDownRef.current || isSelectingTextRef.current) {
+      if (isPointerDownRef.current) {
         return;
       }
 
@@ -2046,6 +2048,55 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * para evitar problemas de timing onde o ref não está disponível na montagem inicial
    */
   useEffect(() => {
+    const updateSelectionStateFromDom = () => {
+      const scrollContainer = scrollContainerRef.current;
+      const selection = window.getSelection();
+      const selectedText = extractTextFromSelection(selection);
+      const hasValidSelection = selectedText.length > 0;
+      const anchorInPdf = !!(scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode));
+      const focusInPdf = !!(scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode));
+      const hasSelectionInPdf = hasValidSelection && anchorInPdf && focusInPdf;
+
+      isSelectingTextRef.current = hasSelectionInPdf;
+      textSelectionActivatedAtRef.current = hasSelectionInPdf ? Date.now() : null;
+
+      if (!hasSelectionInPdf) {
+        startedInsidePdfRef.current = false;
+      }
+    };
+
+    document.addEventListener('selectionchange', updateSelectionStateFromDom);
+
+    return () => {
+      document.removeEventListener('selectionchange', updateSelectionStateFromDom);
+    };
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (!isSelectingTextRef.current || isPointerDownRef.current) {
+        return;
+      }
+
+      const selectionActivatedAt = textSelectionActivatedAtRef.current;
+      if (!selectionActivatedAt) {
+        isSelectingTextRef.current = false;
+        return;
+      }
+
+      if (Date.now() - selectionActivatedAt > TEXT_SELECTION_STALE_RESET_MS) {
+        isSelectingTextRef.current = false;
+        textSelectionActivatedAtRef.current = null;
+        startedInsidePdfRef.current = false;
+      }
+    }, 250);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
     const handlePointerDown = (e: PointerEvent) => {
       const scrollContainer = scrollContainerRef.current;
       if (!scrollContainer) return;
@@ -2069,6 +2120,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (!hasDragRef.current) {
           hasDragRef.current = true;
           isSelectingTextRef.current = true;
+          textSelectionActivatedAtRef.current = Date.now();
         }
       }
     };
@@ -2081,14 +2133,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const selection = window.getSelection();
       const selectedText = extractTextFromSelection(selection);
       const hasValidSelection = selectedText.length > 0;
-      const anchorInPdf = scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode);
-      const focusInPdf = scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode);
-      const startedInside = startedInsidePdfRef.current;
+      const anchorInPdf = !!(scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode));
+      const focusInPdf = !!(scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode));
+      const hasSelectionInPdf = hasValidSelection && anchorInPdf && focusInPdf;
 
-      if (hasValidSelection && anchorInPdf && startedInside) {
+      if (hasSelectionInPdf) {
         isSelectingTextRef.current = true;
+        textSelectionActivatedAtRef.current = Date.now();
       } else {
         isSelectingTextRef.current = false;
+        textSelectionActivatedAtRef.current = null;
         startedInsidePdfRef.current = false;
       }
 
