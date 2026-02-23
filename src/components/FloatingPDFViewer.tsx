@@ -79,6 +79,7 @@ const CONTINUOUS_IDLE_PRELOAD_RADIUS = 4;
 const CONTINUOUS_PAGE_GAP_PX = 16;
 const PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS = 8000;
 const PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS = 400;
+const PROGRAMMATIC_SCROLL_SAFETY_TIMEOUT_MS = 9000;
 const ZOOM_POST_RECONCILIATION_TIMEOUT_MS = 240;
 const ZOOM_POST_BLOCK_DURATION_MS = 120;
 const ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES = 2;
@@ -98,6 +99,7 @@ const TEXT_SELECTION_SAFETY_RESET_MS = 450;
 const EMPTY_VISIBLE_PAGES_SCROLL_FRAME_THRESHOLD = 4;
 const SCROLL_ACTIVITY_IDLE_TIMEOUT_MS = 160;
 const CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES = 3;
+const FORCED_RECONCILIATION_DIVERGENCE_DURATION_MS = 500;
 
 
 type HeavyTaskType = 'comments' | 'bookmarks';
@@ -203,6 +205,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const pageDetectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProgrammaticScrollRef = useRef(false);
+  const programmaticScrollSafetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollRenderCacheRecencyQueueRef = useRef<number[]>([]);
   const lastDetectedPageRef = useRef<number>(1);
   const lastDetectionTimeRef = useRef<number>(0);
@@ -216,6 +219,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const scrollDivergenceLastLogAtRef = useRef<number>(0);
   const currentPageVisibleDivergenceStartedAtRef = useRef<number | null>(null);
   const currentPageVisibleDivergenceLastLogAtRef = useRef<number>(0);
+  const forcedReconciliationDivergenceStartedAtRef = useRef<number | null>(null);
   const emptyVisiblePagesScrollFramesRef = useRef<number>(0);
   const isUserScrollingRef = useRef<boolean>(false);
   const scrollIdleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -636,6 +640,58 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
   }, [cumulativePageBottoms, cumulativePageTops, state.totalPages]);
 
+  const releaseProgrammaticScroll = useCallback((reason: string) => {
+    if (programmaticScrollSafetyTimeoutRef.current) {
+      clearTimeout(programmaticScrollSafetyTimeoutRef.current);
+      programmaticScrollSafetyTimeoutRef.current = null;
+    }
+
+    if (isProgrammaticScrollRef.current) {
+      logger.info(
+        'Programmatic scroll liberado',
+        'FloatingPDFViewer.programmaticScroll',
+        { reason }
+      );
+    }
+
+    isProgrammaticScrollRef.current = false;
+  }, []);
+
+  const markProgrammaticScroll = useCallback((reason: string) => {
+    if (programmaticScrollSafetyTimeoutRef.current) {
+      clearTimeout(programmaticScrollSafetyTimeoutRef.current);
+    }
+
+    isProgrammaticScrollRef.current = true;
+    programmaticScrollSafetyTimeoutRef.current = setTimeout(() => {
+      if (!isProgrammaticScrollRef.current) {
+        return;
+      }
+
+      logger.warn(
+        'Programmatic scroll safety timeout acionado; liberando flag presa',
+        'FloatingPDFViewer.programmaticScroll',
+        {
+          reason,
+          timeoutMs: PROGRAMMATIC_SCROLL_SAFETY_TIMEOUT_MS
+        }
+      );
+
+      isProgrammaticScrollRef.current = false;
+      programmaticScrollSafetyTimeoutRef.current = null;
+    }, PROGRAMMATIC_SCROLL_SAFETY_TIMEOUT_MS);
+  }, []);
+
+
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollSafetyTimeoutRef.current) {
+        clearTimeout(programmaticScrollSafetyTimeoutRef.current);
+        programmaticScrollSafetyTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   /**
    * Calcula quais paginas estao visiveis baseado no scrollTop do container
    * Esta funcao e chamada durante o scroll e usa as dimensoes das paginas para determinar
@@ -907,7 +963,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           'FloatingPDFViewer.calculateVisiblePagesFromScroll'
         );
         pendingNavigationTargetRef.current = null;
-        isProgrammaticScrollRef.current = false;
+        releaseProgrammaticScroll('state-change');
       } else {
         if (lastDetectedPageRef.current !== targetPage) {
           lastDetectedPageRef.current = targetPage;
@@ -922,7 +978,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       if (now >= keyboardNavLockUntilRef.current) {
         keyboardNavTargetPageRef.current = null;
         keyboardNavTargetReachedAtRef.current = null;
-        isProgrammaticScrollRef.current = false;
+        releaseProgrammaticScroll('state-change');
       } else if (centerPage === keyboardNavTargetPage) {
         if (keyboardNavTargetReachedAtRef.current === null) {
           keyboardNavTargetReachedAtRef.current = now;
@@ -931,7 +987,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (now - keyboardNavTargetReachedAtRef.current >= KEYBOARD_NAV_SETTLE_DURATION_MS) {
           keyboardNavTargetPageRef.current = null;
           keyboardNavTargetReachedAtRef.current = null;
-          isProgrammaticScrollRef.current = false;
+          releaseProgrammaticScroll('state-change');
         }
       } else {
         keyboardNavTargetReachedAtRef.current = null;
@@ -989,8 +1045,50 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
+    const centerPageDivergence = Math.abs(centerPage - state.currentPage);
+    if (centerPageDivergence >= CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES) {
+      if (forcedReconciliationDivergenceStartedAtRef.current === null) {
+        forcedReconciliationDivergenceStartedAtRef.current = now;
+      }
+    } else {
+      forcedReconciliationDivergenceStartedAtRef.current = null;
+    }
+
+    const divergenceDurationMs = forcedReconciliationDivergenceStartedAtRef.current === null
+      ? 0
+      : now - forcedReconciliationDivergenceStartedAtRef.current;
+    const shouldForceReconciliation =
+      centerPageDivergence >= CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES &&
+      divergenceDurationMs >= FORCED_RECONCILIATION_DIVERGENCE_DURATION_MS;
+
+    if (shouldForceReconciliation) {
+      logger.warn(
+        'forced reconciliation',
+        'FloatingPDFViewer.calculateVisiblePagesFromScroll',
+        {
+          centerPage,
+          currentPage: state.currentPage,
+          divergencePages: centerPageDivergence,
+          divergenceDurationMs,
+          pendingNavigationTarget: pendingNavigationTargetRef.current
+        }
+      );
+
+      pendingNavigationTargetRef.current = null;
+      keyboardNavTargetPageRef.current = null;
+      keyboardNavTargetReachedAtRef.current = null;
+      keyboardNavLockUntilRef.current = 0;
+      keyboardNavCooldownUntilRef.current = 0;
+      forcedReconciliationDivergenceStartedAtRef.current = null;
+      lastDetectedPageRef.current = centerPage;
+      lastDetectionTimeRef.current = now;
+      releaseProgrammaticScroll('forced-reconciliation');
+      goToPage(centerPage);
+      return;
+    }
+
     const timeSinceLastZoom = now - lastZoomTimestampRef.current;
-    const largeDriftFromCurrentPage = Math.abs(centerPage - state.currentPage) >= 3;
+    const largeDriftFromCurrentPage = centerPageDivergence >= 3;
     const shouldForcePageUpdate = largeDriftFromCurrentPage && timeSinceLastZoom >= ZOOM_PROTECTION_DURATION_MS;
 
     if (!shouldForcePageUpdate && (timeSinceLastZoom < ZOOM_PROTECTION_DURATION_MS || skipPageChange || now < offsetRebuildBlockUntilRef.current)) {
@@ -998,9 +1096,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     if (shouldForcePageUpdate) {
-      if (isProgrammaticScrollRef.current) {
-        isProgrammaticScrollRef.current = false;
-      }
+      releaseProgrammaticScroll('forced-page-update');
       keyboardNavTargetPageRef.current = null;
       keyboardNavLockUntilRef.current = 0;
     }
@@ -1037,6 +1133,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     getDocumentByGlobalPage,
     goToPage,
     isSearchNavigationActive,
+    releaseProgrammaticScroll,
     state.currentPage,
     state.highlightedPage,
     state.isSearchOpen,
@@ -1054,7 +1151,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const startedAt = Date.now();
-    isProgrammaticScrollRef.current = true;
+    markProgrammaticScroll('state-change');
     pendingNavigationTargetRef.current = { page: targetPage, source, startedAt };
     lastDetectedPageRef.current = targetPage;
     lastDetectionTimeRef.current = startedAt;
@@ -1068,7 +1165,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       if (pageElement && scrollContainerRef.current) {
         pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
         setTimeout(() => {
-          isProgrammaticScrollRef.current = false;
+          releaseProgrammaticScroll('state-change');
         }, PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS);
         return;
       }
@@ -1083,12 +1180,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (pendingNavigationTargetRef.current?.page === targetPage) {
           pendingNavigationTargetRef.current = null;
         }
-        isProgrammaticScrollRef.current = false;
+        releaseProgrammaticScroll('state-change');
       }
     };
 
     scrollToTargetPage();
-  }, [goToPage, state.viewMode]);
+  }, [goToPage, markProgrammaticScroll, releaseProgrammaticScroll, state.viewMode]);
 
   useEffect(() => {
     calculateVisiblePagesFromScrollRef.current = calculateVisiblePagesFromScroll;
@@ -4148,10 +4245,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       keyboardNavLockUntilRef.current = Date.now() + KEYBOARD_NAV_LOCK_DURATION_MS;
       keyboardNavTargetReachedAtRef.current = null;
       keyboardNavStableFramesRef.current = 0;
-      isProgrammaticScrollRef.current = true;
+      markProgrammaticScroll('state-change');
     }
     previousPage();
-  }, [previousPage, state.isRotating, state.currentPage, state.viewMode]);
+  }, [markProgrammaticScroll, previousPage, state.isRotating, state.currentPage, state.viewMode]);
 
   const handleNextPage = useCallback(() => {
     if (state.isRotating) return;
@@ -4164,23 +4261,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       keyboardNavLockUntilRef.current = Date.now() + KEYBOARD_NAV_LOCK_DURATION_MS;
       keyboardNavTargetReachedAtRef.current = null;
       keyboardNavStableFramesRef.current = 0;
-      isProgrammaticScrollRef.current = true;
+      markProgrammaticScroll('state-change');
     }
     nextPage();
-  }, [nextPage, state.isRotating, state.currentPage, state.totalPages, state.viewMode]);
+  }, [markProgrammaticScroll, nextPage, state.isRotating, state.currentPage, state.totalPages, state.viewMode]);
 
   const handleToggleViewMode = useCallback(() => {
     isModeSwitchingRef.current = true;
     pageBeforeModeSwitchRef.current = state.currentPage;
-    isProgrammaticScrollRef.current = true;
+    markProgrammaticScroll('state-change');
     lastDetectedPageRef.current = state.currentPage;
     lastDetectionTimeRef.current = Date.now();
     toggleViewMode();
     setTimeout(() => {
-      isProgrammaticScrollRef.current = false;
+      releaseProgrammaticScroll('state-change');
       isModeSwitchingRef.current = false;
     }, 500);
-  }, [toggleViewMode, state.currentPage]);
+  }, [markProgrammaticScroll, releaseProgrammaticScroll, toggleViewMode, state.currentPage]);
 
   useEffect(() => {
     handlePreviousPageRef.current = handlePreviousPage;
@@ -4219,7 +4316,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       scrollContainerRef.current.scrollLeft = 0;
     } else if (currentMode === 'continuous' && prevMode === 'paginated' && scrollContainerRef.current) {
       setIsModeTransitioning(true);
-      isProgrammaticScrollRef.current = true;
+      markProgrammaticScroll('state-change');
       const targetPage = pageBeforeModeSwitchRef.current;
       let retryCount = 0;
       const MAX_RETRIES = 50;
@@ -4231,7 +4328,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           requestAnimationFrame(() => {
             setIsModeTransitioning(false);
             setTimeout(() => {
-              isProgrammaticScrollRef.current = false;
+              releaseProgrammaticScroll('state-change');
             }, 300);
           });
         } else if (retryCount < MAX_RETRIES) {
@@ -4239,13 +4336,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           setTimeout(scrollToTargetPage, 16);
         } else {
           setIsModeTransitioning(false);
-          isProgrammaticScrollRef.current = false;
+          releaseProgrammaticScroll('state-change');
         }
       };
 
       scrollToTargetPage();
     }
-  }, [state.viewMode]);
+  }, [markProgrammaticScroll, releaseProgrammaticScroll, state.viewMode]);
 
   /**
    * Effect para navegação por teclado com throttle para evitar navegação excessiva
@@ -4503,7 +4600,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    isProgrammaticScrollRef.current = true;
+    markProgrammaticScroll('state-change');
     const targetPage = state.rotationTargetPage;
 
     setTimeout(() => {
@@ -4513,10 +4610,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       setTimeout(() => {
-        isProgrammaticScrollRef.current = false;
+        releaseProgrammaticScroll('state-change');
       }, 400);
     }, 50);
-  }, [state.isRotating, state.rotationTargetPage, state.viewMode]);
+  }, [markProgrammaticScroll, releaseProgrammaticScroll, state.isRotating, state.rotationTargetPage, state.viewMode]);
 
   const scrollRatioBeforeZoomRef = useRef<number>(0);
 
@@ -4572,13 +4669,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const scrollRatio = scrollRatioBeforeZoomRef.current;
     const zoomAnchor = zoomAnchorRef.current;
 
-    isProgrammaticScrollRef.current = true;
+    markProgrammaticScroll('state-change');
     lastZoomTimestampRef.current = Date.now();
     zoomBlockedUntilRef.current = 0;
 
     requestAnimationFrame(() => {
       if (!scrollContainerRef.current) {
-        isProgrammaticScrollRef.current = false;
+        releaseProgrammaticScroll('state-change');
         return;
       }
 
@@ -4633,8 +4730,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       const reconciliationStartedAt = Date.now();
-      const releaseProgrammaticScroll = () => {
-        isProgrammaticScrollRef.current = false;
+      const releaseProgrammaticScrollAfterZoom = () => {
+        releaseProgrammaticScroll('zoom-reconciliation');
       };
 
       const reconcilePageAndRelease = () => {
@@ -4653,7 +4750,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const timedOut = Date.now() - reconciliationStartedAt >= ZOOM_POST_RECONCILIATION_TIMEOUT_MS;
 
         if (hasConverged || timedOut) {
-          releaseProgrammaticScroll();
+          releaseProgrammaticScrollAfterZoom();
           return;
         }
 
@@ -4665,7 +4762,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     prevZoomRef.current = state.zoom;
     zoomAnchorRef.current = null;
-  }, [state.zoom, state.viewMode, state.currentPage, state.totalPages, deriveVisibleRangeFromContainer, goToPage]);
+  }, [deriveVisibleRangeFromContainer, goToPage, markProgrammaticScroll, releaseProgrammaticScroll, state.currentPage, state.totalPages, state.viewMode, state.zoom]);
 
   /**
    * Effect para centralizar o scroll horizontal quando o viewer abre
