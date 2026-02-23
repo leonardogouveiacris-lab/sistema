@@ -4529,7 +4529,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (prevZoomRef.current === state.zoom) return;
 
     const scrollRatio = scrollRatioBeforeZoomRef.current;
-    const targetPage = pageBeforeZoomRef.current;
+    const targetPageBefore = pageBeforeZoomRef.current;
 
     isProgrammaticScrollRef.current = true;
     lastZoomTimestampRef.current = Date.now();
@@ -4549,8 +4549,25 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         scrollContainerRef.current.scrollLeft = centerPosition;
       }
 
+      const derivedRange = deriveVisibleRangeFromContainer();
+      const targetPageDerived = derivedRange
+        ? Math.min(
+            state.totalPages,
+            Math.max(1, Math.round((derivedRange.start + derivedRange.end) / 2))
+          )
+        : null;
+      const targetPage = targetPageDerived ?? state.currentPage;
+
+      logger.info('DEBUG TEMP zoom page sync', 'FloatingPDFViewer.zoomSync', {
+        targetPageBefore,
+        targetPageDerived,
+        stateCurrentPage: state.currentPage
+      });
+
       lastDetectedPageRef.current = targetPage;
-      goToPage(targetPage);
+      if (targetPage !== state.currentPage) {
+        goToPage(targetPage);
+      }
 
       setTimeout(() => {
         isProgrammaticScrollRef.current = false;
@@ -4558,7 +4575,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     });
 
     prevZoomRef.current = state.zoom;
-  }, [state.zoom, state.viewMode, goToPage]);
+  }, [state.zoom, state.viewMode, state.currentPage, state.totalPages, deriveVisibleRangeFromContainer, goToPage]);
 
   /**
    * Effect para centralizar o scroll horizontal quando o viewer abre
