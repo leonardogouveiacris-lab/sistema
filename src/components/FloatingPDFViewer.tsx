@@ -2846,45 +2846,77 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const pagesToRender = useMemo(() => {
     if (state.viewMode !== 'continuous') return new Set<number>();
 
-    const pages = new Set<number>();
-    const orderedCandidates: number[] = [];
-    const pushCandidate = (page: number) => {
-      if (page < 1 || page > state.totalPages || pages.has(page)) {
+    const candidatePriority = new Map<number, number>();
+    const pushCandidate = (page: number, priority: number) => {
+      if (page < 1 || page > state.totalPages) {
         return;
       }
 
-      pages.add(page);
-      orderedCandidates.push(page);
+      const existingPriority = candidatePriority.get(page);
+      if (existingPriority === undefined || priority < existingPriority) {
+        candidatePriority.set(page, priority);
+      }
     };
 
-    continuousCanvasPipeline.pagesByDocument.forEach((localPages, docId) => {
-      const offset = memoizedDocumentOffsets.get(docId);
-      if (!offset) return;
-      localPages.forEach((localPage) => {
-        pushCandidate(offset.startPage + localPage - 1);
-      });
+    // 1) Prioridade máxima: páginas visíveis no viewport atual
+    scrollBasedVisiblePages.forEach((page) => {
+      pushCandidate(page, 0);
     });
 
-    for (let i = -1; i <= 1; i += 1) {
-      pushCandidate(state.currentPage + i);
-    }
-
-    scrollRenderCache.forEach(pushCandidate);
-    forceRenderPages.forEach(pushCandidate);
-
-    if (pages.size > CONTINUOUS_RENDER_BUDGET_PAGES) {
-      const keep = new Set<number>();
-      for (const page of orderedCandidates) {
-        keep.add(page);
-        if (keep.size >= CONTINUOUS_RENDER_BUDGET_PAGES) {
-          break;
-        }
+    // 2) Páginas do documento ativo no pipeline contínuo
+    const activeDocumentId = continuousCanvasPipeline.activeDocumentId;
+    if (activeDocumentId) {
+      const activePages = continuousCanvasPipeline.pagesByDocument.get(activeDocumentId);
+      const offset = memoizedDocumentOffsets.get(activeDocumentId);
+      if (activePages && offset) {
+        activePages.forEach((localPage) => {
+          pushCandidate(offset.startPage + localPage - 1, 1);
+        });
       }
-      return keep;
     }
 
-    return pages;
-  }, [state.viewMode, state.currentPage, state.totalPages, continuousCanvasPipeline, memoizedDocumentOffsets, scrollRenderCache, forceRenderPages]);
+    // 3) Página atual ± 1
+    for (let i = -1; i <= 1; i += 1) {
+      pushCandidate(state.currentPage + i, 2);
+    }
+
+    // 4) Páginas forçadas
+    forceRenderPages.forEach((page) => {
+      pushCandidate(page, 3);
+    });
+
+    // 5) Restante do cache
+    scrollRenderCache.forEach((page) => {
+      pushCandidate(page, 4);
+    });
+
+    const visibleCenter = (visibleStartPageRef.current + visibleEndPageRef.current) / 2;
+    const rankedCandidates = Array.from(candidatePriority.entries())
+      .map(([page, priority]) => ({
+        page,
+        priority,
+        distanceToVisibleCenter: Math.abs(page - visibleCenter)
+      }))
+      .sort((a, b) => {
+        if (a.priority !== b.priority) {
+          return a.priority - b.priority;
+        }
+        if (a.distanceToVisibleCenter !== b.distanceToVisibleCenter) {
+          return a.distanceToVisibleCenter - b.distanceToVisibleCenter;
+        }
+        return a.page - b.page;
+      });
+
+    if (rankedCandidates.length > CONTINUOUS_RENDER_BUDGET_PAGES) {
+      return new Set<number>(
+        rankedCandidates
+          .slice(0, CONTINUOUS_RENDER_BUDGET_PAGES)
+          .map((candidate) => candidate.page)
+      );
+    }
+
+    return new Set<number>(rankedCandidates.map((candidate) => candidate.page));
+  }, [state.viewMode, state.currentPage, state.totalPages, continuousCanvasPipeline, memoizedDocumentOffsets, scrollBasedVisiblePages, scrollRenderCache, forceRenderPages]);
 
   const currentPageInfo = useMemo(() => {
     if (state.viewMode !== 'paginated' || state.totalPages === 0) return null;
