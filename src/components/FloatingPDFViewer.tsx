@@ -678,14 +678,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       visibleEndPageRef.current = centerPage;
     }
 
-    if (visiblePages.size === 0 || !visiblePages.has(centerPage)) {
-      const fallbackStart = Math.max(1, centerPage - 2);
-      const fallbackEnd = Math.min(state.totalPages, centerPage + 2);
-      for (let pageNum = fallbackStart; pageNum <= fallbackEnd; pageNum++) {
-        visiblePages.add(pageNum);
-      }
-      visibleStartPageRef.current = fallbackStart;
-      visibleEndPageRef.current = fallbackEnd;
+    const guaranteedStart = Math.max(1, centerPage - 2);
+    const guaranteedEnd = Math.min(state.totalPages, centerPage + 2);
+    for (let pageNum = guaranteedStart; pageNum <= guaranteedEnd; pageNum++) {
+      visiblePages.add(pageNum);
+    }
+    if (visibleStartPageRef.current > guaranteedStart) {
+      visibleStartPageRef.current = guaranteedStart;
+    }
+    if (visibleEndPageRef.current < guaranteedEnd) {
+      visibleEndPageRef.current = guaranteedEnd;
     }
 
     setScrollBasedVisiblePages(prev => {
@@ -2847,6 +2849,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           break;
         }
 
+        selectedPagesGlobal.add(globalPage);
+      }
+
+      const windowStartGlobalForced = offset.startPage + rangeStart - 1;
+      const windowEndGlobalForced = offset.startPage + rangeEnd - 1;
+      for (let globalPage = windowStartGlobalForced; globalPage <= windowEndGlobalForced; globalPage++) {
         selectedPagesGlobal.add(globalPage);
       }
 
