@@ -41,7 +41,7 @@ class Logger {
         console.warn(formattedMessage, ...extra);
         break;
       case LogLevel.ERROR:
-        console.error(formattedMessage, ...extra);
+        console.log(`[ERROR] ${formattedMessage}`, ...extra);
         break;
       case LogLevel.SUCCESS:
         console.log(formattedMessage, ...extra);

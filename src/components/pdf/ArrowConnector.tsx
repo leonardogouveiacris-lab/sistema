@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { PDFCommentConnector } from '../../types/PDFComment';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
+import logger from '../../utils/logger';
 
 interface ArrowConnectorProps {
   connector: PDFCommentConnector;
@@ -95,7 +96,19 @@ const ArrowConnector: React.FC<ArrowConnectorProps> = ({
           controlY: connector.controlY
         });
       } catch (error) {
-        console.error('Erro ao salvar conector:', error);
+        logger.errorWithException(
+          'Falha ao salvar ajustes do conector no PDF',
+          error as Error,
+          'ArrowConnector.handleMouseUp',
+          {
+            commentId,
+            connectorId: connector.id,
+            endX: connector.endX,
+            endY: connector.endY,
+            controlX: connector.controlX,
+            controlY: connector.controlY
+          }
+        );
       }
     }
   }, [isDraggingEnd, isDraggingControl, connector]);
@@ -117,7 +130,12 @@ const ArrowConnector: React.FC<ArrowConnectorProps> = ({
       await PDFCommentsService.deleteConnector(connector.id);
       removeConnectorFromComment(commentId, connector.id);
     } catch (error) {
-      console.error('Erro ao excluir conector:', error);
+      logger.errorWithException(
+        'Falha ao excluir conector no PDF',
+        error as Error,
+        'ArrowConnector.handleDelete',
+        { commentId, connectorId: connector.id }
+      );
     }
   };
 

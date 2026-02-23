@@ -3,6 +3,7 @@ import { MessageCircle, X, Trash2, ArrowRight, Square, Palette, Spline } from 'l
 import { PDFComment, CommentColor, COMMENT_COLORS, ConnectorType } from '../../types/PDFComment';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
+import logger from '../../utils/logger';
 
 interface CommentBalloonProps {
   comment: PDFComment;
@@ -76,7 +77,12 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
       updateComment(comment.id, { content });
       setIsEditing(false);
     } catch (error) {
-      console.error('Erro ao salvar comentário:', error);
+      logger.errorWithException(
+        'Falha ao salvar comentário no PDF',
+        error as Error,
+        'CommentBalloon.handleSave',
+        { commentId: comment.id, contentLength: content.length }
+      );
     }
   };
 
@@ -95,7 +101,12 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
       await PDFCommentsService.updateComment(comment.id, { isMinimized: true });
       updateComment(comment.id, { isMinimized: true });
     } catch (error) {
-      console.error('Erro ao minimizar comentário:', error);
+      logger.errorWithException(
+        'Falha ao minimizar comentário no PDF',
+        error as Error,
+        'CommentBalloon.handleClose',
+        { commentId: comment.id, isMinimized: true }
+      );
     }
   };
 
@@ -104,7 +115,12 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
       await PDFCommentsService.deleteComment(comment.id);
       removeComment(comment.id);
     } catch (error) {
-      console.error('Erro ao excluir comentário:', error);
+      logger.errorWithException(
+        'Falha ao excluir comentário no PDF',
+        error as Error,
+        'CommentBalloon.handleDelete',
+        { commentId: comment.id }
+      );
     }
   };
 
@@ -114,7 +130,12 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
       updateComment(comment.id, { color });
       setShowColorDropdown(false);
     } catch (error) {
-      console.error('Erro ao mudar cor:', error);
+      logger.errorWithException(
+        'Falha ao atualizar cor do comentário no PDF',
+        error as Error,
+        'CommentBalloon.handleColorChange',
+        { commentId: comment.id, color }
+      );
     }
   };
 
@@ -172,7 +193,12 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
         positionY: y
       });
     } catch (error) {
-      console.error('Erro ao salvar posição:', error);
+      logger.errorWithException(
+        'Falha ao salvar posição do comentário no PDF',
+        error as Error,
+        'CommentBalloon.handleDragEnd',
+        { commentId: comment.id, positionX: x, positionY: y }
+      );
     }
   }, [comment.id]);
 
