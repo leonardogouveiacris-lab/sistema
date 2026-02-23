@@ -79,6 +79,9 @@ const CONTINUOUS_IDLE_PRELOAD_RADIUS = 4;
 const CONTINUOUS_PAGE_GAP_PX = 16;
 const PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS = 8000;
 const PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS = 400;
+const ZOOM_POST_RECONCILIATION_TIMEOUT_MS = 240;
+const ZOOM_POST_BLOCK_DURATION_MS = 120;
+const ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES = 2;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -4594,14 +4597,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const scrollRatio = scrollRatioBeforeZoomRef.current;
     const zoomAnchor = zoomAnchorRef.current;
-    const targetPageBefore = pageBeforeZoomRef.current;
 
     isProgrammaticScrollRef.current = true;
     lastZoomTimestampRef.current = Date.now();
-    zoomBlockedUntilRef.current = Date.now() + 300;
+    zoomBlockedUntilRef.current = 0;
 
     requestAnimationFrame(() => {
-      if (!scrollContainerRef.current) return;
+      if (!scrollContainerRef.current) {
+        isProgrammaticScrollRef.current = false;
+        return;
+      }
 
       const activeContainer = scrollContainerRef.current;
       const pageAnchorEl = zoomAnchor ? pageRefs.current.get(zoomAnchor.page) : null;
@@ -4625,29 +4630,60 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         activeContainer.scrollLeft = centerPosition;
       }
 
+      calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
+
+      const detectedFromVisibleRange = Math.min(
+        state.totalPages,
+        Math.max(1, Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2))
+      );
       const derivedRange = deriveVisibleRangeFromContainer();
-      const targetPageDerived = derivedRange
+      const targetPageDetected = derivedRange
         ? Math.min(
             state.totalPages,
             Math.max(1, Math.round((derivedRange.start + derivedRange.end) / 2))
           )
-        : null;
-      const targetPage = targetPageDerived ?? state.currentPage;
+        : detectedFromVisibleRange;
 
-      logger.info('DEBUG TEMP zoom page sync', 'FloatingPDFViewer.zoomSync', {
-        targetPageBefore,
-        targetPageDerived,
-        stateCurrentPage: state.currentPage
-      });
-
-      lastDetectedPageRef.current = targetPage;
-      if (targetPage !== state.currentPage) {
-        goToPage(targetPage);
+      const pageDivergence = Math.abs(targetPageDetected - state.currentPage);
+      if (pageDivergence <= ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES) {
+        zoomBlockedUntilRef.current = Date.now() + ZOOM_POST_BLOCK_DURATION_MS;
       }
 
-      setTimeout(() => {
+      lastDetectedPageRef.current = targetPageDetected;
+      lastDetectionTimeRef.current = Date.now();
+      if (targetPageDetected !== state.currentPage) {
+        goToPage(targetPageDetected);
+      }
+
+      const reconciliationStartedAt = Date.now();
+      const releaseProgrammaticScroll = () => {
         isProgrammaticScrollRef.current = false;
-      }, 100);
+      };
+
+      const reconcilePageAndRelease = () => {
+        calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
+
+        const reconciledPage = Math.min(
+          state.totalPages,
+          Math.max(1, Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2))
+        );
+
+        if (reconciledPage !== currentPageRef.current) {
+          goToPage(reconciledPage);
+        }
+
+        const hasConverged = reconciledPage === currentPageRef.current;
+        const timedOut = Date.now() - reconciliationStartedAt >= ZOOM_POST_RECONCILIATION_TIMEOUT_MS;
+
+        if (hasConverged || timedOut) {
+          releaseProgrammaticScroll();
+          return;
+        }
+
+        requestAnimationFrame(reconcilePageAndRelease);
+      };
+
+      requestAnimationFrame(reconcilePageAndRelease);
     });
 
     prevZoomRef.current = state.zoom;
