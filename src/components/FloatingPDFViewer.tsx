@@ -196,6 +196,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const activeCaretElementRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [scrollContainerElement, setScrollContainerElement] = useState<HTMLDivElement | null>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const pageDetectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProgrammaticScrollRef = useRef(false);
@@ -1112,14 +1113,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     markInteractionStartRef.current = markInteractionStart;
   }, [markInteractionStart]);
 
+  const handleScrollContainerRef = useCallback((node: HTMLDivElement | null) => {
+    scrollContainerRef.current = node;
+    setScrollContainerElement(node);
+  }, []);
+
   /**
    * Effect para detectar paginas visiveis durante scroll
    * Usa throttle para performance - atualiza a cada 50ms durante scroll
    */
   useEffect(() => {
-    if (state.viewMode !== 'continuous' || !scrollContainerRef.current) return;
+    if (state.viewMode !== 'continuous' || !scrollContainerElement) return;
 
-    const container = scrollContainerRef.current;
+    const container = scrollContainerElement;
 
     const clearScrollReconciliation = () => {
       if (scrollReconciliationRafRef.current !== null) {
@@ -1319,6 +1325,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
+    logger.info(
+      'Scroll listener instalado no container do PDF',
+      'FloatingPDFViewer.handleScrollEffect',
+      { viewMode: state.viewMode }
+    );
     scheduleInitialScrollRecalculation();
 
     return () => {
@@ -1350,14 +1361,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       emptyVisiblePagesScrollFramesRef.current = 0;
       setScrollFallbackVisibleRange(null);
     };
-  }, [deriveVisibleRangeFromContainer, scrollBasedVisiblePages, state.viewMode]);
+  }, [deriveVisibleRangeFromContainer, scrollBasedVisiblePages, scrollContainerElement, state.viewMode]);
 
   useEffect(() => {
-    registerScrollContainer(scrollContainerRef.current);
+    registerScrollContainer(scrollContainerElement);
     return () => {
       registerScrollContainer(null);
     };
-  }, [registerScrollContainer]);
+  }, [registerScrollContainer, scrollContainerElement]);
 
   useEffect(() => {
     if (state.isSearchOpen) {
@@ -5056,7 +5067,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               documentOffsets={memoizedDocumentOffsets}
             />
             <div
-              ref={scrollContainerRef}
+              ref={handleScrollContainerRef}
               className="absolute inset-0 overflow-auto bg-gray-200"
               style={{ visibility: isModeTransitioning ? 'hidden' : 'visible' }}
             >
