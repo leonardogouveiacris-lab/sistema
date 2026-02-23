@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { PDFComment, ConnectorType, PDFCommentConnector } from '../../types/PDFComment';
 import * as PDFCommentsService from '../../services/pdfComments.service';
+import { generateFlowId } from '../../utils/flowId';
 import CommentBalloon from './CommentBalloon';
 import ArrowConnector from './ArrowConnector';
 import HighlightBoxConnector from './HighlightBoxConnector';
@@ -74,13 +75,14 @@ const CommentLayer: React.FC<CommentLayerProps> = ({
     const y = (e.clientY - rect.top) / scale;
 
     try {
+      const flowId = generateFlowId();
       const newComment = await PDFCommentsService.createComment({
         processDocumentId,
         pageNumber,
         positionX: x,
         positionY: y,
         color: state.selectedCommentColor
-      });
+      }, { flowId });
 
       addComment({ ...newComment, connectors: [] });
       setCommentModeActive(false);

@@ -6,20 +6,41 @@
 import { supabase } from '../lib/supabase';
 import { PDFHighlight, NewPDFHighlight, HighlightFilter } from '../types/Highlight';
 import logger from '../utils/logger';
+import { createFlowContext, generateFlowId } from '../utils/flowId';
+
+interface LogOptions {
+  flowId?: string;
+}
 
 /**
  * Create a new highlight
  */
 export async function createHighlight(
   data: NewPDFHighlight,
-  lancamentoId?: string
+  lancamentoId?: string,
+  options: LogOptions = {}
 ): Promise<PDFHighlight | null> {
+  const flowId = options.flowId || generateFlowId();
   try {
     if (!supabase) {
-      logger.warn('Supabase client unavailable', 'highlights.service.createHighlight');
+      logger.warn('Supabase client unavailable', 'highlights.service.createHighlight', {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          action: 'create',
+          source: 'highlights.service.createHighlight'
+        })
+      });
       return null;
     }
     logger.info('Creating highlight', 'highlights.service.createHighlight', {
+      metadata: createFlowContext({
+        flowId,
+        entityType: 'highlight',
+        entityId: data.processDocumentId,
+        action: 'create',
+        source: 'highlights.service.createHighlight'
+      }),
       processId: data.processId,
       pageNumber: data.pageNumber,
       color: data.color,
@@ -42,16 +63,39 @@ export async function createHighlight(
       .maybeSingle();
 
     if (error) {
-      logger.error('Error creating highlight', 'highlights.service.createHighlight', undefined, error);
+      logger.error('Error creating highlight', 'highlights.service.createHighlight', {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          action: 'create',
+          source: 'highlights.service.createHighlight'
+        })
+      }, error);
       return null;
     }
 
     if (!highlight) {
-      logger.warn('No highlight returned after creation', 'highlights.service.createHighlight');
+      logger.warn('No highlight returned after creation', 'highlights.service.createHighlight', {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          action: 'create',
+          source: 'highlights.service.createHighlight'
+        })
+      });
       return null;
     }
 
-    logger.success('Highlight created successfully', 'highlights.service.createHighlight', { id: highlight.id });
+    logger.success('Highlight created successfully', 'highlights.service.createHighlight', {
+      metadata: createFlowContext({
+        flowId,
+        entityType: 'highlight',
+        entityId: highlight.id,
+        action: 'create',
+        source: 'highlights.service.createHighlight'
+      }),
+      id: highlight.id
+    });
 
     return {
       id: highlight.id,
@@ -70,7 +114,15 @@ export async function createHighlight(
     logger.errorWithException(
       'Exception creating highlight',
       error as Error,
-      'highlights.service.createHighlight'
+      'highlights.service.createHighlight',
+      {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          action: 'create',
+          source: 'highlights.service.createHighlight'
+        })
+      }
     );
     return null;
   }

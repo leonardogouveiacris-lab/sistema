@@ -38,6 +38,7 @@ import { COMMENT_COLORS, CommentColor, PDFComment } from '../types/PDFComment';
 import * as PDFCommentsService from '../services/pdfComments.service';
 import { useSelectionOverlay } from '../hooks/useSelectionOverlay';
 import logger from '../utils/logger';
+import { createFlowContext, generateFlowId } from '../utils/flowId';
 import { formatPDFText, extractTextFromSelection } from '../utils/textFormatter';
 import * as HighlightsService from '../services/highlights.service';
 const lazyExtractAllPagesText = () => import('../utils/pdfTextExtractor').then(m => m.extractAllPagesText);
@@ -4077,6 +4078,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     // Se for fundamentação, criar highlight azul automaticamente
     if (field === 'fundamentacao' && state.selectionPosition && processId) {
+      const flowId = generateFlowId();
       const targetPageNumber = state.selectionPosition.pageNumber || state.currentPage;
       const targetDoc = getDocumentByGlobalPage(targetPageNumber);
       if (targetDoc) {
@@ -4084,7 +4086,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         logger.info(
           'Criando highlight azul automaticamente para fundamentação',
           'FloatingPDFViewer.handleInsertInField',
-          { targetPageNumber, extractedPage: state.selectionPosition.pageNumber, currentPage: state.currentPage }
+          {
+            metadata: createFlowContext({
+              flowId,
+              entityType: 'highlight',
+              entityId: targetDoc.id,
+              action: 'create-auto',
+              source: 'FloatingPDFViewer.handleInsertInField'
+            }),
+            targetPageNumber,
+            extractedPage: state.selectionPosition.pageNumber,
+            currentPage: state.currentPage
+          }
         );
 
         const highlight = await HighlightsService.createHighlight({
@@ -4101,7 +4114,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             rects: state.selectionPosition.rects
           },
           color: 'blue'
-        });
+        }, undefined, { flowId });
 
         if (highlight) {
           // Adiciona o highlight ao estado
@@ -4187,22 +4200,51 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * Create highlight from selected text
    */
   const handleCreateHighlight = useCallback(async () => {
+    const flowId = generateFlowId();
     if (!state.selectedText || !state.selectionPosition || !processId) {
-      logger.warn('Missing data for highlight creation', 'FloatingPDFViewer.handleCreateHighlight');
+      logger.warn('Missing data for highlight creation', 'FloatingPDFViewer.handleCreateHighlight', {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          action: 'create',
+          source: 'FloatingPDFViewer.handleCreateHighlight'
+        })
+      });
       return;
     }
 
     const targetPageNumber = state.selectionPosition.pageNumber || state.currentPage;
     const targetDoc = getDocumentByGlobalPage(targetPageNumber);
     if (!targetDoc) {
-      logger.warn('No document found for page', 'FloatingPDFViewer.handleCreateHighlight');
+      logger.warn('No document found for page', 'FloatingPDFViewer.handleCreateHighlight', {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          action: 'create',
+          source: 'FloatingPDFViewer.handleCreateHighlight'
+        }),
+        targetPageNumber
+      });
       return;
     }
 
     logger.info(
       `Creating highlight on page ${targetPageNumber}`,
       'FloatingPDFViewer.handleCreateHighlight',
-      { color: state.selectedHighlightColor, textLength: state.selectedText.length, extractedPage: state.selectionPosition.pageNumber, currentPage: state.currentPage, documentId: targetDoc.id }
+      {
+        metadata: createFlowContext({
+          flowId,
+          entityType: 'highlight',
+          entityId: targetDoc.id,
+          action: 'create',
+          source: 'FloatingPDFViewer.handleCreateHighlight'
+        }),
+        color: state.selectedHighlightColor,
+        textLength: state.selectedText.length,
+        extractedPage: state.selectionPosition.pageNumber,
+        currentPage: state.currentPage,
+        documentId: targetDoc.id
+      }
     );
 
     const highlight = await HighlightsService.createHighlight({
@@ -4219,7 +4261,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         rects: state.selectionPosition.rects
       },
       color: state.selectedHighlightColor
-    });
+    }, undefined, { flowId });
 
     if (highlight) {
       addHighlight(highlight);
@@ -4227,7 +4269,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       logger.success(
         `Highlight created successfully`,
         'FloatingPDFViewer.handleCreateHighlight',
-        { highlightId: highlight.id }
+        {
+          metadata: createFlowContext({
+            flowId,
+            entityType: 'highlight',
+            entityId: highlight.id,
+            action: 'create',
+            source: 'FloatingPDFViewer.handleCreateHighlight'
+          }),
+          highlightId: highlight.id
+        }
       );
     } else {
       toast.error('Erro ao criar destaque. Tente novamente.');

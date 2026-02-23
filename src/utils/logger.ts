@@ -7,6 +7,14 @@ export enum LogLevel {
   SUCCESS = 'SUCCESS'
 }
 
+export interface LogMetadata {
+  flowId: string;
+  entityType: string;
+  entityId?: string;
+  action: string;
+  source: string;
+}
+
 export type LogContext = string;
 export type LogData = Record<string, unknown> | unknown;
 export type LogError = unknown;

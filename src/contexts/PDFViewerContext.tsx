@@ -19,6 +19,7 @@ import { PageRotationMap } from '../services/pageRotation.service';
 import * as PageRotationService from '../services/pageRotation.service';
 import logger from '../utils/logger';
 import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibilityIndex';
+import { createFlowContext, generateFlowId } from '../utils/flowId';
 
 const CONTINUOUS_PAGE_GAP_PX = 16;
 
@@ -166,7 +167,7 @@ interface PDFViewerContextType {
   state: PDFViewerState;
 
   // Controle do visualizador
-  openViewer: (documentsOrDocument: ProcessDocument | ProcessDocument[]) => void;
+  openViewer: (documentsOrDocument: ProcessDocument | ProcessDocument[], flowId?: string) => void;
   closeViewer: () => void;
   toggleMinimize: () => void;
 
@@ -182,7 +183,7 @@ interface PDFViewerContextType {
   nextPage: () => void;
   previousPage: () => void;
   setTotalPages: (total: number) => void;
-  navigateToPageWithHighlight: (page: number, recordId?: string) => void;
+  navigateToPageWithHighlight: (page: number, recordId?: string, flowId?: string) => void;
 
   // Zoom
   zoomIn: () => void;
@@ -624,10 +625,20 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   /**
    * Abre o visualizador com um ou múltiplos documentos
    */
-  const openViewer = useCallback((documentsOrDocument: ProcessDocument | ProcessDocument[]) => {
+  const openViewer = useCallback((documentsOrDocument: ProcessDocument | ProcessDocument[], flowId?: string) => {
     const documents = Array.isArray(documentsOrDocument) ? documentsOrDocument : [documentsOrDocument];
+    const operationFlowId = flowId || generateFlowId();
 
-    logger.info(`Abrindo visualizador de PDF com ${documents.length} documento(s)`, 'PDFViewerContext.openViewer', { documentCount: documents.length });
+    logger.info('Abrindo visualizador de PDF', 'PDFViewerContext.openViewer', {
+      metadata: createFlowContext({
+        flowId: operationFlowId,
+        entityType: 'pdf-viewer',
+        action: 'open',
+        source: 'PDFViewerContext.openViewer'
+      }),
+      documentCount: documents.length,
+      documentIds: documents.map(document => document.id)
+    });
 
     // Se tiver qualquer highlight pendente/timeout de highlight, cancela ao abrir
     cancelScheduledHighlightClear();
@@ -962,7 +973,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    * Navega para página com highlight temporário
    */
   const navigateToPageWithHighlight = useCallback(
-    (page: number, recordId?: string) => {
+    (page: number, recordId?: string, flowId?: string) => {
+      const operationFlowId = flowId || generateFlowId();
       goToPage(page);
 
       setState(prev => ({
@@ -973,7 +985,17 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
       scheduleHighlightedPageClear(3000);
 
-      logger.info(`Navegando para página ${page} com highlight${recordId ? ` (record: ${recordId})` : ''}`, 'PDFViewerContext.navigateToPageWithHighlight');
+      logger.info('Navegando para página com highlight temporário', 'PDFViewerContext.navigateToPageWithHighlight', {
+        metadata: createFlowContext({
+          flowId: operationFlowId,
+          entityType: 'pdf-page',
+          entityId: String(page),
+          action: 'navigate-with-highlight',
+          source: 'PDFViewerContext.navigateToPageWithHighlight'
+        }),
+        page,
+        recordId: recordId || null
+      });
     },
     [goToPage, scheduleHighlightedPageClear]
   );

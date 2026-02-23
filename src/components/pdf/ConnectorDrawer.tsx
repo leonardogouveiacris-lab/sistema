@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { ConnectorType, PDFCommentConnector } from '../../types/PDFComment';
 import * as PDFCommentsService from '../../services/pdfComments.service';
+import { generateFlowId } from '../../utils/flowId';
 
 interface ConnectorDrawerProps {
   commentId: string;
@@ -67,6 +68,7 @@ const ConnectorDrawer: React.FC<ConnectorDrawerProps> = ({
     }
 
     try {
+      const flowId = generateFlowId();
       const controlX = (startX + endX) / 2;
       const controlY = Math.min(startY, endY) - 30 / scale;
 
@@ -81,7 +83,7 @@ const ConnectorDrawer: React.FC<ConnectorDrawerProps> = ({
         controlY,
         boxWidth: connectorType === 'highlightbox' ? 80 : undefined,
         boxHeight: connectorType === 'highlightbox' ? 20 : undefined
-      });
+      }, { flowId });
 
       onComplete(connector);
     } catch (error) {
