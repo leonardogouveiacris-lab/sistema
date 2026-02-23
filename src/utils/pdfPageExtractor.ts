@@ -13,6 +13,20 @@ export interface ExtractionProgress {
   message: string;
 }
 
+export interface ExtractionSourceDocument {
+  documentId: string;
+  url?: string;
+  globalStart: number;
+  globalEnd: number;
+  pageCount: number;
+}
+
+export interface GlobalPageSelection {
+  globalPage: number;
+  documentId: string;
+  localPage: number;
+}
+
 export function parsePageRanges(input: string, totalPages: number): number[] {
   const pages = new Set<number>();
   const parts = input.split(',').map(p => p.trim()).filter(Boolean);
@@ -177,6 +191,136 @@ export async function extractPagesFromPDF(
   );
 
   return newPdfBytes;
+}
+
+export function partitionGlobalPagesBySource(
+  pagesToExtract: number[],
+  sourceDocuments: ExtractionSourceDocument[],
+  totalPages: number
+): GlobalPageSelection[] {
+  if (pagesToExtract.length === 0) {
+    return [];
+  }
+
+  const validDocuments = sourceDocuments
+    .filter((source) => source.url && source.pageCount > 0)
+    .sort((a, b) => a.globalStart - b.globalStart);
+
+  return pagesToExtract
+    .map((globalPage) => {
+      if (globalPage < 1 || globalPage > totalPages) {
+        throw new Error(`Pagina ${globalPage} excede o total de ${totalPages}`);
+      }
+
+      const source = validDocuments.find((doc) => globalPage >= doc.globalStart && globalPage <= doc.globalEnd);
+      if (!source) {
+        throw new Error(`Nao foi possivel mapear a pagina global ${globalPage} para um documento de origem`);
+      }
+
+      return {
+        globalPage,
+        documentId: source.documentId,
+        localPage: globalPage - source.globalStart + 1,
+      };
+    })
+    .sort((a, b) => a.globalPage - b.globalPage);
+}
+
+export async function extractPagesFromMultiplePDFs(
+  pagesToExtract: number[],
+  sourceDocuments: ExtractionSourceDocument[],
+  totalPages: number,
+  onProgress?: (progress: ExtractionProgress) => void
+): Promise<Uint8Array> {
+  if (pagesToExtract.length === 0) {
+    throw new Error('Nenhuma página selecionada para extração');
+  }
+
+  const selectedPages = partitionGlobalPagesBySource(pagesToExtract, sourceDocuments, totalPages);
+  const selectedDocumentIds = Array.from(new Set(selectedPages.map((page) => page.documentId)));
+
+  onProgress?.({
+    phase: 'loading',
+    current: 0,
+    total: selectedDocumentIds.length,
+    message: 'Carregando documentos de origem...'
+  });
+
+  const sourcePdfByDocumentId = new Map<string, PDFDocument>();
+
+  for (let i = 0; i < selectedDocumentIds.length; i++) {
+    const documentId = selectedDocumentIds[i];
+    const sourceMetadata = sourceDocuments.find((source) => source.documentId === documentId && source.url);
+    if (!sourceMetadata?.url) {
+      throw new Error(`Documento de origem indisponivel para extração (${documentId})`);
+    }
+
+    const response = await fetch(sourceMetadata.url);
+    if (!response.ok) {
+      throw new Error(`Erro ao carregar PDF de origem: ${response.statusText}`);
+    }
+
+    const pdfBytes = await response.arrayBuffer();
+    const pdfDocument = await PDFDocument.load(pdfBytes);
+    sourcePdfByDocumentId.set(documentId, pdfDocument);
+
+    onProgress?.({
+      phase: 'loading',
+      current: i + 1,
+      total: selectedDocumentIds.length,
+      message: `Carregando documento ${i + 1} de ${selectedDocumentIds.length}...`
+    });
+  }
+
+  const outputPdf = await PDFDocument.create();
+
+  onProgress?.({
+    phase: 'extracting',
+    current: 0,
+    total: selectedPages.length,
+    message: 'Extraindo páginas selecionadas...'
+  });
+
+  for (let i = 0; i < selectedPages.length; i++) {
+    const selection = selectedPages[i];
+    const sourcePdf = sourcePdfByDocumentId.get(selection.documentId);
+    if (!sourcePdf) {
+      throw new Error(`Documento de origem não carregado (${selection.documentId})`);
+    }
+
+    const sourcePageCount = sourcePdf.getPageCount();
+    if (selection.localPage < 1 || selection.localPage > sourcePageCount) {
+      throw new Error(`Página ${selection.localPage} inválida no documento ${selection.documentId}`);
+    }
+
+    const [copiedPage] = await outputPdf.copyPages(sourcePdf, [selection.localPage - 1]);
+    outputPdf.addPage(copiedPage);
+
+    onProgress?.({
+      phase: 'extracting',
+      current: i + 1,
+      total: selectedPages.length,
+      message: `Extraindo página global ${selection.globalPage}...`
+    });
+  }
+
+  onProgress?.({
+    phase: 'generating',
+    current: 0,
+    total: 100,
+    message: 'Gerando novo documento...'
+  });
+
+  const pdfBytes = await outputPdf.save();
+
+  onProgress?.({
+    phase: 'generating',
+    current: 100,
+    total: 100,
+    message: 'Concluído!'
+  });
+
+  return pdfBytes;
 }
 
 export function downloadPDF(pdfBytes: Uint8Array, filename: string): void {

@@ -5,24 +5,32 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
   formatPageRanges,
-  extractPagesFromPDF,
+  extractPagesFromMultiplePDFs,
   downloadPDF,
   generateExtractedFilename,
-  ExtractionProgress
+  ExtractionProgress,
+  partitionGlobalPagesBySource
 } from '../../utils/pdfPageExtractor';
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 const PDF_DOCUMENT_OPTIONS = { wasmUrl: '/wasm/' };
 
+interface ExtractionSourceDocumentView {
+  documentId: string;
+  documentName: string;
+  url: string;
+  globalStart: number;
+  globalEnd: number;
+  pageCount: number;
+}
+
 interface PageExtractionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  documentUrl: string;
   documentName: string;
   totalPages: number;
-  globalPageStart: number;
-  globalPageEnd: number;
+  sourceDocuments: ExtractionSourceDocumentView[];
 }
 
 const THUMBNAIL_SCALE = 0.18;
@@ -34,13 +42,11 @@ const SCROLL_LOAD_THRESHOLD_PX = 180;
 const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   isOpen,
   onClose,
-  documentUrl,
   documentName,
   totalPages,
-  globalPageStart,
-  globalPageEnd
+  sourceDocuments,
 }) => {
-  const { state, getLocalPageNumber } = usePDFViewer();
+  const { state } = usePDFViewer();
   const toast = useToast();
 
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
@@ -50,7 +56,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
   const [progress, setProgress] = useState<ExtractionProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rangeValidationError, setRangeValidationError] = useState<string | null>(null);
-  const [isPreviewDocumentReady, setIsPreviewDocumentReady] = useState(false);
   const [thumbnailsToRender, setThumbnailsToRender] = useState(0);
 
   const modalRef = useRef<HTMLDivElement>(null);
@@ -61,27 +66,41 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     Array.from(selectedPages).sort((a, b) => a - b),
     [selectedPages]
   );
-  const shouldUseIncrementalLoading = sortedSelectedPages.length > PERFORMANCE_PAGE_THRESHOLD;
 
-  const parsePageRangesStrict = useCallback((input: string): number[] => {
+  const selectedPageEntries = useMemo(() => {
+    if (sortedSelectedPages.length === 0) {
+      return [];
+    }
+
+    const sourceMap = new Map(sourceDocuments.map((doc) => [doc.documentId, doc]));
+
+    return partitionGlobalPagesBySource(sortedSelectedPages, sourceDocuments, totalPages)
+      .map((selection) => {
+        const source = sourceMap.get(selection.documentId);
+        if (!source) {
+          return null;
+        }
+
+        return {
+          ...selection,
+          documentName: source.documentName,
+          url: source.url,
+        };
+      })
+      .filter(Boolean) as Array<{
+      globalPage: number;
+      localPage: number;
+      documentId: string;
+      documentName: string;
+      url: string;
+    }>;
+  }, [sortedSelectedPages, sourceDocuments, totalPages]);
+
+  const shouldUseIncrementalLoading = selectedPageEntries.length > PERFORMANCE_PAGE_THRESHOLD;
+
+  const parseGlobalPageRanges = useCallback((input: string): number[] => {
     const pages = new Set<number>();
     const parts = input.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
-
-    const toLocalPageNumber = (pageNumber: number): number => {
-      if (pageNumber >= globalPageStart && pageNumber <= globalPageEnd) {
-        return pageNumber - globalPageStart + 1;
-      }
-
-      if (pageNumber >= 1 && pageNumber <= totalPages) {
-        return pageNumber;
-      }
-
-      if (pageNumber >= 1 && pageNumber <= state.totalPages) {
-        throw new Error('Intervalo pertence a outro documento anexado');
-      }
-
-      throw new Error(`Pagina ${pageNumber} excede o total de ${totalPages}`);
-    };
 
     for (const part of parts) {
       if (part.includes('-')) {
@@ -96,14 +115,14 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
           throw new Error('Numeros de pagina devem ser maiores que 0');
         }
 
-        const localStart = toLocalPageNumber(start);
-        const localEnd = toLocalPageNumber(end);
+        const rangeStart = Math.min(start, end);
+        const rangeEnd = Math.max(start, end);
 
-        if (localStart > localEnd) {
-          throw new Error(`Intervalo invertido: "${part}". Use ${end}-${start}`);
+        if (rangeEnd > totalPages) {
+          throw new Error(`Pagina ${rangeEnd} excede o total de ${totalPages}`);
         }
 
-        for (let page = localStart; page <= localEnd; page++) {
+        for (let page = rangeStart; page <= rangeEnd; page++) {
           pages.add(page);
         }
         continue;
@@ -116,43 +135,33 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       if (pageNum < 1) {
         throw new Error('Numeros de pagina devem ser maiores que 0');
       }
+      if (pageNum > totalPages) {
+        throw new Error(`Pagina ${pageNum} excede o total de ${totalPages}`);
+      }
 
-      pages.add(toLocalPageNumber(pageNum));
+      pages.add(pageNum);
     }
 
     return Array.from(pages).sort((a, b) => a - b);
-  }, [globalPageEnd, globalPageStart, state.totalPages, totalPages]);
-
-  const currentLocalPage = useMemo(() => {
-    if (totalPages <= 0) {
-      return null;
-    }
-
-    const localCurrentPage = getLocalPageNumber(state.currentPage);
-    return Math.max(1, Math.min(localCurrentPage, totalPages));
-  }, [getLocalPageNumber, state.currentPage, totalPages]);
+  }, [totalPages]);
 
   useEffect(() => {
     if (isOpen) {
-      if (currentLocalPage === null) {
-        setSelectedPages(new Set());
-        setPageRangeInput('');
-        setOutputFilename(`${documentName.replace(/\.pdf$/i, '')}_extraido.pdf`);
-      } else {
-        setSelectedPages(new Set([currentLocalPage]));
-        setPageRangeInput(String(currentLocalPage));
-        setOutputFilename(generateExtractedFilename(documentName, [currentLocalPage]));
-      }
+      const initialPage = Math.max(1, Math.min(state.currentPage, totalPages || 1));
 
+      setSelectedPages(totalPages > 0 ? new Set([initialPage]) : new Set());
+      setPageRangeInput(totalPages > 0 ? String(initialPage) : '');
+      setOutputFilename(totalPages > 0
+        ? generateExtractedFilename(documentName, [initialPage])
+        : `${documentName.replace(/\.pdf$/i, '')}_extraido.pdf`);
       setError(null);
       setRangeValidationError(null);
       setProgress(null);
-      setIsPreviewDocumentReady(false);
       setThumbnailsToRender(0);
 
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [isOpen, currentLocalPage, documentName]);
+  }, [isOpen, state.currentPage, documentName, totalPages]);
 
   useEffect(() => {
     if (selectedPages.size > 0) {
@@ -160,10 +169,6 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       setOutputFilename(generateExtractedFilename(documentName, pagesArray));
     }
   }, [selectedPages, documentName]);
-
-  useEffect(() => {
-    setIsPreviewDocumentReady(false);
-  }, [documentUrl]);
 
   const handlePageRangeChange = useCallback((input: string) => {
     setPageRangeInput(input);
@@ -175,14 +180,14 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     }
 
     try {
-      const pages = parsePageRangesStrict(input);
+      const pages = parseGlobalPageRanges(input);
       setSelectedPages(new Set(pages));
       setRangeValidationError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Intervalo de paginas invalido';
       setRangeValidationError(message);
     }
-  }, [parsePageRangesStrict]);
+  }, [parseGlobalPageRanges]);
 
   const handleSelectAll = useCallback(() => {
     const allPages = new Set<number>();
@@ -190,26 +195,24 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       allPages.add(i);
     }
     setSelectedPages(allPages);
-    setPageRangeInput(`1-${totalPages}`);
+    setPageRangeInput(totalPages > 0 ? `1-${totalPages}` : '');
     setRangeValidationError(null);
   }, [totalPages]);
 
   const handleSelectCurrentPage = useCallback(() => {
-    const clampedCurrentLocalPage = currentLocalPage === null
-      ? null
-      : Math.max(1, Math.min(currentLocalPage, totalPages));
+    const currentGlobalPage = Math.max(1, Math.min(state.currentPage, totalPages || 1));
 
-    if (clampedCurrentLocalPage === null) {
+    if (totalPages <= 0) {
       setSelectedPages(new Set());
       setPageRangeInput('');
       setRangeValidationError(null);
       return;
     }
 
-    setSelectedPages(new Set([clampedCurrentLocalPage]));
-    setPageRangeInput(String(clampedCurrentLocalPage));
+    setSelectedPages(new Set([currentGlobalPage]));
+    setPageRangeInput(String(currentGlobalPage));
     setRangeValidationError(null);
-  }, [currentLocalPage, totalPages]);
+  }, [state.currentPage, totalPages]);
 
   const handleClearSelection = useCallback(() => {
     setSelectedPages(new Set());
@@ -217,16 +220,16 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     setRangeValidationError(null);
   }, []);
 
-  const handleRemovePage = useCallback((pageNum: number) => {
+  const handleRemovePage = useCallback((globalPage: number) => {
     setSelectedPages(prev => {
       const newSet = new Set(prev);
-      newSet.delete(pageNum);
+      newSet.delete(globalPage);
       return newSet;
     });
     setPageRangeInput(prev => {
       try {
-        const currentPages = parsePageRangesStrict(prev);
-        const filtered = currentPages.filter(p => p !== pageNum);
+        const currentPages = parseGlobalPageRanges(prev);
+        const filtered = currentPages.filter(p => p !== globalPage);
         setError(null);
         setRangeValidationError(null);
         return formatPageRanges(filtered);
@@ -234,7 +237,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
         return '';
       }
     });
-  }, [parsePageRangesStrict]);
+  }, [parseGlobalPageRanges]);
 
   const handleExtract = useCallback(async () => {
     if (selectedPages.size === 0) {
@@ -248,9 +251,10 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     try {
       const pagesToExtract = Array.from(selectedPages).sort((a, b) => a - b);
 
-      const pdfBytes = await extractPagesFromPDF(
-        documentUrl,
+      const pdfBytes = await extractPagesFromMultiplePDFs(
         pagesToExtract,
+        sourceDocuments,
+        totalPages,
         setProgress
       );
 
@@ -266,7 +270,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
       setIsExtracting(false);
       setProgress(null);
     }
-  }, [selectedPages, documentUrl, outputFilename, toast, onClose]);
+  }, [selectedPages, sourceDocuments, totalPages, outputFilename, toast, onClose]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape' && !isExtracting) {
@@ -341,27 +345,22 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
     }
 
     setThumbnailsToRender((current) => {
-      if (current >= sortedSelectedPages.length) {
+      if (current >= selectedPageEntries.length) {
         return current;
       }
 
-      return Math.min(current + THUMBNAIL_APPEND_BATCH_SIZE, sortedSelectedPages.length);
+      return Math.min(current + THUMBNAIL_APPEND_BATCH_SIZE, selectedPageEntries.length);
     });
-  }, [shouldUseIncrementalLoading, sortedSelectedPages.length]);
+  }, [shouldUseIncrementalLoading, selectedPageEntries.length]);
 
   useEffect(() => {
-    if (!isPreviewDocumentReady) {
-      setThumbnailsToRender(0);
-      return;
-    }
-
     if (shouldUseIncrementalLoading) {
-      setThumbnailsToRender(Math.min(INITIAL_THUMBNAIL_BATCH_SIZE, sortedSelectedPages.length));
+      setThumbnailsToRender(Math.min(INITIAL_THUMBNAIL_BATCH_SIZE, selectedPageEntries.length));
       return;
     }
 
-    setThumbnailsToRender(sortedSelectedPages.length);
-  }, [isPreviewDocumentReady, shouldUseIncrementalLoading, sortedSelectedPages.length]);
+    setThumbnailsToRender(selectedPageEntries.length);
+  }, [shouldUseIncrementalLoading, selectedPageEntries.length]);
 
   if (!isOpen) return null;
 
@@ -387,7 +386,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Extrair Paginas</h2>
-              <p className="text-sm text-gray-500 truncate max-w-md">{documentName}</p>
+              <p className="text-sm text-gray-500 truncate max-w-md">Escopo unificado do processo</p>
             </div>
           </div>
           <button
@@ -404,7 +403,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
             <div className="flex flex-wrap gap-3 items-end">
               <div className="flex-1 min-w-[250px]">
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                  Paginas para extrair (ex: 1-5, 8, 10-12) — aceita paginas globais ou locais do documento atual
+                  Paginas globais para extrair (ex: 1-5, 8, 10-12)
                 </label>
                 <input
                   ref={inputRef}
@@ -430,10 +429,10 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
               <div className="flex gap-2">
                 <button
                   onClick={handleSelectCurrentPage}
-                  disabled={isExtracting || currentLocalPage === null}
+                  disabled={isExtracting || totalPages <= 0}
                   className="px-3 py-2.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 whitespace-nowrap"
                 >
-                  Pagina {currentLocalPage ?? '-'}
+                  Pagina {Math.max(1, Math.min(state.currentPage, totalPages || 1))}
                 </button>
                 <button
                   onClick={handleSelectAll}
@@ -456,11 +455,11 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">
                   <span className="font-semibold text-blue-600">{selectedPages.size}</span>
-                  {' '}de {totalPages} paginas selecionadas
+                  {' '}de {totalPages} paginas globais selecionadas
                 </span>
               </div>
               <span className="text-xs text-gray-400">
-                Total: {totalPages} paginas no documento
+                Total do processo: {totalPages} paginas
               </span>
             </div>
           </div>
@@ -478,7 +477,7 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
               onScroll={handlePreviewScroll}
               className="flex-1 overflow-y-auto p-4 bg-gray-100/50"
             >
-              {sortedSelectedPages.length === 0 ? (
+              {selectedPageEntries.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center py-8">
                   <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
                     <FileText className="w-8 h-8 text-gray-400" />
@@ -489,72 +488,74 @@ const PageExtractionModal: React.FC<PageExtractionModalProps> = ({
                   </p>
                 </div>
               ) : (
-                <Document
-                  file={documentUrl}
-                  options={PDF_DOCUMENT_OPTIONS}
-                  loading={null}
-                  error={null}
-                  onLoadSuccess={() => setIsPreviewDocumentReady(true)}
-                  onLoadError={() => setIsPreviewDocumentReady(false)}
-                >
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 justify-items-center content-start">
-                    {!isPreviewDocumentReady && (
-                      <div className="col-span-full flex items-center justify-center py-8 text-gray-500">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span className="ml-2 text-sm">Carregando miniaturas...</span>
-                      </div>
-                    )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 justify-items-center content-start">
+                  {selectedPageEntries.map((entry, index) => {
+                    const shouldRenderPage = index < thumbnailsToRender;
 
-                    {sortedSelectedPages.map((pageNum, index) => {
-                      const shouldRenderPage = isPreviewDocumentReady && index < thumbnailsToRender;
-
-                      return (
-                        <div
-                          key={pageNum}
-                          className="relative group flex flex-col items-center"
-                        >
-                          <div className="relative bg-white rounded-lg shadow-md overflow-hidden ring-2 ring-blue-500 ring-offset-2">
-                            {shouldRenderPage ? (
+                    return (
+                      <div
+                        key={`${entry.documentId}-${entry.globalPage}`}
+                        className="relative group flex flex-col items-center"
+                      >
+                        <div className="relative bg-white rounded-lg shadow-md overflow-hidden ring-2 ring-blue-500 ring-offset-2">
+                          {shouldRenderPage ? (
+                            <Document
+                              file={entry.url}
+                              options={PDF_DOCUMENT_OPTIONS}
+                              loading={
+                                <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
+                                  <span className="text-gray-400 text-xs">G{entry.globalPage}</span>
+                                </div>
+                              }
+                              error={
+                                <div className="w-[90px] aspect-[3/4] bg-red-50 text-red-500 text-[10px] flex items-center justify-center p-1 text-center">
+                                  Erro na miniatura
+                                </div>
+                              }
+                            >
                               <Page
-                                pageNumber={pageNum}
+                                pageNumber={entry.localPage}
                                 scale={THUMBNAIL_SCALE}
                                 renderTextLayer={false}
                                 renderAnnotationLayer={false}
                                 loading={
                                   <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
-                                    <span className="text-gray-400 text-xs">{pageNum}</span>
+                                    <span className="text-gray-400 text-xs">G{entry.globalPage}</span>
                                   </div>
                                 }
                                 className="block"
                               />
-                            ) : (
-                              <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
-                                <span className="text-gray-400 text-xs">{pageNum}</span>
-                              </div>
-                            )}
-
-                            <div className="absolute top-1 left-1 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center shadow">
-                              <Check className="w-3 h-3 text-white" />
+                            </Document>
+                          ) : (
+                            <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
+                              <span className="text-gray-400 text-xs">G{entry.globalPage}</span>
                             </div>
+                          )}
 
-                            <button
-                              onClick={() => handleRemovePage(pageNum)}
-                              disabled={isExtracting}
-                              className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-50"
-                              title="Remover pagina"
-                            >
-                              <Trash2 className="w-3 h-3 text-white" />
-                            </button>
+                          <div className="absolute top-1 left-1 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center shadow">
+                            <Check className="w-3 h-3 text-white" />
                           </div>
 
-                          <span className="mt-2 text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                            Pagina {pageNum}
-                          </span>
+                          <button
+                            onClick={() => handleRemovePage(entry.globalPage)}
+                            disabled={isExtracting}
+                            className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-50"
+                            title="Remover pagina"
+                          >
+                            <Trash2 className="w-3 h-3 text-white" />
+                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
-                </Document>
+
+                        <span className="mt-2 text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full text-center leading-tight">
+                          G{entry.globalPage} · L{entry.localPage}
+                        </span>
+                        <span className="mt-1 text-[10px] text-gray-500 max-w-[95px] text-center truncate" title={entry.documentName}>
+                          {entry.documentName}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
