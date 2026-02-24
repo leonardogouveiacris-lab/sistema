@@ -5253,8 +5253,28 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (state.viewMode !== 'continuous' || !state.highlightedPage) return;
 
     const source = state.isSearchOpen ? 'search' : 'highlight';
-    startProgrammaticPageNavigation(state.highlightedPage, source, true);
-  }, [state.highlightedPage, state.isSearchOpen, state.viewMode, startProgrammaticPageNavigation]);
+    const shouldSyncCurrentPage = state.currentPage !== state.highlightedPage;
+
+    logger.info(
+      'Acionando fluxo deduplicado de navegação por highlight',
+      'FloatingPDFViewer.highlightedPageEffect',
+      {
+        highlightedPage: state.highlightedPage,
+        currentPage: state.currentPage,
+        source,
+        deduplicatedNavigationPath: true,
+        shouldSyncCurrentPage
+      }
+    );
+
+    startProgrammaticPageNavigation(state.highlightedPage, source, shouldSyncCurrentPage);
+  }, [
+    state.currentPage,
+    state.highlightedPage,
+    state.isSearchOpen,
+    state.viewMode,
+    startProgrammaticPageNavigation
+  ]);
 
   /**
    * Effect para manter página ativa após rotação
