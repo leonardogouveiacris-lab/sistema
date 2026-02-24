@@ -254,7 +254,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const estimateCenterPageFromScrollRef = useRef<(scrollTop: number, viewportHeight: number) => number>(() => 1);
   const markInteractionStartRef = useRef<() => void>(() => {});
   const goToPageRef = useRef(goToPage);
-  const logPdfDebugEventRef = useRef(logPdfDebugEvent);
+  const logPdfDebugEventRef = useRef<typeof logPdfDebugEvent | null>(null);
   const isRotatingRef = useRef(state.isRotating);
   const initialScrollRecalcRafRef = useRef<number | null>(null);
   const initialScrollRecalcRafNestedRef = useRef<number | null>(null);
@@ -1467,7 +1467,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (shouldLog) {
         scrollDivergenceLastLogAtRef.current = now;
-        logPdfDebugEventRef.current(
+        logPdfDebugEventRef.current?.(
           'scroll_reconciliation_divergence',
           {
             page: centerPage,
@@ -2786,7 +2786,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const selectionActivatedAt = textSelectionActivatedAtRef.current;
       if (!selectionActivatedAt) {
         if (isSelectingTextRef.current) {
-          logPdfDebugEventRef.current(
+          logPdfDebugEventRef.current?.(
             'text_selection_guard_reset',
             {
               page: currentPageRef.current,
@@ -2804,7 +2804,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (Date.now() - selectionActivatedAt > TEXT_SELECTION_STALE_RESET_MS) {
         if (isSelectingTextRef.current) {
-          logPdfDebugEventRef.current(
+          logPdfDebugEventRef.current?.(
             'text_selection_guard_reset',
             {
               page: currentPageRef.current,
