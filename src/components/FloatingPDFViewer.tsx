@@ -878,11 +878,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const nextSet = new Set(prev);
       const recencyQueue = scrollRenderCacheRecencyQueueRef.current;
       const pendingTargetPage = pendingNavigationTarget?.page;
-      const protectedPages = new Set<number>(visiblePages);
+      const protectedPages = new Set<number>();
 
-      if (pendingTargetPage && pendingTargetPage >= 1 && pendingTargetPage <= state.totalPages) {
-        protectedPages.add(pendingTargetPage);
-      }
+      const protectPageWithNeighbors = (page: number | null | undefined) => {
+        if (!page || page < 1 || page > state.totalPages) {
+          return;
+        }
+
+        protectedPages.add(page);
+        if (page - 1 >= 1) protectedPages.add(page - 1);
+        if (page + 1 <= state.totalPages) protectedPages.add(page + 1);
+      };
+
+      visiblePages.forEach(page => protectPageWithNeighbors(page));
+      protectPageWithNeighbors(pendingTargetPage);
 
       const normalizeRecencyQueue = () => {
         const deduplicated: number[] = [];
@@ -913,114 +922,65 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       normalizeRecencyQueue();
 
-      const viewportAnchoredPages = new Set<number>();
-      visiblePages.forEach(page => {
-        viewportAnchoredPages.add(page);
-        if (page - 1 >= 1) viewportAnchoredPages.add(page - 1);
-        if (page + 1 <= state.totalPages) viewportAnchoredPages.add(page + 1);
-      });
+      const distanceToViewport = (page: number) => {
+        const start = visibleStartPageRef.current;
+        const end = visibleEndPageRef.current;
+        if (page >= start && page <= end) {
+          return 0;
+        }
+        return page < start ? start - page : page - end;
+      };
 
-      while (nextSet.size > budget && recencyQueue.length > 0) {
-        let evictionIndex = -1;
-        for (let index = 0; index < recencyQueue.length; index += 1) {
-          const candidate = recencyQueue[index];
-          if (protectedPages.has(candidate)) {
-            continue;
-          }
+      const distanceToPendingTarget = (page: number) => {
+        if (!pendingTargetPage) {
+          return 0;
+        }
+        return Math.abs(page - pendingTargetPage);
+      };
 
-          if (!nextSet.has(candidate)) {
-            evictionIndex = index;
-            break;
-          }
-
-          if (viewportAnchoredPages.has(candidate)) {
-            continue;
-          }
-
-          evictionIndex = index;
+      while (nextSet.size > budget) {
+        const candidates = Array.from(nextSet).filter(page => !protectedPages.has(page));
+        if (candidates.length === 0) {
           break;
         }
 
-        if (evictionIndex === -1) {
-          logger.warn(
-            'Scroll render cache: sem candidato seguro para eviccao no loop principal',
-            'FloatingPDFViewer.calculateVisiblePagesFromScroll',
-            {
-              budget,
-              cacheSize: nextSet.size,
-              visiblePages: Array.from(visiblePages),
-              pendingTargetPage,
-              recencyQueueSize: recencyQueue.length
-            }
-          );
-          break;
-        }
+        const recencyIndexMap = new Map<number, number>();
+        recencyQueue.forEach((page, index) => {
+          if (!recencyIndexMap.has(page)) {
+            recencyIndexMap.set(page, index);
+          }
+        });
 
-        const [evictedPage] = recencyQueue.splice(evictionIndex, 1);
-        if (evictedPage !== undefined) {
-          nextSet.delete(evictedPage);
+        candidates.sort((a, b) => {
+          const viewportScoreA = distanceToViewport(a);
+          const viewportScoreB = distanceToViewport(b);
+          if (viewportScoreA !== viewportScoreB) {
+            return viewportScoreB - viewportScoreA;
+          }
+
+          const pendingScoreA = distanceToPendingTarget(a);
+          const pendingScoreB = distanceToPendingTarget(b);
+          if (pendingScoreA !== pendingScoreB) {
+            return pendingScoreB - pendingScoreA;
+          }
+
+          const recencyA = recencyIndexMap.get(a) ?? -1;
+          const recencyB = recencyIndexMap.get(b) ?? -1;
+          if (recencyA !== recencyB) {
+            return recencyA - recencyB;
+          }
+
+          return a - b;
+        });
+
+        const candidateToEvict = candidates[0];
+        nextSet.delete(candidateToEvict);
+        const recencyIndex = recencyQueue.indexOf(candidateToEvict);
+        if (recencyIndex >= 0) {
+          recencyQueue.splice(recencyIndex, 1);
         }
 
         normalizeRecencyQueue();
-      }
-
-      if (nextSet.size > budget) {
-        const distanceToViewport = (page: number) => {
-          const start = visibleStartPageRef.current;
-          const end = visibleEndPageRef.current;
-          if (page >= start && page <= end) {
-            return 0;
-          }
-          return page < start ? start - page : page - end;
-        };
-
-        const distanceToPendingTarget = (page: number) => {
-          if (!pendingTargetPage) {
-            return 0;
-          }
-          return Math.abs(page - pendingTargetPage);
-        };
-
-        while (nextSet.size > budget) {
-          const candidates = Array.from(nextSet).filter(page => !protectedPages.has(page));
-          if (candidates.length === 0) {
-            break;
-          }
-
-          const recencyIndexMap = new Map<number, number>();
-          recencyQueue.forEach((page, index) => {
-            if (!recencyIndexMap.has(page)) {
-              recencyIndexMap.set(page, index);
-            }
-          });
-
-          candidates.sort((a, b) => {
-            const viewportScoreA = distanceToViewport(a);
-            const viewportScoreB = distanceToViewport(b);
-            if (viewportScoreA !== viewportScoreB) {
-              return viewportScoreB - viewportScoreA;
-            }
-
-            const pendingScoreA = distanceToPendingTarget(a);
-            const pendingScoreB = distanceToPendingTarget(b);
-            if (pendingScoreA !== pendingScoreB) {
-              return pendingScoreB - pendingScoreA;
-            }
-
-            const recencyA = recencyIndexMap.get(a) ?? -1;
-            const recencyB = recencyIndexMap.get(b) ?? -1;
-            return recencyA - recencyB;
-          });
-
-          const candidateToEvict = candidates[0];
-          nextSet.delete(candidateToEvict);
-          const recencyIndex = recencyQueue.indexOf(candidateToEvict);
-          if (recencyIndex >= 0) {
-            recencyQueue.splice(recencyIndex, 1);
-          }
-
-          normalizeRecencyQueue();
-        }
       }
 
       if (nextSet.size > budget) {
@@ -1041,9 +1001,47 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             recencyQueueSize: recencyQueue.length
           }
         );
+
+        const pagesByPriority = Array.from(nextSet).sort((a, b) => {
+          const viewportScoreA = distanceToViewport(a);
+          const viewportScoreB = distanceToViewport(b);
+          if (viewportScoreA !== viewportScoreB) {
+            return viewportScoreA - viewportScoreB;
+          }
+
+          const pendingScoreA = distanceToPendingTarget(a);
+          const pendingScoreB = distanceToPendingTarget(b);
+          if (pendingScoreA !== pendingScoreB) {
+            return pendingScoreA - pendingScoreB;
+          }
+
+          const isVisibleA = visiblePages.has(a) ? 1 : 0;
+          const isVisibleB = visiblePages.has(b) ? 1 : 0;
+          if (isVisibleA !== isVisibleB) {
+            return isVisibleB - isVisibleA;
+          }
+
+          return a - b;
+        });
+
+        const fallbackSet = new Set<number>(pagesByPriority.slice(0, budget));
+        nextSet.clear();
+        fallbackSet.forEach(page => nextSet.add(page));
       }
 
       normalizeRecencyQueue();
+
+      const synchronizedQueue = recencyQueue.filter(page => nextSet.has(page));
+      const queueSet = new Set<number>(synchronizedQueue);
+      Array.from(nextSet)
+        .sort((a, b) => a - b)
+        .forEach(page => {
+          if (!queueSet.has(page)) {
+            synchronizedQueue.push(page);
+          }
+        });
+      recencyQueue.length = 0;
+      recencyQueue.push(...synchronizedQueue);
 
       if (nextSet.size === prev.size) {
         let didChange = false;
