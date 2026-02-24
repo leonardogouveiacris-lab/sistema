@@ -287,6 +287,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const loadedDocumentRefsByGenerationRef = useRef<Set<string>>(new Set());
   const proxyGenerationByDocumentRef = useRef<Map<string, number>>(new Map());
   const documentSetGenerationRef = useRef(0);
+  const cumulativePageTopsRef = useRef<number[]>([]);
   const lastOpenDocumentSetSignatureRef = useRef<string | null>(null);
   const commentsBatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pageDimensionsUpdateQueueRef = useRef<Map<number, { width: number; height: number; internalRotation?: number }>>(new Map());
@@ -325,6 +326,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const cumulativePageBottoms = useMemo(() => {
     return cumulativePageTops.map((top, index) => top + getPageHeight(index + 1));
   }, [cumulativePageTops, getPageHeight]);
+
+  useEffect(() => {
+    cumulativePageTopsRef.current = cumulativePageTops;
+  }, [cumulativePageTops]);
 
   const logPdfDebugEvent = useCallback((
     event: string,
@@ -1308,6 +1313,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       goToPage(targetPage);
     }
 
+    const FALLBACK_SCROLL_ATTEMPT_MS = 500;
+    let fallbackAttempted = false;
+
     const scrollToTargetPage = () => {
       const pageElement = pageRefs.current.get(targetPage);
       if (pageElement && scrollContainerRef.current) {
@@ -1321,7 +1329,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
-      if (Date.now() - startedAt < PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS) {
+      const elapsed = Date.now() - startedAt;
+
+      if (!fallbackAttempted && elapsed >= FALLBACK_SCROLL_ATTEMPT_MS && scrollContainerRef.current) {
+        const pageIndex = targetPage - 1;
+        const tops = cumulativePageTopsRef.current;
+        if (tops && pageIndex >= 0 && pageIndex < tops.length) {
+          const targetScrollTop = tops[pageIndex];
+          scrollContainerRef.current.scrollTop = targetScrollTop;
+          fallbackAttempted = true;
+          logger.info(
+            `Fallback scroll para pagina ${targetPage} via cumulativePageTops: scrollTop=${targetScrollTop}`,
+            'FloatingPDFViewer.startProgrammaticPageNavigation'
+          );
+        }
+      }
+
+      if (elapsed < PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS) {
         requestAnimationFrame(scrollToTargetPage);
       } else {
         logger.warn(
@@ -3870,10 +3894,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     // 1.5) Página de navegação pendente (crucial para bookmark/highlight navigation)
     const pendingTarget = pendingNavigationTargetRef.current;
+    const navigationTargetPages = new Set<number>();
     if (pendingTarget) {
       const targetPage = pendingTarget.page;
       for (let i = -2; i <= 2; i += 1) {
-        pushCandidate(targetPage + i, 0);
+        const page = targetPage + i;
+        if (page >= 1 && page <= state.totalPages) {
+          navigationTargetPages.add(page);
+          viewportCorePages.add(page);
+          pushCandidate(page, -2);
+        }
       }
     }
 
@@ -3898,9 +3928,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       pushCandidate(centerPage + i, 2);
     }
 
-    // 4) Páginas forçadas
+    // 4) Páginas forçadas - prioridade máxima e bypass de budget
     forceRenderPages.forEach((page) => {
-      pushCandidate(page, 3);
+      viewportCorePages.add(page);
+      pushCandidate(page, -2);
     });
 
     // 5) Restante do cache
