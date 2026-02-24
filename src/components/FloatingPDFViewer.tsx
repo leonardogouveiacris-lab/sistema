@@ -97,6 +97,8 @@ const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 140;
 const UPWARD_SCROLL_MICRO_DELTA_PX = 14;
 const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 24;
 const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.03;
+const UPWARD_VIEWPORT_EXIT_INTERSECTION_PX = 8;
+const UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO = 0.01;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -1840,6 +1842,31 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       { throttleMs: 800, throttleKey: 'zoom-normalization', force: true }
     );
 
+    const isUpwardViewportExit =
+      scrollDirection === 'up' &&
+      centerPage < state.currentPage &&
+      currentPageIntersectionPx <= UPWARD_VIEWPORT_EXIT_INTERSECTION_PX &&
+      currentPageVisibleRatio <= UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO;
+
+    if (isUpwardViewportExit && centerPage < state.currentPage - 1) {
+      centerPage = state.currentPage - 1;
+      logPdfDebugEvent(
+        'calculate_visible_pages_upward_exit_reconciliation',
+        {
+          mode: state.viewMode,
+          currentPage: state.currentPage,
+          centerPage,
+          scrollDirection,
+          currentPageIntersectionPx,
+          currentPageVisibleRatio,
+          signedScrollDelta,
+          scrollDelta,
+          zoom: state.zoom
+        },
+        { throttleMs: 500, throttleKey: 'upward-exit-reconciliation', force: true }
+      );
+    }
+
     const timeSinceLastDetection = now - lastDetectionTimeRef.current;
     const pageDifference = Math.abs(centerPage - lastDetectedPageRef.current);
     const jumpFromCurrentPage = Math.abs(centerPage - state.currentPage);
@@ -1848,7 +1875,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       activePageTransitionCandidateRef.current = null;
     }
 
-    if (!shouldForcePageUpdate && pageDifference === 1 && timeSinceLastDetection < 300) {
+    if (!shouldForcePageUpdate && !isUpwardViewportExit && pageDifference === 1 && timeSinceLastDetection < 300) {
       return;
     }
 
@@ -1865,6 +1892,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       !hasPendingNavigationTarget &&
       !isKeyboardNavLockActive &&
       !hasRecentKeyboardNavigation &&
+      !isUpwardViewportExit &&
       jumpFromCurrentPage === 1;
 
     if (shouldDebounceVisualAdjacentTransition && centerPage !== state.currentPage) {
