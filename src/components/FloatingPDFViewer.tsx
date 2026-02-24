@@ -99,6 +99,7 @@ const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 24;
 const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.03;
 const UPWARD_VIEWPORT_EXIT_INTERSECTION_PX = 8;
 const UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO = 0.01;
+const LANDSCAPE_BOUNDARY_CURRENT_RATIO_THRESHOLD = 0.38;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -1907,6 +1908,46 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     }
 
+    const currentPageWidth = getPageWidth(effectiveCurrentPage);
+    const currentPageHeight = getPageHeight(effectiveCurrentPage);
+    const currentPageIsLandscape = currentPageWidth > currentPageHeight;
+    const adjacentUpPage = Math.max(1, effectiveCurrentPage - 1);
+    const adjacentDownPage = Math.min(state.totalPages, effectiveCurrentPage + 1);
+    const adjacentUpIsLandscape = getPageWidth(adjacentUpPage) > getPageHeight(adjacentUpPage);
+    const adjacentDownIsLandscape = getPageWidth(adjacentDownPage) > getPageHeight(adjacentDownPage);
+    const isLandscapeBoundary = currentPageIsLandscape || adjacentUpIsLandscape || adjacentDownIsLandscape;
+
+    if (
+      shouldApplyMonotonicDirectionClamp &&
+      isLandscapeBoundary &&
+      centerPage !== effectiveCurrentPage &&
+      currentPageVisibleRatio <= LANDSCAPE_BOUNDARY_CURRENT_RATIO_THRESHOLD
+    ) {
+      const originalLandscapeBoundaryCandidate = centerPage;
+      centerPage = scrollDirection === 'up' ? adjacentUpPage : scrollDirection === 'down' ? adjacentDownPage : centerPage;
+      logPdfDebugEvent(
+        'calculate_visible_pages_landscape_boundary_reconciliation',
+        {
+          mode: state.viewMode,
+          currentPage: effectiveCurrentPage,
+          centerPage,
+          originalLandscapeBoundaryCandidate,
+          scrollDirection,
+          currentPageVisibleRatio,
+          currentPageIntersectionPx,
+          currentPageIsLandscape,
+          adjacentUpPage,
+          adjacentDownPage,
+          adjacentUpIsLandscape,
+          adjacentDownIsLandscape,
+          signedScrollDelta,
+          scrollDelta,
+          zoom: state.zoom
+        },
+        { throttleMs: 500, throttleKey: 'landscape-boundary-reconciliation', force: true }
+      );
+    }
+
     const timeSinceLastDetection = now - lastDetectionTimeRef.current;
     const pageDifference = Math.abs(centerPage - lastDetectedPageRef.current);
     const jumpFromCurrentPage = Math.abs(centerPage - state.currentPage);
@@ -1967,6 +2008,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     getCurrentDocument,
     getDocumentByGlobalPage,
     getPageHeight,
+    getPageWidth,
     goToPage,
     isSearchNavigationActive,
     logNavigationLatencySummary,
