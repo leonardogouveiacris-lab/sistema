@@ -93,6 +93,8 @@ const ACTIVE_PAGE_MIN_VISIBLE_RATIO = 0.25;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO = 0.12;
 const ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS = 120;
+const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 140;
+const UPWARD_SCROLL_MICRO_DELTA_PX = 14;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -223,6 +225,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const lastDetectedPageRef = useRef<number>(1);
   const lastDetectionTimeRef = useRef<number>(0);
   const activePageTransitionCandidateRef = useRef<{ page: number; startedAt: number; samples: number } | null>(null);
+  const lastScrollDirectionRef = useRef<'up' | 'down' | 'neutral'>('neutral');
+  const scrollDirectionChangedAtRef = useRef<number>(0);
   const idleCallbackIdRef = useRef<number | null>(null);
   const renderFallbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollThrottleRef = useRef<number>(0);
@@ -966,6 +970,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       : 0;
     const scrollDelta = Math.abs(signedScrollDelta);
     const scrollDirection = signedScrollDelta > 0 ? 'down' : signedScrollDelta < 0 ? 'up' : 'neutral';
+    if (scrollDirection !== 'neutral' && scrollDirection !== lastScrollDirectionRef.current) {
+      lastScrollDirectionRef.current = scrollDirection;
+      scrollDirectionChangedAtRef.current = now;
+    }
+    const timeSinceDirectionChange = scrollDirection === 'neutral'
+      ? Number.POSITIVE_INFINITY
+      : now - scrollDirectionChangedAtRef.current;
+    const isDirectionSettling = scrollDirection !== 'neutral' && timeSinceDirectionChange < SCROLL_DIRECTION_CHANGE_SETTLE_MS;
     const isLargeScrollJump = scrollDelta > viewportHeight * 2;
     const pendingNavigationTarget = pendingNavigationTargetRef.current;
     const hasPendingNavigationTarget = Boolean(pendingNavigationTarget);
@@ -1741,6 +1753,33 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         },
         { throttleMs: 180, throttleKey: 'directional-guard' }
       );
+    }
+
+    const shouldStabilizeUpwardMicroScroll =
+      shouldNormalizeZoomScrollStep &&
+      scrollDirection === 'up' &&
+      scrollDelta <= UPWARD_SCROLL_MICRO_DELTA_PX &&
+      centerPage !== state.currentPage;
+
+    if (shouldStabilizeUpwardMicroScroll || (isDirectionSettling && centerPage !== state.currentPage)) {
+      logPdfDebugEvent(
+        'calculate_visible_pages_upward_stability_guard',
+        {
+          mode: state.viewMode,
+          currentPage: state.currentPage,
+          centerPageBeforeStabilityGuard: centerPage,
+          scrollDirection,
+          scrollDelta,
+          signedScrollDelta,
+          isDirectionSettling,
+          timeSinceDirectionChange,
+          shouldStabilizeUpwardMicroScroll,
+          zoom: state.zoom
+        },
+        { throttleMs: 180, throttleKey: 'upward-stability-guard' }
+      );
+
+      centerPage = state.currentPage;
     }
 
     logPdfDebugEvent(
