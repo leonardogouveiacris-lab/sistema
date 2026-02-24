@@ -276,6 +276,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   const zoomBlockedUntilRef = useRef<number>(0);
   const continuousWindowByDocumentRef = useRef<Map<string, { firstVisibleLocalPage: number; lastVisibleLocalPage: number; rangeStart: number; rangeEnd: number }>>(new Map());
+  const memoizedDocumentOffsetsRef = useRef<Map<string, { startPage: number; endPage: number; numPages: number }>>(new Map());
   const zoomAnchorRef = useRef<{ page: number; anchorDocumentId: string | null; relativeOffsetY: number; hasMeasuredPage: boolean } | null>(null);
   const zoomReconciliationAnchorRef = useRef<{
     documentId: string;
@@ -915,7 +916,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       ? state.documents
         .map((doc) => {
           const pageWindow = continuousWindowByDocumentRef.current.get(doc.id);
-          const offset = memoizedDocumentOffsets.get(doc.id);
+          const offset = memoizedDocumentOffsetsRef.current.get(doc.id);
           if (!pageWindow || !offset) {
             return null;
           }
@@ -1602,7 +1603,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     isSearchNavigationActive,
     logNavigationLatencySummary,
     logPdfDebugEvent,
-    memoizedDocumentOffsets,
     releaseProgrammaticScroll,
     state.currentPage,
     state.documents,
@@ -3584,6 +3584,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const memoizedDocumentOffsets = useMemo(() => {
     return getDocumentOffsets();
   }, [getDocumentOffsets]);
+
+  useEffect(() => {
+    memoizedDocumentOffsetsRef.current = memoizedDocumentOffsets;
+  }, [memoizedDocumentOffsets]);
 
   const extractionProgressRafRef = useRef<number | null>(null);
 
