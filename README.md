@@ -180,6 +180,8 @@ npm run preview  # Preview do build
 npm run lint     # Linting
 ```
 
+**Importante:** arquivos transitórios de cache/build local (ex.: `vite.config.ts.timestamp-*.mjs`, `dist/`, logs e caches do bundler) não devem ser versionados ou commitados.
+
 ### 🧭 Troubleshooting / Logging
 
 As variáveis abaixo permitem ajustar o volume e destino dos logs da aplicação:
