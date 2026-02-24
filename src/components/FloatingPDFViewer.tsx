@@ -78,6 +78,7 @@ const DEBUG_CONTINUOUS_RENDER = false;
 const CONTINUOUS_PRELOAD_RADIUS = 2;
 const CONTINUOUS_IDLE_PRELOAD_RADIUS = 4;
 const CONTINUOUS_PAGE_GAP_PX = 16;
+const CONTINUOUS_INTER_DOCUMENT_HEADER_FALLBACK_HEIGHT_PX = 52;
 const PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS = 8000;
 const PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS = 400;
 const NAVIGATION_INITIAL_RESPONSE_ALERT_MS = 150;
@@ -200,6 +201,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const [scrollFallbackVisibleRange, setScrollFallbackVisibleRange] = useState<{ start: number; end: number } | null>(null);
   const [scrollRenderCache, setScrollRenderCache] = useState<Set<number>>(new Set());
   const [pageInputValue, setPageInputValue] = useState<string>('');
+  const [documentLayoutVersion, setDocumentLayoutVersion] = useState(0);
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const isSelectingTextRef = useRef(false);
   const isPointerDownInPdfRef = useRef(false);
@@ -311,6 +313,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const proxyGenerationByDocumentRef = useRef<Map<string, number>>(new Map());
   const documentSetGenerationRef = useRef(0);
   const cumulativePageTopsRef = useRef<number[]>([]);
+  const interDocumentHeaderRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastOpenDocumentSetSignatureRef = useRef<string | null>(null);
   const commentsBatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pageDimensionsUpdateQueueRef = useRef<Map<number, { width: number; height: number; internalRotation?: number }>>(new Map());
@@ -342,17 +345,64 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const documentSetSignature = useMemo(() => state.documents.map(doc => doc.id).join('|'), [state.documents]);
   const topLevelBookmarkCount = state.bookmarks.length;
   const totalBookmarkCount = useMemo(() => countTotalBookmarks(state.bookmarks), [state.bookmarks]);
-  const cumulativePageTops = useMemo(() => {
-    const tops: number[] = [];
-    let accumulatedHeight = 0;
+  const interDocumentHeaderHeightByDoc = useMemo(() => {
+    const heights = new Map<string, number>();
+    const layoutVersion = documentLayoutVersion;
 
-    for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
-      tops.push(accumulatedHeight);
-      accumulatedHeight += getPageHeight(pageNum) + CONTINUOUS_PAGE_GAP_PX;
+    state.documents.forEach((doc, docIndex) => {
+      if (state.viewMode !== 'continuous' || docIndex === 0) {
+        heights.set(doc.id, 0);
+        return;
+      }
+
+      const headerElement = interDocumentHeaderRefs.current.get(doc.id);
+      if (headerElement) {
+        const styles = window.getComputedStyle(headerElement);
+        const marginBottom = Number.parseFloat(styles.marginBottom || '0') || 0;
+        heights.set(doc.id, headerElement.offsetHeight + marginBottom);
+        return;
+      }
+
+      heights.set(doc.id, CONTINUOUS_INTER_DOCUMENT_HEADER_FALLBACK_HEIGHT_PX);
+    });
+
+    if (layoutVersion < 0) {
+      return new Map<string, number>();
     }
 
-    return tops;
-  }, [getPageHeight, state.totalPages]);
+    return heights;
+  }, [documentLayoutVersion, state.documents, state.viewMode]);
+
+  const getGlobalPageTopOffset = useCallback((globalPage: number) => {
+    if (globalPage <= 1) {
+      return 0;
+    }
+
+    let accumulatedHeight = 0;
+
+    for (const doc of state.documents) {
+      const offset = memoizedDocumentOffsets.get(doc.id);
+      if (!offset) {
+        continue;
+      }
+
+      accumulatedHeight += interDocumentHeaderHeightByDoc.get(doc.id) || 0;
+
+      for (let pageNum = offset.startPage; pageNum <= offset.endPage; pageNum += 1) {
+        if (pageNum === globalPage) {
+          return accumulatedHeight;
+        }
+
+        accumulatedHeight += getPageHeight(pageNum) + CONTINUOUS_PAGE_GAP_PX;
+      }
+    }
+
+    return accumulatedHeight;
+  }, [getPageHeight, interDocumentHeaderHeightByDoc, memoizedDocumentOffsets, state.documents]);
+
+  const cumulativePageTops = useMemo(() => {
+    return Array.from({ length: state.totalPages }, (_value, index) => getGlobalPageTopOffset(index + 1));
+  }, [getGlobalPageTopOffset, state.totalPages]);
 
   const cumulativePageBottoms = useMemo(() => {
     return cumulativePageTops.map((top, index) => top + getPageHeight(index + 1));
@@ -361,6 +411,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   useEffect(() => {
     cumulativePageTopsRef.current = cumulativePageTops;
   }, [cumulativePageTops]);
+
+  useEffect(() => {
+    if (state.viewMode !== 'continuous') {
+      return;
+    }
+
+    const handleResize = () => setDocumentLayoutVersion((prev) => prev + 1);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [state.viewMode]);
 
   const logPdfDebugEvent = useCallback((
     event: string,
@@ -1664,12 +1724,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       const pageIndex = targetPage - 1;
-      const tops = cumulativePageTopsRef.current;
-      if (!tops || pageIndex < 0 || pageIndex >= tops.length) {
+      if (pageIndex < 0 || pageIndex >= state.totalPages) {
         return;
       }
 
-      const targetScrollTop = tops[pageIndex];
+      const tops = cumulativePageTopsRef.current;
+      const targetScrollTop = tops[pageIndex] ?? getGlobalPageTopOffset(targetPage);
       if (lastAppliedTargetPage === targetPage && lastAppliedTargetScrollTop === targetScrollTop) {
         return;
       }
@@ -1731,7 +1791,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     scrollToTargetPage();
-  }, [goToPage, markProgrammaticScroll, releaseProgrammaticScroll, state.viewMode, state.totalPages]);
+  }, [getGlobalPageTopOffset, goToPage, markProgrammaticScroll, releaseProgrammaticScroll, state.viewMode, state.totalPages]);
 
   useEffect(() => {
     calculateVisiblePagesFromScrollRef.current = calculateVisiblePagesFromScroll;
@@ -1756,6 +1816,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const handleScrollContainerRef = useCallback((node: HTMLDivElement | null) => {
     scrollContainerRef.current = node;
     setScrollContainerElement(node);
+  }, []);
+
+  const handleInterDocumentHeaderRef = useCallback((docId: string, node: HTMLDivElement | null) => {
+    if (node) {
+      interDocumentHeaderRefs.current.set(docId, node);
+    } else {
+      interDocumentHeaderRefs.current.delete(docId);
+    }
+
+    setDocumentLayoutVersion((prev) => prev + 1);
   }, []);
 
   /**
@@ -5826,22 +5896,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
         activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
       } else {
-        const tops = cumulativePageTopsRef.current;
-        const hasValidTops = tops && tops.length > 0 && tops[anchorPage - 1] !== undefined;
-
-        if (hasValidTops) {
-          const estimatedTop = tops[anchorPage - 1];
-          const estimatedHeight = getPageHeight(anchorPage);
-          const relativeOffset = zoomAnchor?.relativeOffsetY ?? 0.5;
-          const targetCenterY = estimatedTop + relativeOffset * estimatedHeight;
-          const nextScrollTop = targetCenterY - activeContainer.clientHeight / 2;
-          const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
-          activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
-        } else {
-          const pageRatio = (anchorPage - 1) / Math.max(1, state.totalPages - 1);
-          const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
-          activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, pageRatio * maxScrollTop));
-        }
+        const estimatedTop = cumulativePageTopsRef.current[anchorPage - 1] ?? getGlobalPageTopOffset(anchorPage);
+        const estimatedHeight = getPageHeight(anchorPage);
+        const relativeOffset = zoomAnchor?.relativeOffsetY ?? 0.5;
+        const targetCenterY = estimatedTop + relativeOffset * estimatedHeight;
+        const nextScrollTop = targetCenterY - activeContainer.clientHeight / 2;
+        const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
+        activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
       }
 
       const scrollWidth = activeContainer.scrollWidth;
@@ -5949,7 +6010,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     prevZoomRef.current = state.zoom;
     zoomAnchorRef.current = null;
-  }, [deriveVisibleRangeFromContainer, goToPage, markProgrammaticScroll, memoizedDocumentOffsets, releaseProgrammaticScroll, state.currentPage, state.totalPages, state.viewMode, state.zoom]);
+  }, [deriveVisibleRangeFromContainer, getGlobalPageTopOffset, goToPage, markProgrammaticScroll, memoizedDocumentOffsets, releaseProgrammaticScroll, state.currentPage, state.totalPages, state.viewMode, state.zoom]);
 
   /**
    * Effect para centralizar o scroll horizontal quando o viewer abre
@@ -6539,7 +6600,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                   return (
                     <div key={doc.id} className="flex flex-col items-center w-full">
                       {docIndex > 0 && (
-                        <div className="max-w-4xl mb-4 bg-white border-l-4 border-blue-400 rounded shadow-sm p-2.5">
+                        <div ref={(node) => handleInterDocumentHeaderRef(doc.id, node)} className="max-w-4xl mb-4 bg-white border-l-4 border-blue-400 rounded shadow-sm p-2.5">
                           <div className="flex items-center gap-2">
                             <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
                             <div className="text-xs font-semibold text-gray-700 truncate">
@@ -6569,7 +6630,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                 return (
                   <div key={doc.id} className="flex flex-col items-center">
                     {docIndex > 0 && state.viewMode === 'continuous' && (
-                      <div className="max-w-4xl mb-4 bg-white border-l-4 border-blue-400 rounded shadow-sm p-2.5">
+                      <div ref={(node) => handleInterDocumentHeaderRef(doc.id, node)} className="max-w-4xl mb-4 bg-white border-l-4 border-blue-400 rounded shadow-sm p-2.5">
                         <div className="flex items-center gap-2">
                           <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
                           <div className="text-xs font-semibold text-gray-700 truncate">
