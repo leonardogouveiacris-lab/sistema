@@ -250,8 +250,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const keyboardNavStableFramesRef = useRef<number>(0);
   const currentPageRef = useRef<number>(state.currentPage);
   const calculateVisiblePagesFromScrollRef = useRef<(options?: { allowLargeJump?: boolean; previousScrollTop?: number; ignoreZoomLock?: boolean }) => void>(() => {});
+  const deriveVisibleRangeFromContainerRef = useRef<() => ({ start: number; end: number } | null)>(() => null);
   const estimateCenterPageFromScrollRef = useRef<(scrollTop: number, viewportHeight: number) => number>(() => 1);
   const markInteractionStartRef = useRef<() => void>(() => {});
+  const goToPageRef = useRef(goToPage);
+  const logPdfDebugEventRef = useRef(logPdfDebugEvent);
+  const isRotatingRef = useRef(state.isRotating);
   const initialScrollRecalcRafRef = useRef<number | null>(null);
   const initialScrollRecalcRafNestedRef = useRef<number | null>(null);
   const initialScrollRecalcTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -688,6 +692,22 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       end: centerPage
     };
   }, [cumulativePageBottoms, cumulativePageTops, state.totalPages]);
+
+  useEffect(() => {
+    deriveVisibleRangeFromContainerRef.current = deriveVisibleRangeFromContainer;
+  }, [deriveVisibleRangeFromContainer]);
+
+  useEffect(() => {
+    goToPageRef.current = goToPage;
+  }, [goToPage]);
+
+  useEffect(() => {
+    logPdfDebugEventRef.current = logPdfDebugEvent;
+  }, [logPdfDebugEvent]);
+
+  useEffect(() => {
+    isRotatingRef.current = state.isRotating;
+  }, [state.isRotating]);
 
   const releaseProgrammaticScroll = useCallback((reason: string) => {
     if (programmaticScrollSafetyTimeoutRef.current) {
@@ -1447,7 +1467,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (shouldLog) {
         scrollDivergenceLastLogAtRef.current = now;
-        logPdfDebugEvent(
+        logPdfDebugEventRef.current(
           'scroll_reconciliation_divergence',
           {
             page: centerPage,
@@ -1472,7 +1492,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           scrollDivergenceStartedAtRef.current = null;
           lastDetectedPageRef.current = centerPage;
           lastDetectionTimeRef.current = now;
-          goToPage(centerPage);
+          goToPageRef.current(centerPage);
         }
       }
     };
@@ -1501,7 +1521,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           return;
         }
 
-        if (isModeSwitchingRef.current || state.isRotating) {
+        if (isModeSwitchingRef.current || isRotatingRef.current) {
           return;
         }
 
@@ -1530,7 +1550,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       if (scrollBasedVisiblePagesRef.current.size === 0) {
         emptyVisiblePagesScrollFramesRef.current += 1;
         if (emptyVisiblePagesScrollFramesRef.current > EMPTY_VISIBLE_PAGES_SCROLL_FRAME_THRESHOLD) {
-          const fallbackRange = deriveVisibleRangeFromContainer();
+          const fallbackRange = deriveVisibleRangeFromContainerRef.current?.() ?? null;
           setScrollFallbackVisibleRange(prev => {
             if (!fallbackRange) {
               return prev;
@@ -1678,7 +1698,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       scrollFallbackVisibleRangeRef.current = null;
       setScrollFallbackVisibleRange(null);
     };
-  }, [deriveVisibleRangeFromContainer, scrollContainerElement, state.viewMode]);
+  }, [scrollContainerElement, state.viewMode]);
 
   useEffect(() => {
     registerScrollContainer(scrollContainerElement);
@@ -2766,7 +2786,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const selectionActivatedAt = textSelectionActivatedAtRef.current;
       if (!selectionActivatedAt) {
         if (isSelectingTextRef.current) {
-          logPdfDebugEvent(
+          logPdfDebugEventRef.current(
             'text_selection_guard_reset',
             {
               page: currentPageRef.current,
@@ -2784,7 +2804,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (Date.now() - selectionActivatedAt > TEXT_SELECTION_STALE_RESET_MS) {
         if (isSelectingTextRef.current) {
-          logPdfDebugEvent(
+          logPdfDebugEventRef.current(
             'text_selection_guard_reset',
             {
               page: currentPageRef.current,
@@ -2944,7 +2964,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           documentIndex: documentInfo.documentIndex,
           pageCount: pdf.numPages
         });
-        setBookmarks(mergeBookmarksFromMultipleDocuments(newMap, { totalDocumentCount: state.documents.length }));
         return newMap;
       });
 
@@ -2974,7 +2993,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               pageCount: pdf.numPages
             });
           }
-          setBookmarks(mergeBookmarksFromMultipleDocuments(newMap, { totalDocumentCount: state.documents.length }));
           return newMap;
         });
       }
@@ -2986,7 +3004,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         setBookmarksError('Nenhum bookmark encontrado nos documentos');
       }
     }
-  }, [pdfDocumentProxies, state.documents, state.isOpen, setBookmarkStatusByDoc, setBookmarks, setBookmarksError, startPhaseTimer, finishPhaseTimer]);
+  }, [pdfDocumentProxies, state.documents, state.isOpen, setBookmarkStatusByDoc, setBookmarksError, startPhaseTimer, finishPhaseTimer]);
+
+
+
+  useEffect(() => {
+    setBookmarks(mergeBookmarksFromMultipleDocuments(documentBookmarks, { totalDocumentCount: state.documents.length }));
+  }, [documentBookmarks, setBookmarks, state.documents.length]);
 
   const enqueueBookmarkExtraction = useCallback((prioritizedDocumentIds: string[]) => {
     prioritizedDocumentIds.forEach((documentId, index) => {
