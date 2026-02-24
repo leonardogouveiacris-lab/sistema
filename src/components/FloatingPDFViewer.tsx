@@ -300,6 +300,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const bookmarkExtractionInFlightRef = useRef<Set<string>>(new Set());
   const bookmarkExtractionLoadedRef = useRef<Set<string>>(new Set());
   const bookmarkExtractionFailedRef = useRef<Set<string>>(new Set());
+  const mergedBookmarksFingerprintRef = useRef<string | null>(null);
   const loadedDocumentRefsByGenerationRef = useRef<Set<string>>(new Set());
   const proxyGenerationByDocumentRef = useRef<Map<string, number>>(new Map());
   const documentSetGenerationRef = useRef(0);
@@ -1388,12 +1389,44 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       goToPage(targetPage);
     }
 
-    const FALLBACK_SCROLL_ATTEMPT_MS = 500;
+    const FALLBACK_SCROLL_ATTEMPT_MS = 75;
     let fallbackAttempted = false;
+    let lastAppliedTargetPage: number | null = null;
+    let lastAppliedTargetScrollTop: number | null = null;
+
+    const applyFallbackByCumulativeTops = () => {
+      if (!scrollContainerRef.current) {
+        return;
+      }
+
+      const pageIndex = targetPage - 1;
+      const tops = cumulativePageTopsRef.current;
+      if (!tops || pageIndex < 0 || pageIndex >= tops.length) {
+        return;
+      }
+
+      const targetScrollTop = tops[pageIndex];
+      if (lastAppliedTargetPage === targetPage && lastAppliedTargetScrollTop === targetScrollTop) {
+        return;
+      }
+
+      scrollContainerRef.current.scrollTop = targetScrollTop;
+      lastAppliedTargetPage = targetPage;
+      lastAppliedTargetScrollTop = targetScrollTop;
+      fallbackAttempted = true;
+      logger.info(
+        `Fallback scroll para pagina ${targetPage} via cumulativePageTops: scrollTop=${targetScrollTop}`,
+        'FloatingPDFViewer.startProgrammaticPageNavigation'
+      );
+    };
 
     const scrollToTargetPage = () => {
       const pageElement = pageRefs.current.get(targetPage);
       if (pageElement && scrollContainerRef.current) {
+        if (lastAppliedTargetPage !== targetPage || lastAppliedTargetScrollTop !== scrollContainerRef.current.scrollTop) {
+          lastAppliedTargetPage = targetPage;
+          lastAppliedTargetScrollTop = scrollContainerRef.current.scrollTop;
+        }
         pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
         setTimeout(() => {
           releaseProgrammaticScroll('state-change');
@@ -1406,18 +1439,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       const elapsed = Date.now() - startedAt;
 
-      if (!fallbackAttempted && elapsed >= FALLBACK_SCROLL_ATTEMPT_MS && scrollContainerRef.current) {
-        const pageIndex = targetPage - 1;
-        const tops = cumulativePageTopsRef.current;
-        if (tops && pageIndex >= 0 && pageIndex < tops.length) {
-          const targetScrollTop = tops[pageIndex];
-          scrollContainerRef.current.scrollTop = targetScrollTop;
-          fallbackAttempted = true;
-          logger.info(
-            `Fallback scroll para pagina ${targetPage} via cumulativePageTops: scrollTop=${targetScrollTop}`,
-            'FloatingPDFViewer.startProgrammaticPageNavigation'
-          );
-        }
+      if (!fallbackAttempted || elapsed >= FALLBACK_SCROLL_ATTEMPT_MS) {
+        applyFallbackByCumulativeTops();
       }
 
       if (elapsed < PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS) {
@@ -3043,7 +3066,39 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
 
   useEffect(() => {
-    setBookmarks(mergeBookmarksFromMultipleDocuments(documentBookmarks, { totalDocumentCount: state.documents.length }));
+    const mergedBookmarks = mergeBookmarksFromMultipleDocuments(documentBookmarks, {
+      totalDocumentCount: state.documents.length
+    });
+    const fingerprint = mergedBookmarks
+      .map(bookmark => {
+        const childBookmarks = bookmark.items ?? [];
+        const firstChild = childBookmarks[0];
+        const lastChild = childBookmarks[childBookmarks.length - 1];
+
+        return [
+          bookmark.documentId ?? `index:${bookmark.documentIndex ?? -1}`,
+          childBookmarks.length,
+          firstChild?.dest ?? firstChild?.title ?? 'none',
+          lastChild?.dest ?? lastChild?.title ?? 'none'
+        ].join(':');
+      })
+      .join('|');
+
+    if (mergedBookmarksFingerprintRef.current === fingerprint) {
+      logger.info(
+        'PDFViewerContext.setBookmarks ignorado por fingerprint inalterado',
+        'FloatingPDFViewer.bookmarksMerge'
+      );
+      return;
+    }
+
+    mergedBookmarksFingerprintRef.current = fingerprint;
+    logger.info(
+      'PDFViewerContext.setBookmarks executado após mudança de fingerprint',
+      'FloatingPDFViewer.bookmarksMerge',
+      { fingerprint }
+    );
+    setBookmarks(mergedBookmarks);
   }, [documentBookmarks, setBookmarks, state.documents.length]);
 
   const enqueueBookmarkExtraction = useCallback((prioritizedDocumentIds: string[]) => {
@@ -3110,15 +3165,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     });
 
     setDocumentBookmarks(prev => {
-      const newMap = new Map(prev);
-      if (!newMap.has(currentDoc.id)) {
-        newMap.set(currentDoc.id, {
-          bookmarks: [],
-          documentName: currentDoc.displayName || currentDoc.fileName,
-          documentIndex,
-          pageCount: numPages
-        });
+      const existing = prev.get(currentDoc.id);
+      if (existing && existing.pageCount === numPages) {
+        return prev;
       }
+
+      const newMap = new Map(prev);
+      newMap.set(currentDoc.id, {
+        bookmarks: existing?.bookmarks ?? [],
+        documentName: existing?.documentName ?? (currentDoc.displayName || currentDoc.fileName),
+        documentIndex: existing?.documentIndex ?? documentIndex,
+        pageCount: numPages
+      });
       return newMap;
     });
 
@@ -5236,8 +5294,28 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (state.viewMode !== 'continuous' || !state.highlightedPage) return;
 
     const source = state.isSearchOpen ? 'search' : 'highlight';
-    startProgrammaticPageNavigation(state.highlightedPage, source, true);
-  }, [state.highlightedPage, state.isSearchOpen, state.viewMode, startProgrammaticPageNavigation]);
+    const shouldSyncCurrentPage = state.currentPage !== state.highlightedPage;
+
+    logger.info(
+      'Acionando fluxo deduplicado de navegação por highlight',
+      'FloatingPDFViewer.highlightedPageEffect',
+      {
+        highlightedPage: state.highlightedPage,
+        currentPage: state.currentPage,
+        source,
+        deduplicatedNavigationPath: true,
+        shouldSyncCurrentPage
+      }
+    );
+
+    startProgrammaticPageNavigation(state.highlightedPage, source, shouldSyncCurrentPage);
+  }, [
+    state.currentPage,
+    state.highlightedPage,
+    state.isSearchOpen,
+    state.viewMode,
+    startProgrammaticPageNavigation
+  ]);
 
   /**
    * Effect para manter página ativa após rotação
