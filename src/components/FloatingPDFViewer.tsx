@@ -91,6 +91,7 @@ const ACTIVE_PAGE_MIN_INTERSECTION_PX = 48;
 const ACTIVE_PAGE_MIN_VISIBLE_RATIO = 0.25;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO = 0.12;
+const ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS = 120;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -222,6 +223,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const scrollRenderCacheRecencyQueueRef = useRef<number[]>([]);
   const lastDetectedPageRef = useRef<number>(1);
   const lastDetectionTimeRef = useRef<number>(0);
+  const activePageTransitionCandidateRef = useRef<{ page: number; startedAt: number; samples: number } | null>(null);
   const idleCallbackIdRef = useRef<number | null>(null);
   const renderFallbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollThrottleRef = useRef<number>(0);
@@ -1265,18 +1267,43 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const pendingTargetPage = pendingNavigationTarget?.page;
       const protectedPages = new Set<number>();
 
+      const protectPage = (page: number | null | undefined) => {
+        if (!page || page < 1 || page > state.totalPages) {
+          return;
+        }
+        protectedPages.add(page);
+      };
+
       const protectPageWithNeighbors = (page: number | null | undefined) => {
         if (!page || page < 1 || page > state.totalPages) {
           return;
         }
 
-        protectedPages.add(page);
-        if (page - 1 >= 1) protectedPages.add(page - 1);
-        if (page + 1 <= state.totalPages) protectedPages.add(page + 1);
+        protectPage(page);
+        if (page - 1 >= 1) protectPage(page - 1);
+        if (page + 1 <= state.totalPages) protectPage(page + 1);
       };
 
-      visiblePages.forEach(page => protectPageWithNeighbors(page));
+      protectPageWithNeighbors(state.currentPage);
+      protectPageWithNeighbors(centerPage);
       protectPageWithNeighbors(pendingTargetPage);
+
+      const viewportMiddlePage = Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2);
+      const additionalProtectionBudget = Math.max(0, Math.min(budget - protectedPages.size, 4));
+      if (additionalProtectionBudget > 0) {
+        Array.from(visiblePages)
+          .filter((page) => page >= 1 && page <= state.totalPages)
+          .sort((a, b) => {
+            const distanceA = Math.abs(a - viewportMiddlePage);
+            const distanceB = Math.abs(b - viewportMiddlePage);
+            if (distanceA !== distanceB) {
+              return distanceA - distanceB;
+            }
+            return a - b;
+          })
+          .slice(0, additionalProtectionBudget)
+          .forEach((page) => protectPage(page));
+      }
 
       const normalizeRecencyQueue = () => {
         const deduplicated: number[] = [];
@@ -1373,9 +1400,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           ? 'paginas protegidas excedem o budget (visiveis + alvo pendente)'
           : 'nao foi possivel encontrar candidatos para eviccao apos fallback por distancia';
 
-        logger.error(
-          'Scroll render cache invariant violation: cache acima do budget apos eviccoes',
-          'FloatingPDFViewer.calculateVisiblePagesFromScroll',
+        logPdfDebugEvent(
+          'scroll_render_cache_budget_pressure',
           {
             reason,
             budget,
@@ -1383,8 +1409,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             protectedPages: Array.from(protectedPages).sort((a, b) => a - b),
             pendingTargetPage,
             visiblePages: Array.from(visiblePages).sort((a, b) => a - b),
-            recencyQueueSize: recencyQueue.length
-          }
+            recencyQueueSize: recencyQueue.length,
+            currentPage: state.currentPage,
+            centerPage
+          },
+          { throttleMs: 1000, throttleKey: 'scroll-render-cache-budget-pressure' }
         );
 
         const pagesByPriority = Array.from(nextSet).sort((a, b) => {
@@ -1642,9 +1671,57 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
+    const originalCenterPage = centerPage;
+    const averageViewportPageHeightPx = Math.max(
+      1,
+      getPageHeight(Math.max(1, Math.min(state.totalPages, state.currentPage)))
+    );
+    const zoomNormalizedScrollStep = Math.max(
+      1,
+      Math.round((scrollDelta * Math.max(state.zoom, 0.5)) / Math.max(1, averageViewportPageHeightPx * 0.65))
+    );
+
+    const shouldNormalizeZoomScrollStep =
+      !shouldForcePageUpdate &&
+      !hasPendingNavigationTarget &&
+      !isKeyboardNavLockActive &&
+      !hasRecentKeyboardNavigation;
+
+    let zoomStepCap = state.zoom < 1 ? 1 : 2;
+    let maxStepFromCurrentPage = Math.max(1, Math.min(zoomStepCap, zoomNormalizedScrollStep));
+    if (shouldNormalizeZoomScrollStep && centerPage !== state.currentPage) {
+      const stepDelta = centerPage - state.currentPage;
+      if (Math.abs(stepDelta) > maxStepFromCurrentPage) {
+        centerPage = state.currentPage + (stepDelta > 0 ? maxStepFromCurrentPage : -maxStepFromCurrentPage);
+      }
+    }
+
+    logPdfDebugEvent(
+      'calculate_visible_pages_zoom_normalization',
+      {
+        mode: state.viewMode,
+        currentPage: state.currentPage,
+        centerPage,
+        originalCenterPage,
+        scrollDelta,
+        zoom: state.zoom,
+        averageViewportPageHeightPx,
+        zoomNormalizedScrollStep,
+        zoomStepCap,
+        maxStepFromCurrentPage,
+        normalizedStepApplied: centerPage !== originalCenterPage,
+        shouldNormalizeZoomScrollStep
+      },
+      { throttleMs: 250, throttleKey: 'zoom-normalization' }
+    );
+
     const timeSinceLastDetection = now - lastDetectionTimeRef.current;
     const pageDifference = Math.abs(centerPage - lastDetectedPageRef.current);
     const jumpFromCurrentPage = Math.abs(centerPage - state.currentPage);
+
+    if (centerPage === state.currentPage) {
+      activePageTransitionCandidateRef.current = null;
+    }
 
     if (!shouldForcePageUpdate && pageDifference === 1 && timeSinceLastDetection < 300) {
       return;
@@ -1658,7 +1735,35 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
+    const shouldDebounceVisualAdjacentTransition =
+      !shouldForcePageUpdate &&
+      !hasPendingNavigationTarget &&
+      !isKeyboardNavLockActive &&
+      !hasRecentKeyboardNavigation &&
+      jumpFromCurrentPage === 1;
+
+    if (shouldDebounceVisualAdjacentTransition && centerPage !== state.currentPage) {
+      const candidate = activePageTransitionCandidateRef.current;
+      if (!candidate || candidate.page !== centerPage) {
+        activePageTransitionCandidateRef.current = {
+          page: centerPage,
+          startedAt: now,
+          samples: 1
+        };
+        return;
+      }
+
+      candidate.samples += 1;
+      const candidateAgeMs = now - candidate.startedAt;
+      if (candidateAgeMs < ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS && candidate.samples < 2) {
+        return;
+      }
+    } else {
+      activePageTransitionCandidateRef.current = null;
+    }
+
     if (centerPage !== lastDetectedPageRef.current) {
+      activePageTransitionCandidateRef.current = null;
       lastDetectedPageRef.current = centerPage;
       lastDetectionTimeRef.current = now;
       goToPage(centerPage);
@@ -1668,6 +1773,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     cumulativePageTops,
     getCurrentDocument,
     getDocumentByGlobalPage,
+    getPageHeight,
     goToPage,
     isSearchNavigationActive,
     logNavigationLatencySummary,
