@@ -3907,6 +3907,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     }
 
+    // 1.6) Página atual do estado - sempre renderizar para evitar tela em branco
+    for (let i = -3; i <= 3; i += 1) {
+      const page = state.currentPage + i;
+      if (page >= 1 && page <= state.totalPages) {
+        viewportCorePages.add(page);
+        pushCandidate(page, -1);
+      }
+    }
+
     // 2) Páginas do documento ativo no pipeline contínuo
     const activeDocumentId = continuousCanvasPipeline.activeDocumentId;
     if (activeDocumentId) {
@@ -5151,6 +5160,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         releaseProgrammaticScroll('state-change');
         return;
       }
+
+      isZoomChangingRef.current = false;
 
       const activeContainer = scrollContainerRef.current;
       const anchorPage = zoomAnchor?.page ?? currentPageRef.current;
