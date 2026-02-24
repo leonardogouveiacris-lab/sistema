@@ -202,6 +202,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const [scrollRenderCache, setScrollRenderCache] = useState<Set<number>>(new Set());
   const [pageInputValue, setPageInputValue] = useState<string>('');
   const [documentLayoutVersion, setDocumentLayoutVersion] = useState(0);
+  const layoutDirtyRef = useRef(false);
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const isSelectingTextRef = useRef(false);
   const isPointerDownInPdfRef = useRef(false);
@@ -411,6 +412,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   useEffect(() => {
     cumulativePageTopsRef.current = cumulativePageTops;
   }, [cumulativePageTops]);
+
+  useEffect(() => {
+    if (layoutDirtyRef.current) {
+      layoutDirtyRef.current = false;
+      setDocumentLayoutVersion((prev) => prev + 1);
+    }
+  });
 
   useEffect(() => {
     if (state.viewMode !== 'continuous') {
@@ -1824,12 +1832,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (node) {
       if (currentNode !== node) {
         interDocumentHeaderRefs.current.set(docId, node);
-        queueMicrotask(() => setDocumentLayoutVersion((prev) => prev + 1));
+        layoutDirtyRef.current = true;
       }
     } else {
       if (currentNode !== undefined) {
         interDocumentHeaderRefs.current.delete(docId);
-        queueMicrotask(() => setDocumentLayoutVersion((prev) => prev + 1));
+        layoutDirtyRef.current = true;
       }
     }
   }, []);
