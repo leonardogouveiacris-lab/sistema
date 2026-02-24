@@ -447,9 +447,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       reason?: string;
       [key: string]: unknown;
     },
-    options?: { throttleMs?: number; throttleKey?: string }
+    options?: { throttleMs?: number; throttleKey?: string; force?: boolean }
   ) => {
-    if (!PDF_DIAGNOSTIC_DEBUG_ENABLED) {
+    const forceLog = options?.force === true;
+    if (!PDF_DIAGNOSTIC_DEBUG_ENABLED && !forceLog) {
       return;
     }
 
@@ -1753,7 +1754,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           shouldNormalizeZoomScrollStep,
           zoom: state.zoom
         },
-        { throttleMs: 180, throttleKey: 'directional-guard' }
+        { throttleMs: 800, throttleKey: 'directional-guard', force: true }
       );
     }
 
@@ -1792,7 +1793,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           isCurrentPageStillVisibleForUpwardGuard,
           zoom: state.zoom
         },
-        { throttleMs: 180, throttleKey: 'upward-stability-guard' }
+        { throttleMs: 800, throttleKey: 'upward-stability-guard', force: true }
       );
 
       centerPage = state.currentPage;
@@ -1813,7 +1814,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           isCurrentPageStillVisibleForUpwardGuard,
           zoom: state.zoom
         },
-        { throttleMs: 220, throttleKey: 'upward-stability-guard-skipped' }
+        { throttleMs: 1200, throttleKey: 'upward-stability-guard-skipped', force: true }
       );
     }
 
@@ -1836,7 +1837,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         normalizedStepApplied: centerPage !== originalCenterPage,
         shouldNormalizeZoomScrollStep
       },
-      { throttleMs: 250, throttleKey: 'zoom-normalization' }
+      { throttleMs: 800, throttleKey: 'zoom-normalization', force: true }
     );
 
     const timeSinceLastDetection = now - lastDetectionTimeRef.current;
