@@ -37,6 +37,7 @@ import { PDFSidebar, PDFBookmarkPanel, TextSelectionPopup, HighlightLayer, Selec
 import { COMMENT_COLORS, CommentColor, PDFComment } from '../types/PDFComment';
 import * as PDFCommentsService from '../services/pdfComments.service';
 import { useSelectionOverlay } from '../hooks/useSelectionOverlay';
+import { useTextSelectionGuard } from '../hooks/useTextSelectionGuard';
 import logger from '../utils/logger';
 import { createFlowContext, generateFlowId } from '../utils/flowId';
 import { formatPDFText, extractTextFromSelection } from '../utils/textFormatter';
@@ -214,8 +215,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const isPointerDownInPdfRef = useRef(false);
   const isPointerDownRef = useRef(false);
   const dragScrollBlockUntilRef = useRef<number>(0);
-  const pointerDownSafetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const textSelectionSafetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const startedInsidePdfRef = useRef(false);
   const hasDragRef = useRef(false);
   const activeCaretElementRef = useRef<HTMLElement | null>(null);
@@ -3279,243 +3278,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
   }, [applySelectionSafely, canWriteProgrammaticSelection]);
 
-  /**
-   * Effect para detectar seleção de texto com pointer events
-   * Usa pointerdown/pointermove/pointerup para detectar arrasto real (não cliques simples)
-   * Previne falsos positivos de selectstart que dispara até em cliques simples
-   *
-   * IMPORTANTE: Os handlers verificam scrollContainerRef.current internamente
-   * para evitar problemas de timing onde o ref não está disponível na montagem inicial
-   */
-  useEffect(() => {
-    const logFlagTransition = (flagName: 'isPointerDownRef' | 'isSelectingTextRef', previous: boolean, next: boolean, reason: string) => {
-      if (!(previous && !next)) {
-        return;
-      }
-
-      logPdfDebugEvent(
-        'text_selection_guard_reset',
-        {
-          page: currentPageRef.current,
-          currentPage: currentPageRef.current,
-          mode: state.viewMode,
-          reason,
-          flagName
-        },
-        { throttleKey: `text_selection_guard_reset:${flagName}:${reason}`, throttleMs: 2000 }
-      );
-    };
-
-    const setPointerDownFlag = (nextValue: boolean, reason: string) => {
-      const previous = isPointerDownRef.current;
-      if (previous === nextValue) {
-        return;
-      }
-
-      isPointerDownRef.current = nextValue;
-      logFlagTransition('isPointerDownRef', previous, nextValue, reason);
-    };
-
-    const setSelectingTextFlag = (nextValue: boolean, reason: string) => {
-      const previous = isSelectingTextRef.current;
-      if (previous === nextValue) {
-        return;
-      }
-
-      isSelectingTextRef.current = nextValue;
-      logFlagTransition('isSelectingTextRef', previous, nextValue, reason);
-    };
-
-    const schedulePointerDownSafetyReset = () => {
-      if (pointerDownSafetyTimeoutRef.current) {
-        clearTimeout(pointerDownSafetyTimeoutRef.current);
-      }
-
-      pointerDownSafetyTimeoutRef.current = setTimeout(() => {
-        setPointerDownFlag(false, 'pointerdown-safety-timeout');
-        isPointerDownInPdfRef.current = false;
-        hasDragRef.current = false;
-      }, POINTER_DOWN_SAFETY_RESET_MS);
-    };
-
-    const scheduleSelectionSafetyReset = (reason: string) => {
-      if (textSelectionSafetyTimeoutRef.current) {
-        clearTimeout(textSelectionSafetyTimeoutRef.current);
-      }
-
-      textSelectionSafetyTimeoutRef.current = setTimeout(() => {
-        const scrollContainer = scrollContainerRef.current;
-        const selection = window.getSelection();
-        const selectedText = extractTextFromSelection(selection);
-        const hasValidSelection = selectedText.length > 0;
-        const anchorInPdf = !!(scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode));
-        const focusInPdf = !!(scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode));
-        const hasSelectionInPdf = hasValidSelection && anchorInPdf && focusInPdf;
-
-        if (!hasSelectionInPdf) {
-          setSelectingTextFlag(false, `${reason}-safety-timeout`);
-          textSelectionActivatedAtRef.current = null;
-          startedInsidePdfRef.current = false;
-        }
-      }, TEXT_SELECTION_SAFETY_RESET_MS);
-    };
-
-    const updateSelectionStateFromDom = () => {
-      const scrollContainer = scrollContainerRef.current;
-      const selection = window.getSelection();
-      const selectedText = extractTextFromSelection(selection);
-      const hasValidSelection = selectedText.length > 0;
-      const anchorInPdf = !!(scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode));
-      const focusInPdf = !!(scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode));
-      const hasSelectionInPdf = hasValidSelection && anchorInPdf && focusInPdf;
-
-      setSelectingTextFlag(hasSelectionInPdf, 'selectionchange');
-      textSelectionActivatedAtRef.current = hasSelectionInPdf ? Date.now() : null;
-      scheduleSelectionSafetyReset('selectionchange');
-
-      if (!hasSelectionInPdf) {
-        startedInsidePdfRef.current = false;
-      }
-    };
-
-    const handlePointerDown = (e: PointerEvent) => {
-      const scrollContainer = scrollContainerRef.current;
-      if (!scrollContainer) return;
-
-      setPointerDownFlag(true, 'pointerdown');
-      schedulePointerDownSafetyReset();
-
-      const target = e.target as HTMLElement;
-      const isInsidePdf = scrollContainer.contains(target);
-      const isInTextLayer = !!target.closest('.textLayer');
-      const isInReactPdfPage = !!target.closest('.react-pdf__Page');
-      startedInsidePdfRef.current = isInsidePdf || isInTextLayer || isInReactPdfPage;
-
-      if (startedInsidePdfRef.current) {
-        isPointerDownInPdfRef.current = true;
-        hasDragRef.current = false;
-      }
-    };
-
-    const handlePointerMove = (e: PointerEvent) => {
-      if (isPointerDownInPdfRef.current && (e.buttons === 1 || e.pressure > 0)) {
-        schedulePointerDownSafetyReset();
-
-        if (!hasDragRef.current) {
-          hasDragRef.current = true;
-          setSelectingTextFlag(true, 'pointermove-start-drag');
-        }
-
-        textSelectionActivatedAtRef.current = Date.now();
-        dragScrollBlockUntilRef.current = Date.now() + DRAG_SCROLL_BLOCK_WINDOW_MS;
-        scheduleSelectionSafetyReset('pointermove');
-      }
-    };
-
-    const handlePointerUp = () => {
-      const scrollContainer = scrollContainerRef.current;
-
-      if (pointerDownSafetyTimeoutRef.current) {
-        clearTimeout(pointerDownSafetyTimeoutRef.current);
-        pointerDownSafetyTimeoutRef.current = null;
-      }
-
-      setPointerDownFlag(false, 'pointerup');
-
-      const selection = window.getSelection();
-      const selectedText = extractTextFromSelection(selection);
-      const hasValidSelection = selectedText.length > 0;
-      const anchorInPdf = !!(scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode));
-      const focusInPdf = !!(scrollContainer && selection?.focusNode && scrollContainer.contains(selection.focusNode));
-      const hasSelectionInPdf = hasValidSelection && anchorInPdf && focusInPdf;
-
-      if (anchorInPdf && focusInPdf && hasSelectionInPdf) {
-        setSelectingTextFlag(true, 'pointerup-valid-selection');
-        textSelectionActivatedAtRef.current = Date.now();
-      } else {
-        setSelectingTextFlag(false, 'pointerup-invalid-selection');
-        textSelectionActivatedAtRef.current = null;
-        startedInsidePdfRef.current = false;
-      }
-
-      scheduleSelectionSafetyReset('pointerup');
-
-      isPointerDownInPdfRef.current = false;
-      hasDragRef.current = false;
-    };
-
-    document.addEventListener('selectionchange', updateSelectionStateFromDom);
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('pointermove', handlePointerMove);
-    document.addEventListener('pointerup', handlePointerUp);
-
-    return () => {
-      document.removeEventListener('selectionchange', updateSelectionStateFromDom);
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('pointermove', handlePointerMove);
-      document.removeEventListener('pointerup', handlePointerUp);
-
-      if (textSelectionSafetyTimeoutRef.current) {
-        clearTimeout(textSelectionSafetyTimeoutRef.current);
-        textSelectionSafetyTimeoutRef.current = null;
-      }
-
-      if (pointerDownSafetyTimeoutRef.current) {
-        clearTimeout(pointerDownSafetyTimeoutRef.current);
-        pointerDownSafetyTimeoutRef.current = null;
-      }
-    };
-  }, [logPdfDebugEvent, state.viewMode]);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      if (!isSelectingTextRef.current || isPointerDownRef.current) {
-        return;
-      }
-
-      const selectionActivatedAt = textSelectionActivatedAtRef.current;
-      if (!selectionActivatedAt) {
-        if (isSelectingTextRef.current) {
-          logPdfDebugEventRef.current?.(
-            'text_selection_guard_reset',
-            {
-              page: currentPageRef.current,
-              currentPage: currentPageRef.current,
-              mode: state.viewMode,
-              reason: 'stale-selection-without-activation',
-              flagName: 'isSelectingTextRef'
-            },
-            { throttleKey: 'text_selection_guard_reset:isSelectingTextRef:stale-selection-without-activation', throttleMs: 2000 }
-          );
-        }
-        isSelectingTextRef.current = false;
-        return;
-      }
-
-      if (Date.now() - selectionActivatedAt > TEXT_SELECTION_STALE_RESET_MS) {
-        if (isSelectingTextRef.current) {
-          logPdfDebugEventRef.current?.(
-            'text_selection_guard_reset',
-            {
-              page: currentPageRef.current,
-              currentPage: currentPageRef.current,
-              mode: state.viewMode,
-              reason: 'stale-selection-interval-timeout',
-              flagName: 'isSelectingTextRef'
-            },
-            { throttleKey: 'text_selection_guard_reset:isSelectingTextRef:stale-selection-interval-timeout', throttleMs: 2000 }
-          );
-        }
-        isSelectingTextRef.current = false;
-        textSelectionActivatedAtRef.current = null;
-        startedInsidePdfRef.current = false;
-      }
-    }, 250);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [logPdfDebugEvent, state.viewMode]);
+  useTextSelectionGuard({
+    scrollContainerRef,
+    isSelectingTextRef,
+    isPointerDownRef,
+    isPointerDownInPdfRef,
+    startedInsidePdfRef,
+    hasDragRef,
+    dragScrollBlockUntilRef,
+    textSelectionActivatedAtRef,
+    currentPageRef,
+    viewMode: state.viewMode,
+    pointerDownSafetyResetMs: POINTER_DOWN_SAFETY_RESET_MS,
+    textSelectionSafetyResetMs: TEXT_SELECTION_SAFETY_RESET_MS,
+    textSelectionStaleResetMs: TEXT_SELECTION_STALE_RESET_MS,
+    dragScrollBlockWindowMs: DRAG_SCROLL_BLOCK_WINDOW_MS,
+    logPdfDebugEvent
+  });
 
   /**
    * Effect para preload imediato de páginas vizinhas + cache de páginas visitadas
