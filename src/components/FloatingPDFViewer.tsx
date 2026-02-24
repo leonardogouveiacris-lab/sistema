@@ -202,7 +202,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const [scrollRenderCache, setScrollRenderCache] = useState<Set<number>>(new Set());
   const [pageInputValue, setPageInputValue] = useState<string>('');
   const [documentLayoutVersion, setDocumentLayoutVersion] = useState(0);
-  const layoutDirtyRef = useRef(false);
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const isSelectingTextRef = useRef(false);
   const isPointerDownInPdfRef = useRef(false);
@@ -414,13 +413,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [cumulativePageTops]);
 
   useEffect(() => {
-    if (layoutDirtyRef.current) {
-      layoutDirtyRef.current = false;
-      setDocumentLayoutVersion((prev) => prev + 1);
-    }
-  });
-
-  useEffect(() => {
     if (state.viewMode !== 'continuous') {
       return;
     }
@@ -429,6 +421,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [state.viewMode]);
+
+  useEffect(() => {
+    if (state.viewMode === 'continuous' && state.documents.length > 1) {
+      const timeoutId = setTimeout(() => {
+        setDocumentLayoutVersion((prev) => prev + 1);
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [state.documents.length, state.viewMode]);
 
   const logPdfDebugEvent = useCallback((
     event: string,
@@ -1827,18 +1828,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, []);
 
   const handleInterDocumentHeaderRef = useCallback((docId: string, node: HTMLDivElement | null) => {
-    const currentNode = interDocumentHeaderRefs.current.get(docId);
-
     if (node) {
-      if (currentNode !== node) {
-        interDocumentHeaderRefs.current.set(docId, node);
-        layoutDirtyRef.current = true;
-      }
+      interDocumentHeaderRefs.current.set(docId, node);
     } else {
-      if (currentNode !== undefined) {
-        interDocumentHeaderRefs.current.delete(docId);
-        layoutDirtyRef.current = true;
-      }
+      interDocumentHeaderRefs.current.delete(docId);
     }
   }, []);
 
