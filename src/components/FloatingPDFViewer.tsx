@@ -249,7 +249,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const keyboardNavCooldownUntilRef = useRef<number>(0);
   const keyboardNavStableFramesRef = useRef<number>(0);
   const currentPageRef = useRef<number>(state.currentPage);
-  const calculateVisiblePagesFromScrollRef = useRef<(options?: { allowLargeJump?: boolean; previousScrollTop?: number }) => void>(() => {});
+  const calculateVisiblePagesFromScrollRef = useRef<(options?: { allowLargeJump?: boolean; previousScrollTop?: number; ignoreZoomLock?: boolean }) => void>(() => {});
   const estimateCenterPageFromScrollRef = useRef<(scrollTop: number, viewportHeight: number) => number>(() => 1);
   const markInteractionStartRef = useRef<() => void>(() => {});
   const initialScrollRecalcRafRef = useRef<number | null>(null);
@@ -753,15 +753,34 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * - Validacao de sanidade: ignora pulos > MAX_PAGE_JUMP paginas
    * - Bloqueio temporal apos zoom (zoomBlockedUntilRef)
    */
-  const calculateVisiblePagesFromScroll = useCallback((options?: { allowLargeJump?: boolean; previousScrollTop?: number }) => {
+  const calculateVisiblePagesFromScroll = useCallback((options?: { allowLargeJump?: boolean; previousScrollTop?: number; ignoreZoomLock?: boolean }) => {
     const container = scrollContainerRef.current;
     if (!container || state.viewMode !== 'continuous' || state.totalPages === 0) {
       return;
     }
 
     const now = Date.now();
-    if (isZoomChangingRef.current || state.isRotating || isModeSwitchingRef.current) {
+    const ignoreZoomLock = options?.ignoreZoomLock === true;
+
+    if (state.isRotating || isModeSwitchingRef.current) {
       return;
+    }
+
+    if (isZoomChangingRef.current && !ignoreZoomLock) {
+      return;
+    }
+
+    if (ignoreZoomLock) {
+      logPdfDebugEvent(
+        'calculate_visible_pages_zoom_reconciliation',
+        {
+          reason: 'zoom-reconciliation',
+          isZoomChanging: isZoomChangingRef.current,
+          currentPage: state.currentPage,
+          zoom: state.zoom
+        },
+        { throttleMs: 1000 }
+      );
     }
 
     const skipPageChange = isProgrammaticScrollRef.current ||
@@ -1275,12 +1294,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     getDocumentByGlobalPage,
     goToPage,
     isSearchNavigationActive,
+    logPdfDebugEvent,
     releaseProgrammaticScroll,
     state.currentPage,
     state.highlightedPage,
     state.isSearchOpen,
     state.totalPages,
     state.viewMode,
+    state.zoom,
     scrollFallbackVisibleRange
   ]);
 
@@ -5220,7 +5241,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         activeContainer.scrollLeft = centerPosition;
       }
 
-      calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
+      calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true, ignoreZoomLock: true });
 
       const hasVisibleRangeSnapshot = visibleStartPageRef.current > 0 && visibleEndPageRef.current > 0;
       const detectedFromVisibleRange = hasVisibleRangeSnapshot
@@ -5270,7 +5291,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       };
 
       const reconcilePageAndRelease = () => {
-        calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
+        calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true, ignoreZoomLock: true });
 
         const reconciledPage = Math.min(
           state.totalPages,
