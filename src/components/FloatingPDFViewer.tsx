@@ -381,7 +381,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     let accumulatedHeight = 0;
 
     for (const doc of state.documents) {
-      const offset = memoizedDocumentOffsets.get(doc.id);
+      const offset = memoizedDocumentOffsetsRef.current.get(doc.id);
       if (!offset) {
         continue;
       }
@@ -398,7 +398,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     return accumulatedHeight;
-  }, [getPageHeight, interDocumentHeaderHeightByDoc, memoizedDocumentOffsets, state.documents]);
+  }, [getPageHeight, interDocumentHeaderHeightByDoc, state.documents]);
 
   const cumulativePageTops = useMemo(() => {
     return Array.from({ length: state.totalPages }, (_value, index) => getGlobalPageTopOffset(index + 1));
