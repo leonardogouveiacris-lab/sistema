@@ -1824,12 +1824,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (node) {
       if (currentNode !== node) {
         interDocumentHeaderRefs.current.set(docId, node);
-        setDocumentLayoutVersion((prev) => prev + 1);
+        queueMicrotask(() => setDocumentLayoutVersion((prev) => prev + 1));
       }
     } else {
       if (currentNode !== undefined) {
         interDocumentHeaderRefs.current.delete(docId);
-        setDocumentLayoutVersion((prev) => prev + 1);
+        queueMicrotask(() => setDocumentLayoutVersion((prev) => prev + 1));
       }
     }
   }, []);
