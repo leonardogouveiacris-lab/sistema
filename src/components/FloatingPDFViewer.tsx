@@ -3332,14 +3332,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    const pdf = pdfDocumentProxies.get(documentId);
-    const proxyGeneration = proxyGenerationByDocumentRef.current.get(documentId);
-    const isProxyFresh = Boolean(pdf) && proxyGeneration === documentSetGenerationRef.current;
     const documentIndex = state.documents.findIndex(doc => doc.id === documentId);
     const currentDoc = state.documents[documentIndex];
 
+    if (!currentDoc || documentIndex < 0) {
+      return;
+    }
+
+    let pdf = pdfDocumentProxies.get(documentId);
+    const proxyGeneration = proxyGenerationByDocumentRef.current.get(documentId);
+    const isProxyFresh = Boolean(pdf) && proxyGeneration === documentSetGenerationRef.current && loadedDocumentRefsByGenerationRef.current.has(documentId);
+    let independentlyLoadedPdf: pdfjs.PDFDocumentProxy | null = null;
+
     logger.info(
-      `Bookmark extraction proxy source = ${isProxyFresh ? 'fresh' : 'stale'}`,
+      `Bookmark extraction proxy source = ${isProxyFresh ? 'fresh' : 'loading-independent'}`,
       'FloatingPDFViewer.extractBookmarksForDocument',
       {
         documentId,
@@ -3350,7 +3356,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     );
 
-    if (!pdf || !currentDoc || documentIndex < 0 || !isProxyFresh || !loadedDocumentRefsByGenerationRef.current.has(documentId)) {
+    if (!isProxyFresh) {
+      try {
+        const loadingTask = pdfjs.getDocument({
+          url: currentDoc.url,
+          ...PDF_DOCUMENT_OPTIONS
+        });
+        independentlyLoadedPdf = await loadingTask.promise;
+        pdf = independentlyLoadedPdf;
+        if (signal.aborted) {
+          independentlyLoadedPdf.destroy();
+          return;
+        }
+      } catch (error) {
+        logger.warn(
+          `Erro ao carregar PDF para extração de bookmarks: ${currentDoc.displayName || currentDoc.fileName}`,
+          'FloatingPDFViewer.extractBookmarksForDocument',
+          { documentId, error }
+        );
+        return;
+      }
+    }
+
+    if (!pdf) {
       return;
     }
 
@@ -3377,6 +3405,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         bookmarks = await extractFn(pdf, documentInfo);
       }
       if (signal.aborted || !state.isOpen) {
+        if (independentlyLoadedPdf) {
+          independentlyLoadedPdf.destroy();
+        }
         return;
       }
 
@@ -3392,7 +3423,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           bookmarks,
           documentName: documentInfo.documentName,
           documentIndex: documentInfo.documentIndex,
-          pageCount: pdf.numPages
+          pageCount: pdf!.numPages
         });
         return newMap;
       });
@@ -3420,13 +3451,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               bookmarks: [],
               documentName: documentInfo.documentName,
               documentIndex: documentInfo.documentIndex,
-              pageCount: pdf.numPages
+              pageCount: pdf!.numPages
             });
           }
           return newMap;
         });
       }
     } finally {
+      if (independentlyLoadedPdf) {
+        independentlyLoadedPdf.destroy();
+      }
       bookmarkExtractionInFlightRef.current.delete(documentId);
 
       const doneCount = bookmarkExtractionLoadedRef.current.size + bookmarkExtractionFailedRef.current.size;
