@@ -4395,7 +4395,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * CORREÇÃO: Filtra seleções de fora do container PDF
    */
   const handleTextSelection = useCallback(() => {
-    if (selectionMode === 'native-drag') {
+    if (selectionMode === 'native-drag' && !hasSelection) {
       return;
     }
 
@@ -4406,12 +4406,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    if (!startedInsidePdfRef.current) {
-      return;
-    }
-
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) return;
+
+    if (!startedInsidePdfRef.current) {
+      const anchorInPdf = !!(selection?.anchorNode && scrollContainer.contains(selection.anchorNode));
+      const focusInPdf = !!(selection?.focusNode && scrollContainer.contains(selection.focusNode));
+
+      if (!anchorInPdf && !focusInPdf) {
+        return;
+      }
+
+      startedInsidePdfRef.current = true;
+    }
 
     const anchorNode = selection?.anchorNode;
     const focusNode = selection?.focusNode;
@@ -4540,7 +4547,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       setSelectedText(selectedText);
       startedInsidePdfRef.current = false;
     }
-  }, [registerContextCommit, selectionMode, setSelectedText, state.currentPage, state.zoom, state.displayZoom]);
+  }, [hasSelection, registerContextCommit, selectionMode, setSelectedText, state.currentPage, state.zoom, state.displayZoom]);
 
   const getCommentFieldForCurrentMode = useCallback((): InsertionField => {
     const formMode = state.formMode;
@@ -4826,12 +4833,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [handleTextSelection, selectionMode]);
 
   useEffect(() => {
-    if (!hasSelection || selectionMode === 'native-drag') {
+    if (!hasSelection) {
       return;
     }
 
     handleTextSelection();
-  }, [hasSelection, handleTextSelection, selectionMode]);
+  }, [hasSelection, handleTextSelection]);
 
   /**
    * Wrappers para navegação de página com bloqueio durante rotação
