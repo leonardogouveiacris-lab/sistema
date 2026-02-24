@@ -4406,12 +4406,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    if (!startedInsidePdfRef.current) {
-      return;
-    }
-
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) return;
+
+    if (!startedInsidePdfRef.current) {
+      const anchorInPdf = !!(selection?.anchorNode && scrollContainer.contains(selection.anchorNode));
+      const focusInPdf = !!(selection?.focusNode && scrollContainer.contains(selection.focusNode));
+
+      if (!anchorInPdf && !focusInPdf) {
+        return;
+      }
+
+      startedInsidePdfRef.current = true;
+    }
 
     const anchorNode = selection?.anchorNode;
     const focusNode = selection?.focusNode;
