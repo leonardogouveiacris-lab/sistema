@@ -962,9 +962,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const scrollTop = container.scrollTop;
     const viewportHeight = container.clientHeight;
     const buffer = viewportHeight * 1.0;
-    const scrollDelta = options?.previousScrollTop !== undefined
-      ? Math.abs(scrollTop - options.previousScrollTop)
+    const signedScrollDelta = options?.previousScrollTop !== undefined
+      ? scrollTop - options.previousScrollTop
       : 0;
+    const scrollDelta = Math.abs(signedScrollDelta);
+    const scrollDirection = signedScrollDelta > 0 ? 'down' : signedScrollDelta < 0 ? 'up' : 'neutral';
     const isLargeScrollJump = scrollDelta > viewportHeight * 2;
     const pendingNavigationTarget = pendingNavigationTargetRef.current;
     const hasPendingNavigationTarget = Boolean(pendingNavigationTarget);
@@ -1696,6 +1698,40 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     }
 
+    const centerPageBeforeDirectionGuard = centerPage;
+    const shouldApplyDirectionalGuard =
+      shouldNormalizeZoomScrollStep &&
+      scrollDirection !== 'neutral' &&
+      centerPage !== state.currentPage;
+
+    if (shouldApplyDirectionalGuard) {
+      const proposedDelta = centerPage - state.currentPage;
+      const isAgainstDirection =
+        (scrollDirection === 'up' && proposedDelta > 0) ||
+        (scrollDirection === 'down' && proposedDelta < 0);
+
+      if (isAgainstDirection) {
+        centerPage = state.currentPage;
+      }
+
+      logPdfDebugEvent(
+        'calculate_visible_pages_directional_guard',
+        {
+          mode: state.viewMode,
+          currentPage: state.currentPage,
+          centerPageBeforeDirectionGuard,
+          centerPageAfterDirectionGuard: centerPage,
+          scrollDirection,
+          signedScrollDelta,
+          proposedDelta,
+          isAgainstDirection,
+          shouldNormalizeZoomScrollStep,
+          zoom: state.zoom
+        },
+        { throttleMs: 180, throttleKey: 'directional-guard' }
+      );
+    }
+
     logPdfDebugEvent(
       'calculate_visible_pages_zoom_normalization',
       {
@@ -1704,6 +1740,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         centerPage,
         originalCenterPage,
         scrollDelta,
+        signedScrollDelta,
+        scrollDirection,
         zoom: state.zoom,
         averageViewportPageHeightPx,
         zoomNormalizedScrollStep,
