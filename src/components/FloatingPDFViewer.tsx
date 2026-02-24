@@ -91,6 +91,14 @@ const ACTIVE_PAGE_MIN_INTERSECTION_PX = 48;
 const ACTIVE_PAGE_MIN_VISIBLE_RATIO = 0.25;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO = 0.12;
+const ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS = 120;
+const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 140;
+const UPWARD_SCROLL_MICRO_DELTA_PX = 14;
+const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 24;
+const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.03;
+const UPWARD_VIEWPORT_EXIT_INTERSECTION_PX = 8;
+const UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO = 0.01;
+const LANDSCAPE_BOUNDARY_CURRENT_RATIO_THRESHOLD = 0.38;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -222,6 +230,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const scrollRenderCacheRecencyQueueRef = useRef<number[]>([]);
   const lastDetectedPageRef = useRef<number>(1);
   const lastDetectionTimeRef = useRef<number>(0);
+  const activePageTransitionCandidateRef = useRef<{ page: number; startedAt: number; samples: number } | null>(null);
+  const lastScrollDirectionRef = useRef<'up' | 'down' | 'neutral'>('neutral');
+  const scrollDirectionChangedAtRef = useRef<number>(0);
   const idleCallbackIdRef = useRef<number | null>(null);
   const renderFallbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollThrottleRef = useRef<number>(0);
@@ -440,9 +451,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       reason?: string;
       [key: string]: unknown;
     },
-    options?: { throttleMs?: number; throttleKey?: string }
+    options?: { throttleMs?: number; throttleKey?: string; force?: boolean }
   ) => {
-    if (!PDF_DIAGNOSTIC_DEBUG_ENABLED) {
+    const forceLog = options?.force === true;
+    if (!PDF_DIAGNOSTIC_DEBUG_ENABLED && !forceLog) {
       return;
     }
 
@@ -960,9 +972,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const scrollTop = container.scrollTop;
     const viewportHeight = container.clientHeight;
     const buffer = viewportHeight * 1.0;
-    const scrollDelta = options?.previousScrollTop !== undefined
-      ? Math.abs(scrollTop - options.previousScrollTop)
+    const signedScrollDelta = options?.previousScrollTop !== undefined
+      ? scrollTop - options.previousScrollTop
       : 0;
+    const scrollDelta = Math.abs(signedScrollDelta);
+    const scrollDirection = signedScrollDelta > 0 ? 'down' : signedScrollDelta < 0 ? 'up' : 'neutral';
+    if (scrollDirection !== 'neutral' && scrollDirection !== lastScrollDirectionRef.current) {
+      lastScrollDirectionRef.current = scrollDirection;
+      scrollDirectionChangedAtRef.current = now;
+    }
+    const timeSinceDirectionChange = scrollDirection === 'neutral'
+      ? Number.POSITIVE_INFINITY
+      : now - scrollDirectionChangedAtRef.current;
+    const isDirectionSettling = scrollDirection !== 'neutral' && timeSinceDirectionChange < SCROLL_DIRECTION_CHANGE_SETTLE_MS;
     const isLargeScrollJump = scrollDelta > viewportHeight * 2;
     const pendingNavigationTarget = pendingNavigationTargetRef.current;
     const hasPendingNavigationTarget = Boolean(pendingNavigationTarget);
@@ -1265,18 +1287,43 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const pendingTargetPage = pendingNavigationTarget?.page;
       const protectedPages = new Set<number>();
 
+      const protectPage = (page: number | null | undefined) => {
+        if (!page || page < 1 || page > state.totalPages) {
+          return;
+        }
+        protectedPages.add(page);
+      };
+
       const protectPageWithNeighbors = (page: number | null | undefined) => {
         if (!page || page < 1 || page > state.totalPages) {
           return;
         }
 
-        protectedPages.add(page);
-        if (page - 1 >= 1) protectedPages.add(page - 1);
-        if (page + 1 <= state.totalPages) protectedPages.add(page + 1);
+        protectPage(page);
+        if (page - 1 >= 1) protectPage(page - 1);
+        if (page + 1 <= state.totalPages) protectPage(page + 1);
       };
 
-      visiblePages.forEach(page => protectPageWithNeighbors(page));
+      protectPageWithNeighbors(state.currentPage);
+      protectPageWithNeighbors(centerPage);
       protectPageWithNeighbors(pendingTargetPage);
+
+      const viewportMiddlePage = Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2);
+      const additionalProtectionBudget = Math.max(0, Math.min(budget - protectedPages.size, 4));
+      if (additionalProtectionBudget > 0) {
+        Array.from(visiblePages)
+          .filter((page) => page >= 1 && page <= state.totalPages)
+          .sort((a, b) => {
+            const distanceA = Math.abs(a - viewportMiddlePage);
+            const distanceB = Math.abs(b - viewportMiddlePage);
+            if (distanceA !== distanceB) {
+              return distanceA - distanceB;
+            }
+            return a - b;
+          })
+          .slice(0, additionalProtectionBudget)
+          .forEach((page) => protectPage(page));
+      }
 
       const normalizeRecencyQueue = () => {
         const deduplicated: number[] = [];
@@ -1373,9 +1420,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           ? 'paginas protegidas excedem o budget (visiveis + alvo pendente)'
           : 'nao foi possivel encontrar candidatos para eviccao apos fallback por distancia';
 
-        logger.error(
-          'Scroll render cache invariant violation: cache acima do budget apos eviccoes',
-          'FloatingPDFViewer.calculateVisiblePagesFromScroll',
+        logPdfDebugEvent(
+          'scroll_render_cache_budget_pressure',
           {
             reason,
             budget,
@@ -1383,8 +1429,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             protectedPages: Array.from(protectedPages).sort((a, b) => a - b),
             pendingTargetPage,
             visiblePages: Array.from(visiblePages).sort((a, b) => a - b),
-            recencyQueueSize: recencyQueue.length
-          }
+            recencyQueueSize: recencyQueue.length,
+            currentPage: state.currentPage,
+            centerPage
+          },
+          { throttleMs: 1000, throttleKey: 'scroll-render-cache-budget-pressure' }
         );
 
         const pagesByPriority = Array.from(nextSet).sort((a, b) => {
@@ -1642,11 +1691,281 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
+    const originalCenterPage = centerPage;
+    const baseReferencePage = Math.max(1, Math.min(state.totalPages, state.currentPage));
+    const upwardReferencePage = Math.max(1, Math.min(state.totalPages, state.currentPage - 1));
+    const directionalReferencePage = scrollDirection === 'up' ? upwardReferencePage : baseReferencePage;
+    const directionalReferenceHeightPx = Math.max(1, getPageHeight(directionalReferencePage));
+    const zoomNormalizedScrollStep = Math.max(
+      1,
+      Math.round((scrollDelta * Math.max(state.zoom, 0.5)) / Math.max(1, directionalReferenceHeightPx * 0.65))
+    );
+
+    const shouldNormalizeZoomScrollStep =
+      !shouldForcePageUpdate &&
+      !hasPendingNavigationTarget &&
+      !isKeyboardNavLockActive &&
+      !hasRecentKeyboardNavigation;
+
+    let zoomStepCap = state.zoom < 1 ? 1 : 2;
+    let maxStepFromCurrentPage = Math.max(1, Math.min(zoomStepCap, zoomNormalizedScrollStep));
+    if (shouldNormalizeZoomScrollStep && centerPage !== state.currentPage) {
+      const maxAllowedPageByDirection = scrollDirection === 'up'
+        ? state.currentPage - maxStepFromCurrentPage
+        : scrollDirection === 'down'
+          ? state.currentPage + maxStepFromCurrentPage
+          : state.currentPage;
+
+      if (scrollDirection === 'up') {
+        centerPage = Math.max(centerPage, maxAllowedPageByDirection);
+      } else if (scrollDirection === 'down') {
+        centerPage = Math.min(centerPage, maxAllowedPageByDirection);
+      } else {
+        const stepDelta = centerPage - state.currentPage;
+        if (Math.abs(stepDelta) > maxStepFromCurrentPage) {
+          centerPage = state.currentPage + (stepDelta > 0 ? maxStepFromCurrentPage : -maxStepFromCurrentPage);
+        }
+      }
+    }
+
+    const centerPageBeforeDirectionGuard = centerPage;
+    const shouldApplyDirectionalGuard =
+      shouldNormalizeZoomScrollStep &&
+      scrollDirection !== 'neutral' &&
+      centerPage !== state.currentPage;
+
+    if (shouldApplyDirectionalGuard) {
+      const proposedDelta = centerPage - state.currentPage;
+      const isAgainstDirection =
+        (scrollDirection === 'up' && proposedDelta > 0) ||
+        (scrollDirection === 'down' && proposedDelta < 0);
+
+      if (isAgainstDirection) {
+        centerPage = state.currentPage;
+      }
+
+      logPdfDebugEvent(
+        'calculate_visible_pages_directional_guard',
+        {
+          mode: state.viewMode,
+          currentPage: state.currentPage,
+          centerPageBeforeDirectionGuard,
+          centerPageAfterDirectionGuard: centerPage,
+          scrollDirection,
+          signedScrollDelta,
+          proposedDelta,
+          isAgainstDirection,
+          shouldNormalizeZoomScrollStep,
+          zoom: state.zoom
+        },
+        { throttleMs: 800, throttleKey: 'directional-guard', force: true }
+      );
+    }
+
+    const isCurrentPageStillVisibleForUpwardGuard =
+      currentPageIntersectionPx >= UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX &&
+      currentPageVisibleRatio >= UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO;
+
+    const shouldStabilizeUpwardMicroScroll =
+      shouldNormalizeZoomScrollStep &&
+      scrollDirection === 'up' &&
+      scrollDelta <= UPWARD_SCROLL_MICRO_DELTA_PX &&
+      centerPage !== state.currentPage &&
+      isCurrentPageStillVisibleForUpwardGuard;
+
+    const shouldStabilizeDirectionSettle =
+      isDirectionSettling &&
+      centerPage !== state.currentPage &&
+      isCurrentPageStillVisibleForUpwardGuard;
+
+    if (shouldStabilizeUpwardMicroScroll || shouldStabilizeDirectionSettle) {
+      logPdfDebugEvent(
+        'calculate_visible_pages_upward_stability_guard',
+        {
+          mode: state.viewMode,
+          currentPage: state.currentPage,
+          centerPageBeforeStabilityGuard: centerPage,
+          scrollDirection,
+          scrollDelta,
+          signedScrollDelta,
+          isDirectionSettling,
+          timeSinceDirectionChange,
+          shouldStabilizeUpwardMicroScroll,
+          shouldStabilizeDirectionSettle,
+          currentPageIntersectionPx,
+          currentPageVisibleRatio,
+          isCurrentPageStillVisibleForUpwardGuard,
+          zoom: state.zoom
+        },
+        { throttleMs: 800, throttleKey: 'upward-stability-guard', force: true }
+      );
+
+      centerPage = state.currentPage;
+    } else if ((isDirectionSettling || scrollDirection === 'up') && centerPage !== state.currentPage) {
+      logPdfDebugEvent(
+        'calculate_visible_pages_upward_stability_guard_skipped',
+        {
+          mode: state.viewMode,
+          currentPage: state.currentPage,
+          centerPage,
+          scrollDirection,
+          scrollDelta,
+          signedScrollDelta,
+          isDirectionSettling,
+          timeSinceDirectionChange,
+          currentPageIntersectionPx,
+          currentPageVisibleRatio,
+          isCurrentPageStillVisibleForUpwardGuard,
+          zoom: state.zoom
+        },
+        { throttleMs: 1200, throttleKey: 'upward-stability-guard-skipped', force: true }
+      );
+    }
+
+    logPdfDebugEvent(
+      'calculate_visible_pages_zoom_normalization',
+      {
+        mode: state.viewMode,
+        currentPage: state.currentPage,
+        centerPage,
+        originalCenterPage,
+        scrollDelta,
+        signedScrollDelta,
+        scrollDirection,
+        zoom: state.zoom,
+        directionalReferenceHeightPx,
+        directionalReferencePage,
+        zoomNormalizedScrollStep,
+        zoomStepCap,
+        maxStepFromCurrentPage,
+        normalizedStepApplied: centerPage !== originalCenterPage,
+        shouldNormalizeZoomScrollStep
+      },
+      { throttleMs: 800, throttleKey: 'zoom-normalization', force: true }
+    );
+
+    const isUpwardViewportExit =
+      scrollDirection === 'up' &&
+      centerPage < state.currentPage &&
+      currentPageIntersectionPx <= UPWARD_VIEWPORT_EXIT_INTERSECTION_PX &&
+      currentPageVisibleRatio <= UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO;
+
+    if (isUpwardViewportExit && centerPage < state.currentPage - 1) {
+      centerPage = state.currentPage - 1;
+      logPdfDebugEvent(
+        'calculate_visible_pages_upward_exit_reconciliation',
+        {
+          mode: state.viewMode,
+          currentPage: state.currentPage,
+          centerPage,
+          scrollDirection,
+          currentPageIntersectionPx,
+          currentPageVisibleRatio,
+          signedScrollDelta,
+          scrollDelta,
+          zoom: state.zoom
+        },
+        { throttleMs: 500, throttleKey: 'upward-exit-reconciliation', force: true }
+      );
+    }
+
+    const effectiveCurrentPage = currentPageRef.current;
+    const shouldApplyMonotonicDirectionClamp =
+      !shouldForcePageUpdate &&
+      !hasPendingNavigationTarget &&
+      !isKeyboardNavLockActive &&
+      !hasRecentKeyboardNavigation &&
+      scrollDirection !== 'neutral';
+
+    if (shouldApplyMonotonicDirectionClamp) {
+      const originalMonotonicCandidate = centerPage;
+      if (scrollDirection === 'up') {
+        centerPage = Math.min(centerPage, effectiveCurrentPage);
+        if (centerPage < effectiveCurrentPage - 1) {
+          centerPage = effectiveCurrentPage - 1;
+        }
+      } else if (scrollDirection === 'down') {
+        centerPage = Math.max(centerPage, effectiveCurrentPage);
+        if (centerPage > effectiveCurrentPage + 1) {
+          centerPage = effectiveCurrentPage + 1;
+        }
+      }
+
+      if (centerPage !== originalMonotonicCandidate) {
+        logPdfDebugEvent(
+          'calculate_visible_pages_monotonic_direction_clamp',
+          {
+            mode: state.viewMode,
+            currentPage: effectiveCurrentPage,
+            centerPage,
+            originalMonotonicCandidate,
+            scrollDirection,
+            signedScrollDelta,
+            scrollDelta,
+            zoom: state.zoom
+          },
+          { throttleMs: 500, throttleKey: 'monotonic-direction-clamp', force: true }
+        );
+      }
+    }
+
+    const currentPageWidth = getPageWidth(effectiveCurrentPage);
+    const currentPageHeight = getPageHeight(effectiveCurrentPage);
+    const currentPageIsLandscape = currentPageWidth > currentPageHeight;
+    const adjacentUpPage = Math.max(1, effectiveCurrentPage - 1);
+    const adjacentDownPage = Math.min(state.totalPages, effectiveCurrentPage + 1);
+    const adjacentUpIsLandscape = getPageWidth(adjacentUpPage) > getPageHeight(adjacentUpPage);
+    const adjacentDownIsLandscape = getPageWidth(adjacentDownPage) > getPageHeight(adjacentDownPage);
+    const isLandscapeBoundary = currentPageIsLandscape || adjacentUpIsLandscape || adjacentDownIsLandscape;
+
+    if (
+      shouldApplyMonotonicDirectionClamp &&
+      isLandscapeBoundary &&
+      centerPage !== effectiveCurrentPage &&
+      currentPageVisibleRatio <= LANDSCAPE_BOUNDARY_CURRENT_RATIO_THRESHOLD
+    ) {
+      const originalLandscapeBoundaryCandidate = centerPage;
+      centerPage = scrollDirection === 'up' ? adjacentUpPage : scrollDirection === 'down' ? adjacentDownPage : centerPage;
+      logPdfDebugEvent(
+        'calculate_visible_pages_landscape_boundary_reconciliation',
+        {
+          mode: state.viewMode,
+          currentPage: effectiveCurrentPage,
+          centerPage,
+          originalLandscapeBoundaryCandidate,
+          scrollDirection,
+          currentPageVisibleRatio,
+          currentPageIntersectionPx,
+          currentPageIsLandscape,
+          adjacentUpPage,
+          adjacentDownPage,
+          adjacentUpIsLandscape,
+          adjacentDownIsLandscape,
+          signedScrollDelta,
+          scrollDelta,
+          zoom: state.zoom
+        },
+        { throttleMs: 500, throttleKey: 'landscape-boundary-reconciliation', force: true }
+      );
+    }
+
     const timeSinceLastDetection = now - lastDetectionTimeRef.current;
     const pageDifference = Math.abs(centerPage - lastDetectedPageRef.current);
     const jumpFromCurrentPage = Math.abs(centerPage - state.currentPage);
 
-    if (!shouldForcePageUpdate && pageDifference === 1 && timeSinceLastDetection < 300) {
+    if (centerPage === state.currentPage) {
+      activePageTransitionCandidateRef.current = null;
+    }
+
+    const shouldThrottleAdjacentDetection =
+      !shouldForcePageUpdate &&
+      !isUpwardViewportExit &&
+      !isLandscapeBoundary &&
+      scrollDirection === 'neutral' &&
+      pageDifference === 1 &&
+      timeSinceLastDetection < 300;
+
+    if (shouldThrottleAdjacentDetection) {
       return;
     }
 
@@ -1658,7 +1977,38 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
+    const shouldDebounceVisualAdjacentTransition =
+      !shouldForcePageUpdate &&
+      !hasPendingNavigationTarget &&
+      !isKeyboardNavLockActive &&
+      !hasRecentKeyboardNavigation &&
+      !isUpwardViewportExit &&
+      !isLandscapeBoundary &&
+      scrollDirection === 'neutral' &&
+      jumpFromCurrentPage === 1;
+
+    if (shouldDebounceVisualAdjacentTransition && centerPage !== state.currentPage) {
+      const candidate = activePageTransitionCandidateRef.current;
+      if (!candidate || candidate.page !== centerPage) {
+        activePageTransitionCandidateRef.current = {
+          page: centerPage,
+          startedAt: now,
+          samples: 1
+        };
+        return;
+      }
+
+      candidate.samples += 1;
+      const candidateAgeMs = now - candidate.startedAt;
+      if (candidateAgeMs < ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS && candidate.samples < 2) {
+        return;
+      }
+    } else {
+      activePageTransitionCandidateRef.current = null;
+    }
+
     if (centerPage !== lastDetectedPageRef.current) {
+      activePageTransitionCandidateRef.current = null;
       lastDetectedPageRef.current = centerPage;
       lastDetectionTimeRef.current = now;
       goToPage(centerPage);
@@ -1668,6 +2018,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     cumulativePageTops,
     getCurrentDocument,
     getDocumentByGlobalPage,
+    getPageHeight,
+    getPageWidth,
     goToPage,
     isSearchNavigationActive,
     logNavigationLatencySummary,
