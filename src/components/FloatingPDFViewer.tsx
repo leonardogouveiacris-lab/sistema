@@ -5385,14 +5385,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       if (candidatePage >= anchor.startPage && candidatePage <= anchor.endPage) {
-        const shouldPreferAnchorPage = Math.abs(candidatePage - anchor.anchorGlobalPage) <= ZOOM_ANCHOR_SMALL_DRIFT_TOLERANCE_PAGES;
-        const pageWithinAnchorDocument = shouldPreferAnchorPage ? anchor.anchorGlobalPage : candidatePage;
+        const driftFromAnchor = Math.abs(candidatePage - anchor.anchorGlobalPage);
 
-        anchor.lastValidPage = pageWithinAnchorDocument;
+        if (driftFromAnchor <= ZOOM_ANCHOR_SMALL_DRIFT_TOLERANCE_PAGES) {
+          anchor.lastValidPage = anchor.anchorGlobalPage;
+          return {
+            anchorDocumentId: anchor.documentId,
+            candidatePage,
+            clampedPage: anchor.anchorGlobalPage,
+            wasCrossDocumentClamped: false,
+            anchorGlobalPage: anchor.anchorGlobalPage
+          };
+        }
+
         return {
           anchorDocumentId: anchor.documentId,
           candidatePage,
-          clampedPage: pageWithinAnchorDocument,
+          clampedPage: anchor.lastValidPage,
           wasCrossDocumentClamped: false,
           anchorGlobalPage: anchor.anchorGlobalPage
         };
