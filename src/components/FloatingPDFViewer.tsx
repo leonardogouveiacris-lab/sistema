@@ -1952,6 +1952,43 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       );
     }
 
+    const shouldApplySequentialDirectionalClamp =
+      !shouldForcePageUpdate &&
+      !hasPendingNavigationTarget &&
+      !isKeyboardNavLockActive &&
+      !hasRecentKeyboardNavigation &&
+      scrollDirection !== 'neutral' &&
+      centerPage !== state.currentPage;
+
+    if (shouldApplySequentialDirectionalClamp) {
+      const originalSequentialCandidate = centerPage;
+      if (scrollDirection === 'up' && centerPage < state.currentPage - 1) {
+        centerPage = state.currentPage - 1;
+      } else if (scrollDirection === 'down' && centerPage > state.currentPage + 1) {
+        centerPage = state.currentPage + 1;
+      }
+
+      if (centerPage !== originalSequentialCandidate) {
+        logPdfDebugEvent(
+          'calculate_visible_pages_sequential_directional_clamp',
+          {
+            mode: state.viewMode,
+            currentPage: state.currentPage,
+            centerPage,
+            originalSequentialCandidate,
+            scrollDirection,
+            currentPageVisibleRatio,
+            currentPageIntersectionPx,
+            isLandscapeBoundary,
+            signedScrollDelta,
+            scrollDelta,
+            zoom: state.zoom
+          },
+          { throttleMs: 400, throttleKey: 'sequential-directional-clamp', force: true }
+        );
+      }
+    }
+
     const timeSinceLastDetection = now - lastDetectionTimeRef.current;
     const pageDifference = Math.abs(centerPage - lastDetectedPageRef.current);
     const jumpFromCurrentPage = Math.abs(centerPage - state.currentPage);
