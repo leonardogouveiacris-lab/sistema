@@ -1293,6 +1293,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     lastDetectedPageRef.current = targetPage;
     lastDetectionTimeRef.current = startedAt;
 
+    setForceRenderPages((prev) => {
+      const next = new Set(prev);
+      for (let i = -2; i <= 2; i += 1) {
+        const page = targetPage + i;
+        if (page >= 1 && page <= state.totalPages) {
+          next.add(page);
+        }
+      }
+      return next;
+    });
+
     if (syncCurrentPage) {
       goToPage(targetPage);
     }
@@ -1303,6 +1314,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
         setTimeout(() => {
           releaseProgrammaticScroll('state-change');
+          if (pendingNavigationTargetRef.current?.page === targetPage) {
+            pendingNavigationTargetRef.current = null;
+          }
         }, PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS);
         return;
       }
@@ -1322,7 +1336,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     scrollToTargetPage();
-  }, [goToPage, markProgrammaticScroll, releaseProgrammaticScroll, state.viewMode]);
+  }, [goToPage, markProgrammaticScroll, releaseProgrammaticScroll, state.viewMode, state.totalPages]);
 
   useEffect(() => {
     calculateVisiblePagesFromScrollRef.current = calculateVisiblePagesFromScroll;
@@ -1402,10 +1416,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         );
       }
 
-      const DIVERGENCE_FIX_THRESHOLD_MS = 300;
+      const DIVERGENCE_FIX_THRESHOLD_MS = 1500;
       const pageDivergence = Math.abs(currentPage - centerPage);
+      const hasPendingNavigation = pendingNavigationTargetRef.current !== null;
+      const pendingTargetPage = pendingNavigationTargetRef.current?.page;
+      const isPendingTargetCurrentPage = pendingTargetPage === currentPage;
+
       if (divergenceDurationMs >= DIVERGENCE_FIX_THRESHOLD_MS && pageDivergence > 2) {
-        if (!isProgrammaticScrollRef.current && now > zoomBlockedUntilRef.current) {
+        if (!isProgrammaticScrollRef.current && now > zoomBlockedUntilRef.current && !hasPendingNavigation && !isPendingTargetCurrentPage) {
           scrollDivergenceStartedAtRef.current = null;
           lastDetectedPageRef.current = centerPage;
           lastDetectionTimeRef.current = now;
@@ -3849,6 +3867,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       viewportCorePages.add(page);
       pushCandidate(page, 0);
     });
+
+    // 1.5) Página de navegação pendente (crucial para bookmark/highlight navigation)
+    const pendingTarget = pendingNavigationTargetRef.current;
+    if (pendingTarget) {
+      const targetPage = pendingTarget.page;
+      for (let i = -2; i <= 2; i += 1) {
+        pushCandidate(targetPage + i, 0);
+      }
+    }
 
     // 2) Páginas do documento ativo no pipeline contínuo
     const activeDocumentId = continuousCanvasPipeline.activeDocumentId;
