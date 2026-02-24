@@ -908,6 +908,39 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     let centerPage = 1;
     let maxVisibleIntersection = -1;
     let minDistanceToCenter = Infinity;
+    let maxVisibleRatio = -1;
+
+    const continuousWindowRanges = state.viewMode === 'continuous'
+      ? state.documents
+        .map((doc) => {
+          const pageWindow = continuousWindowByDocument.get(doc.id);
+          const offset = memoizedDocumentOffsets.get(doc.id);
+          if (!pageWindow || !offset) {
+            return null;
+          }
+
+          return {
+            start: offset.startPage + pageWindow.rangeStart - 1,
+            end: offset.startPage + pageWindow.rangeEnd - 1
+          };
+        })
+        .filter((range): range is { start: number; end: number } => range !== null)
+      : [];
+
+    const isPageInContinuousWindow = (pageNum: number) => {
+      if (continuousWindowRanges.length === 0) {
+        return true;
+      }
+
+      return continuousWindowRanges.some(({ start, end }) => pageNum >= start && pageNum <= end);
+    };
+
+    const mountedPagesInWindow = new Set<number>();
+    pageRefs.current.forEach((_element, globalPage) => {
+      if (isPageInContinuousWindow(globalPage)) {
+        mountedPagesInWindow.add(globalPage);
+      }
+    });
 
     const bufferedViewportStart = scrollTop - buffer;
     const bufferedViewportEnd = scrollTop + viewportHeight + buffer;
@@ -919,7 +952,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     if (bufferedStartIndex <= bufferedEndIndex) {
       for (let pageIndex = bufferedStartIndex; pageIndex <= bufferedEndIndex; pageIndex++) {
-        visiblePages.add(pageIndex + 1);
+        const pageNum = pageIndex + 1;
+        if (!isPageInContinuousWindow(pageNum)) {
+          continue;
+        }
+        visiblePages.add(pageNum);
       }
     }
 
@@ -933,31 +970,93 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     let currentPageIntersectionPx = -1;
     let currentPageVisibleRatio = 0;
+    const visibilityDebugEntries: Array<{ page: number; visibleIntersectionPx: number; visibleRatio: number }> = [];
+    const containerRect = container.getBoundingClientRect();
+    let domBestCandidate: { page: number; intersectionPx: number; visibleRatio: number; distanceToCenter: number } | null = null;
+    let domCurrentPageIntersectionPx = -1;
+    let domCurrentPageVisibleRatio = 0;
+
+    mountedPagesInWindow.forEach((pageNum) => {
+      const pageElement = pageRefs.current.get(pageNum);
+      if (!pageElement) {
+        return;
+      }
+
+      const pageRect = pageElement.getBoundingClientRect();
+      const bufferedIntersectionPx = Math.max(0, Math.min(pageRect.bottom, containerRect.bottom + buffer) - Math.max(pageRect.top, containerRect.top - buffer));
+      if (bufferedIntersectionPx > 0) {
+        visiblePages.add(pageNum);
+      }
+
+      const visibleIntersectionPx = Math.max(0, Math.min(pageRect.bottom, containerRect.bottom) - Math.max(pageRect.top, containerRect.top));
+      if (visibleIntersectionPx <= 0) {
+        return;
+      }
+
+      const pageHeight = Math.max(1, pageRect.height);
+      const visibleRatio = visibleIntersectionPx / pageHeight;
+      const pageCenter = (pageRect.top + pageRect.bottom) / 2;
+      const distanceToCenter = Math.abs(pageCenter - (containerRect.top + containerRect.height / 2));
+
+      visibilityDebugEntries.push({
+        page: pageNum,
+        visibleIntersectionPx,
+        visibleRatio
+      });
+
+      if (pageNum === state.currentPage) {
+        domCurrentPageIntersectionPx = visibleIntersectionPx;
+        domCurrentPageVisibleRatio = visibleRatio;
+      }
+
+      if (
+        !domBestCandidate ||
+        visibleIntersectionPx > domBestCandidate.intersectionPx ||
+        (
+          visibleIntersectionPx === domBestCandidate.intersectionPx &&
+          (visibleRatio > domBestCandidate.visibleRatio || (visibleRatio === domBestCandidate.visibleRatio && distanceToCenter < domBestCandidate.distanceToCenter))
+        )
+      ) {
+        domBestCandidate = {
+          page: pageNum,
+          intersectionPx: visibleIntersectionPx,
+          visibleRatio,
+          distanceToCenter
+        };
+      }
+    });
 
     if (visibleStartIndex <= visibleEndIndex) {
       visibleStartPageRef.current = visibleStartIndex + 1;
       visibleEndPageRef.current = visibleEndIndex + 1;
 
       const minStickyIntersectionPx = Math.min(ACTIVE_PAGE_MIN_INTERSECTION_PX, viewportHeight * 0.2);
-      let maxVisibleRatio = -1;
-      const visibilityDebugEntries: Array<{ page: number; visibleIntersectionPx: number; visibleRatio: number }> = [];
+      const cumulativeDebugEntries: Array<{ page: number; visibleIntersectionPx: number; visibleRatio: number }> = [];
 
       for (let pageIndex = visibleStartIndex; pageIndex <= visibleEndIndex; pageIndex++) {
+        const pageNum = pageIndex + 1;
+        if (!isPageInContinuousWindow(pageNum) || mountedPagesInWindow.has(pageNum)) {
+          continue;
+        }
+
         const pageTop = cumulativePageTops[pageIndex];
         const pageBottom = cumulativePageBottoms[pageIndex];
         const pageHeight = Math.max(1, pageBottom - pageTop);
         const visibleIntersectionPx = Math.max(0, Math.min(pageBottom, viewportEnd) - Math.max(pageTop, viewportStart));
+        if (visibleIntersectionPx > 0) {
+          visiblePages.add(pageNum);
+        }
         const visibleRatio = visibleIntersectionPx / pageHeight;
         const pageCenter = pageTop + (pageBottom - pageTop) / 2;
         const distanceToCenter = Math.abs(pageCenter - viewportCenter);
 
-        visibilityDebugEntries.push({
-          page: pageIndex + 1,
+        cumulativeDebugEntries.push({
+          page: pageNum,
           visibleIntersectionPx,
           visibleRatio
         });
 
-        if (pageIndex + 1 === state.currentPage) {
+        if (pageNum === state.currentPage) {
           currentPageIntersectionPx = visibleIntersectionPx;
           currentPageVisibleRatio = visibleRatio;
         }
@@ -972,8 +1071,30 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           maxVisibleIntersection = visibleIntersectionPx;
           maxVisibleRatio = visibleRatio;
           minDistanceToCenter = distanceToCenter;
-          centerPage = pageIndex + 1;
+          centerPage = pageNum;
         }
+      }
+
+      if (domBestCandidate) {
+        centerPage = domBestCandidate.page;
+        maxVisibleIntersection = domBestCandidate.intersectionPx;
+        maxVisibleRatio = domBestCandidate.visibleRatio;
+        minDistanceToCenter = domBestCandidate.distanceToCenter;
+        if (domCurrentPageIntersectionPx >= 0) {
+          currentPageIntersectionPx = domCurrentPageIntersectionPx;
+          currentPageVisibleRatio = domCurrentPageVisibleRatio;
+        }
+      }
+
+      const visiblePagesInViewport = Array.from(visiblePages).filter((page) => {
+        if (!isPageInContinuousWindow(page)) {
+          return false;
+        }
+        return (page >= visibleStartIndex + 1 && page <= visibleEndIndex + 1) || mountedPagesInWindow.has(page);
+      });
+      if (visiblePagesInViewport.length > 0) {
+        visibleStartPageRef.current = Math.min(...visiblePagesInViewport);
+        visibleEndPageRef.current = Math.max(...visiblePagesInViewport);
       }
 
       if (
@@ -1008,7 +1129,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           maxVisibleRatio,
           currentPageIntersectionPx,
           currentPageVisibleRatio,
-          visibilityByPage: visibilityDebugEntries
+          visibilityByPage: [
+            ...visibilityDebugEntries,
+            ...cumulativeDebugEntries
+          ]
         },
         { throttleMs: 600 }
       );
@@ -1471,14 +1595,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [
     cumulativePageBottoms,
     cumulativePageTops,
+    continuousWindowByDocument,
     getCurrentDocument,
     getDocumentByGlobalPage,
     goToPage,
     isSearchNavigationActive,
     logNavigationLatencySummary,
     logPdfDebugEvent,
+    memoizedDocumentOffsets,
     releaseProgrammaticScroll,
     state.currentPage,
+    state.documents,
     state.highlightedPage,
     state.isSearchOpen,
     state.totalPages,
