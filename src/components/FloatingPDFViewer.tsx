@@ -1267,18 +1267,43 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const pendingTargetPage = pendingNavigationTarget?.page;
       const protectedPages = new Set<number>();
 
+      const protectPage = (page: number | null | undefined) => {
+        if (!page || page < 1 || page > state.totalPages) {
+          return;
+        }
+        protectedPages.add(page);
+      };
+
       const protectPageWithNeighbors = (page: number | null | undefined) => {
         if (!page || page < 1 || page > state.totalPages) {
           return;
         }
 
-        protectedPages.add(page);
-        if (page - 1 >= 1) protectedPages.add(page - 1);
-        if (page + 1 <= state.totalPages) protectedPages.add(page + 1);
+        protectPage(page);
+        if (page - 1 >= 1) protectPage(page - 1);
+        if (page + 1 <= state.totalPages) protectPage(page + 1);
       };
 
-      visiblePages.forEach(page => protectPageWithNeighbors(page));
+      protectPageWithNeighbors(state.currentPage);
+      protectPageWithNeighbors(centerPage);
       protectPageWithNeighbors(pendingTargetPage);
+
+      const viewportMiddlePage = Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2);
+      const additionalProtectionBudget = Math.max(0, Math.min(budget - protectedPages.size, 4));
+      if (additionalProtectionBudget > 0) {
+        Array.from(visiblePages)
+          .filter((page) => page >= 1 && page <= state.totalPages)
+          .sort((a, b) => {
+            const distanceA = Math.abs(a - viewportMiddlePage);
+            const distanceB = Math.abs(b - viewportMiddlePage);
+            if (distanceA !== distanceB) {
+              return distanceA - distanceB;
+            }
+            return a - b;
+          })
+          .slice(0, additionalProtectionBudget)
+          .forEach((page) => protectPage(page));
+      }
 
       const normalizeRecencyQueue = () => {
         const deduplicated: number[] = [];
@@ -1375,9 +1400,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           ? 'paginas protegidas excedem o budget (visiveis + alvo pendente)'
           : 'nao foi possivel encontrar candidatos para eviccao apos fallback por distancia';
 
-        logger.error(
-          'Scroll render cache invariant violation: cache acima do budget apos eviccoes',
-          'FloatingPDFViewer.calculateVisiblePagesFromScroll',
+        logPdfDebugEvent(
+          'scroll_render_cache_budget_pressure',
           {
             reason,
             budget,
@@ -1385,8 +1409,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             protectedPages: Array.from(protectedPages).sort((a, b) => a - b),
             pendingTargetPage,
             visiblePages: Array.from(visiblePages).sort((a, b) => a - b),
-            recencyQueueSize: recencyQueue.length
-          }
+            recencyQueueSize: recencyQueue.length,
+            currentPage: state.currentPage,
+            centerPage
+          },
+          { throttleMs: 1000, throttleKey: 'scroll-render-cache-budget-pressure' }
         );
 
         const pagesByPriority = Array.from(nextSet).sort((a, b) => {
