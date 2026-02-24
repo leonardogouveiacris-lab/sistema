@@ -3375,11 +3375,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         pendingNavigationTarget.page <= offset.endPage
       );
 
+      let pendingLocalPage: number | null = null;
       if (isPendingTargetInDocument) {
-        const pendingLocalPage = pendingNavigationTarget!.page - offset.startPage + 1;
+        pendingLocalPage = pendingNavigationTarget!.page - offset.startPage + 1;
         const pendingWindowRadius = 1;
         firstVisibleLocalPage = Math.max(1, pendingLocalPage - pendingWindowRadius);
         lastVisibleLocalPage = Math.min(numPages, pendingLocalPage + pendingWindowRadius);
+        hasScrollDerivedRangeForDocument = true;
       }
 
       if ((firstVisibleLocalPage === null || lastVisibleLocalPage === null) && fallbackVisibleRangeFromScroll) {
@@ -3403,7 +3405,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
       }
 
-      if (localCurrentPage !== null && !hasScrollDerivedRangeForDocument) {
+      if (localCurrentPage !== null && !hasScrollDerivedRangeForDocument && !isPendingTargetInDocument) {
         const isCurrentNearVisibleWindow =
           localCurrentPage >= firstVisibleLocalPage - CONTINUOUS_WINDOW_BUFFER_PAGES &&
           localCurrentPage <= lastVisibleLocalPage + CONTINUOUS_WINDOW_BUFFER_PAGES;
@@ -3414,8 +3416,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
       }
 
-      const rangeStart = Math.max(1, firstVisibleLocalPage - CONTINUOUS_WINDOW_BUFFER_PAGES);
-      const rangeEnd = Math.min(numPages, lastVisibleLocalPage + CONTINUOUS_WINDOW_BUFFER_PAGES);
+      const rangeStart = pendingLocalPage !== null
+        ? Math.max(1, pendingLocalPage - CONTINUOUS_WINDOW_BUFFER_PAGES)
+        : Math.max(1, firstVisibleLocalPage - CONTINUOUS_WINDOW_BUFFER_PAGES);
+      const rangeEnd = pendingLocalPage !== null
+        ? Math.min(numPages, pendingLocalPage + CONTINUOUS_WINDOW_BUFFER_PAGES)
+        : Math.min(numPages, lastVisibleLocalPage + CONTINUOUS_WINDOW_BUFFER_PAGES);
 
       windows.set(doc.id, {
         firstVisibleLocalPage,
@@ -3567,6 +3573,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       const selectedPagesGlobal = new Set<number>();
       const optionalPagesGlobal: number[] = [];
+      const mustRenderPagesGlobal = new Set<number>();
 
       // Núcleo obrigatório: manter 100% das páginas visíveis no viewport para este documento.
       for (let globalPage = baseStartGlobal; globalPage <= baseEndGlobal; globalPage += 1) {
@@ -3578,8 +3585,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         pendingNavigationTarget.page >= offset.startPage &&
         pendingNavigationTarget.page <= offset.endPage
       ) {
-        selectedPagesGlobal.add(pendingNavigationTarget.page);
+        mustRenderPagesGlobal.add(pendingNavigationTarget.page);
       }
+
+      mustRenderPagesGlobal.forEach((globalPage) => {
+        selectedPagesGlobal.add(globalPage);
+      });
 
       // Camada opcional: overscan/preload em torno do núcleo.
       for (let i = 1; i <= overscanPages; i += 1) {
@@ -3618,6 +3629,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       for (let globalPage = windowStartGlobalForced; globalPage <= windowEndGlobalForced; globalPage++) {
         selectedPagesGlobal.add(globalPage);
       }
+
+      mustRenderPagesGlobal.forEach((globalPage) => {
+        selectedPagesGlobal.add(globalPage);
+      });
 
       const selectedPages = new Set<number>();
       selectedPagesGlobal.forEach((globalPage) => {
