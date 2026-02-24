@@ -274,6 +274,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     documentId: string;
     startPage: number;
     endPage: number;
+    anchorGlobalPage: number;
     lastValidPage: number;
   } | null>(null);
   const visibleStartPageRef = useRef<number>(1);
@@ -5291,16 +5292,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
 
-    const visibleRange = deriveVisibleRangeFromContainer();
-    const fallbackRange = {
-      start: visibleStartPageRef.current,
-      end: visibleEndPageRef.current
-    };
-    const range = visibleRange ?? fallbackRange;
-    const anchorPage = Math.min(
+    const activePage = Math.min(
       state.totalPages,
-      Math.max(1, Math.round((range.start + range.end) / 2))
+      Math.max(1, currentPageRef.current)
     );
+    const anchorPage = activePage;
 
     const anchorDocument = getDocumentByGlobalPage(anchorPage);
     const anchorDocumentId = anchorDocument?.id ?? null;
@@ -5325,7 +5321,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       relativeOffsetY,
       hasMeasuredPage: true
     };
-  }, [deriveVisibleRangeFromContainer, getDocumentByGlobalPage, state.totalPages]);
+  }, [getDocumentByGlobalPage, state.totalPages]);
 
   useEffect(() => {
     if (state.viewMode !== 'continuous' || !scrollContainerRef.current) {
@@ -5345,6 +5341,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           documentId: zoomAnchor.anchorDocumentId,
           startPage: offset.startPage,
           endPage: offset.endPage,
+          anchorGlobalPage: Math.min(offset.endPage, Math.max(offset.startPage, zoomAnchor.page)),
           lastValidPage: Math.min(offset.endPage, Math.max(offset.startPage, zoomAnchor.page))
         };
       } else {
@@ -5361,7 +5358,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           anchorDocumentId: null,
           candidatePage,
           clampedPage: candidatePage,
-          wasCrossDocumentClamped: false
+          wasCrossDocumentClamped: false,
+          anchorGlobalPage: null
         };
       }
 
@@ -5371,7 +5369,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           anchorDocumentId: anchor.documentId,
           candidatePage,
           clampedPage: candidatePage,
-          wasCrossDocumentClamped: false
+          wasCrossDocumentClamped: false,
+          anchorGlobalPage: anchor.anchorGlobalPage
         };
       }
 
@@ -5379,7 +5378,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         anchorDocumentId: anchor.documentId,
         candidatePage,
         clampedPage: anchor.lastValidPage,
-        wasCrossDocumentClamped: true
+        wasCrossDocumentClamped: true,
+        anchorGlobalPage: anchor.anchorGlobalPage
       };
     };
 
@@ -5484,6 +5484,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           targetPageSnapshot,
           derivedPageAfterZoom,
           anchorDocumentId: clampedTargetPageData.anchorDocumentId,
+          anchorGlobalPage: clampedTargetPageData.anchorGlobalPage,
           candidatePage: clampedTargetPageData.candidatePage,
           clampedPage: clampedTargetPageData.clampedPage,
           wasCrossDocumentClamped: clampedTargetPageData.wasCrossDocumentClamped
@@ -5521,6 +5522,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           'zoom_reconciliation_clamp',
           {
             anchorDocumentId: clampedReconciledPageData.anchorDocumentId,
+            anchorGlobalPage: clampedReconciledPageData.anchorGlobalPage,
             candidatePage: clampedReconciledPageData.candidatePage,
             clampedPage: clampedReconciledPageData.clampedPage,
             wasCrossDocumentClamped: clampedReconciledPageData.wasCrossDocumentClamped
