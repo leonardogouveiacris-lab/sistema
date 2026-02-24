@@ -84,6 +84,9 @@ const PROGRAMMATIC_SCROLL_SAFETY_TIMEOUT_MS = 9000;
 const ZOOM_POST_RECONCILIATION_TIMEOUT_MS = 240;
 const ZOOM_POST_BLOCK_DURATION_MS = 120;
 const ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES = 2;
+const ZOOM_ANCHOR_SMALL_DRIFT_TOLERANCE_PAGES = 1;
+const ACTIVE_PAGE_MIN_INTERSECTION_PX = 48;
+const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -269,7 +272,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const centerPageFreezeUntilRef = useRef<number>(0);
 
   const zoomBlockedUntilRef = useRef<number>(0);
-  const zoomAnchorRef = useRef<{ page: number; relativeOffsetY: number; hasMeasuredPage: boolean } | null>(null);
+  const zoomAnchorRef = useRef<{ page: number; anchorDocumentId: string | null; relativeOffsetY: number; hasMeasuredPage: boolean } | null>(null);
+  const zoomReconciliationAnchorRef = useRef<{
+    documentId: string;
+    startPage: number;
+    endPage: number;
+    anchorGlobalPage: number;
+    lastValidPage: number;
+  } | null>(null);
   const visibleStartPageRef = useRef<number>(1);
   const visibleEndPageRef = useRef<number>(1);
   const textExtractionProgressRef = useRef<Map<string, { current: number; total: number }>>(new Map());
@@ -727,6 +737,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     isProgrammaticScrollRef.current = false;
+
+    if (reason === 'zoom-reconciliation') {
+      zoomReconciliationAnchorRef.current = null;
+    }
   }, []);
 
   const markProgrammaticScroll = useCallback((reason: string) => {
@@ -831,6 +845,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const visiblePages = new Set<number>();
     const viewportCenter = scrollTop + viewportHeight / 2;
     let centerPage = 1;
+    let maxVisibleIntersection = -1;
     let minDistanceToCenter = Infinity;
 
     const bufferedViewportStart = scrollTop - buffer;
@@ -855,18 +870,50 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       findLastIndexByTop(cumulativePageTops, viewportEnd)
     );
 
+    let currentPageIntersectionPx = -1;
+
     if (visibleStartIndex <= visibleEndIndex) {
       visibleStartPageRef.current = visibleStartIndex + 1;
       visibleEndPageRef.current = visibleEndIndex + 1;
 
+      const minStickyIntersectionPx = Math.min(ACTIVE_PAGE_MIN_INTERSECTION_PX, viewportHeight * 0.2);
+
       for (let pageIndex = visibleStartIndex; pageIndex <= visibleEndIndex; pageIndex++) {
         const pageTop = cumulativePageTops[pageIndex];
         const pageBottom = cumulativePageBottoms[pageIndex];
+        const visibleIntersectionPx = Math.max(0, Math.min(pageBottom, viewportEnd) - Math.max(pageTop, viewportStart));
         const pageCenter = pageTop + (pageBottom - pageTop) / 2;
         const distanceToCenter = Math.abs(pageCenter - viewportCenter);
-        if (distanceToCenter < minDistanceToCenter) {
+
+        if (pageIndex + 1 === state.currentPage) {
+          currentPageIntersectionPx = visibleIntersectionPx;
+        }
+
+        if (
+          visibleIntersectionPx > maxVisibleIntersection ||
+          (visibleIntersectionPx === maxVisibleIntersection && distanceToCenter < minDistanceToCenter)
+        ) {
+          maxVisibleIntersection = visibleIntersectionPx;
           minDistanceToCenter = distanceToCenter;
           centerPage = pageIndex + 1;
+        }
+      }
+
+      if (currentPageIntersectionPx >= minStickyIntersectionPx) {
+        centerPage = state.currentPage;
+      }
+
+      const shouldApplyScrollHysteresis =
+        !isProgrammaticScrollRef.current &&
+        !hasPendingNavigationTarget &&
+        state.currentPage >= visibleStartPageRef.current &&
+        state.currentPage <= visibleEndPageRef.current;
+
+      if (shouldApplyScrollHysteresis && centerPage !== state.currentPage && currentPageIntersectionPx > 0) {
+        const switchDeltaPx = maxVisibleIntersection - currentPageIntersectionPx;
+        const minSwitchDeltaPx = Math.min(ACTIVE_PAGE_SWITCH_MIN_DELTA_PX, viewportHeight * 0.18);
+        if (switchDeltaPx < minSwitchDeltaPx) {
+          centerPage = state.currentPage;
         }
       }
     } else {
@@ -5245,21 +5292,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
 
-    const visibleRange = deriveVisibleRangeFromContainer();
-    const fallbackRange = {
-      start: visibleStartPageRef.current,
-      end: visibleEndPageRef.current
-    };
-    const range = visibleRange ?? fallbackRange;
-    const anchorPage = Math.min(
+    const activePage = Math.min(
       state.totalPages,
-      Math.max(1, Math.round((range.start + range.end) / 2))
+      Math.max(1, currentPageRef.current)
     );
+    const anchorPage = activePage;
 
+    const anchorDocument = getDocumentByGlobalPage(anchorPage);
+    const anchorDocumentId = anchorDocument?.id ?? null;
     const anchorPageElement = pageRefs.current.get(anchorPage);
     if (!anchorPageElement || anchorPageElement.offsetHeight <= 0) {
       zoomAnchorRef.current = {
         page: anchorPage,
+        anchorDocumentId,
         relativeOffsetY: 0.5,
         hasMeasuredPage: false
       };
@@ -5272,10 +5317,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     zoomAnchorRef.current = {
       page: anchorPage,
+      anchorDocumentId,
       relativeOffsetY,
       hasMeasuredPage: true
     };
-  }, [deriveVisibleRangeFromContainer, state.totalPages]);
+  }, [getDocumentByGlobalPage, state.totalPages]);
 
   useEffect(() => {
     if (state.viewMode !== 'continuous' || !scrollContainerRef.current) {
@@ -5287,6 +5333,67 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const scrollRatio = scrollRatioBeforeZoomRef.current;
     const zoomAnchor = zoomAnchorRef.current;
+
+    if (zoomAnchor?.anchorDocumentId) {
+      const offset = memoizedDocumentOffsets.get(zoomAnchor.anchorDocumentId);
+      if (offset) {
+        zoomReconciliationAnchorRef.current = {
+          documentId: zoomAnchor.anchorDocumentId,
+          startPage: offset.startPage,
+          endPage: offset.endPage,
+          anchorGlobalPage: Math.min(offset.endPage, Math.max(offset.startPage, zoomAnchor.page)),
+          lastValidPage: Math.min(offset.endPage, Math.max(offset.startPage, zoomAnchor.page))
+        };
+      } else {
+        zoomReconciliationAnchorRef.current = null;
+      }
+    } else {
+      zoomReconciliationAnchorRef.current = null;
+    }
+
+    const clampPageForZoomReconciliation = (candidatePage: number) => {
+      const anchor = zoomReconciliationAnchorRef.current;
+      if (!anchor) {
+        return {
+          anchorDocumentId: null,
+          candidatePage,
+          clampedPage: candidatePage,
+          wasCrossDocumentClamped: false,
+          anchorGlobalPage: null
+        };
+      }
+
+      if (candidatePage >= anchor.startPage && candidatePage <= anchor.endPage) {
+        const driftFromAnchor = Math.abs(candidatePage - anchor.anchorGlobalPage);
+
+        if (driftFromAnchor <= ZOOM_ANCHOR_SMALL_DRIFT_TOLERANCE_PAGES) {
+          anchor.lastValidPage = anchor.anchorGlobalPage;
+          return {
+            anchorDocumentId: anchor.documentId,
+            candidatePage,
+            clampedPage: anchor.anchorGlobalPage,
+            wasCrossDocumentClamped: false,
+            anchorGlobalPage: anchor.anchorGlobalPage
+          };
+        }
+
+        return {
+          anchorDocumentId: anchor.documentId,
+          candidatePage,
+          clampedPage: anchor.lastValidPage,
+          wasCrossDocumentClamped: false,
+          anchorGlobalPage: anchor.anchorGlobalPage
+        };
+      }
+
+      return {
+        anchorDocumentId: anchor.documentId,
+        candidatePage,
+        clampedPage: anchor.lastValidPage,
+        wasCrossDocumentClamped: true,
+        anchorGlobalPage: anchor.anchorGlobalPage
+      };
+    };
 
     markProgrammaticScroll('state-change');
     lastZoomTimestampRef.current = Date.now();
@@ -5375,30 +5482,37 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           )
         : null;
       const targetPageDetected = derivedPageAfterZoom ?? detectedFromVisibleRange ?? targetPageSnapshot;
+      const clampedTargetPageData = clampPageForZoomReconciliation(targetPageDetected);
+      const effectiveTargetPageDetected = clampedTargetPageData.clampedPage;
       const currentPageBeforeSync = state.currentPage;
 
       logPdfDebugEvent(
         'zoom_page_sync',
         {
-          page: targetPageDetected,
+          page: effectiveTargetPageDetected,
           currentPage: currentPageBeforeSync,
           mode: state.viewMode,
           reason: 'post-zoom-reconciliation',
           targetPageSnapshot,
-          derivedPageAfterZoom
+          derivedPageAfterZoom,
+          anchorDocumentId: clampedTargetPageData.anchorDocumentId,
+          anchorGlobalPage: clampedTargetPageData.anchorGlobalPage,
+          candidatePage: clampedTargetPageData.candidatePage,
+          clampedPage: clampedTargetPageData.clampedPage,
+          wasCrossDocumentClamped: clampedTargetPageData.wasCrossDocumentClamped
         },
         { throttleMs: 3000 }
       );
 
-      const pageDivergence = Math.abs(targetPageDetected - currentPageBeforeSync);
+      const pageDivergence = Math.abs(effectiveTargetPageDetected - currentPageBeforeSync);
       if (pageDivergence <= ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES) {
         zoomBlockedUntilRef.current = Date.now() + ZOOM_POST_BLOCK_DURATION_MS;
       }
 
-      lastDetectedPageRef.current = targetPageDetected;
+      lastDetectedPageRef.current = effectiveTargetPageDetected;
       lastDetectionTimeRef.current = Date.now();
-      if (targetPageDetected !== currentPageBeforeSync) {
-        goToPage(targetPageDetected);
+      if (effectiveTargetPageDetected !== currentPageBeforeSync) {
+        goToPage(effectiveTargetPageDetected);
       }
 
       const reconciliationStartedAt = Date.now();
@@ -5413,12 +5527,26 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           state.totalPages,
           Math.max(1, Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2))
         );
+        const clampedReconciledPageData = clampPageForZoomReconciliation(reconciledPage);
+        const effectiveReconciledPage = clampedReconciledPageData.clampedPage;
 
-        if (reconciledPage !== currentPageRef.current) {
-          goToPage(reconciledPage);
+        logPdfDebugEvent(
+          'zoom_reconciliation_clamp',
+          {
+            anchorDocumentId: clampedReconciledPageData.anchorDocumentId,
+            anchorGlobalPage: clampedReconciledPageData.anchorGlobalPage,
+            candidatePage: clampedReconciledPageData.candidatePage,
+            clampedPage: clampedReconciledPageData.clampedPage,
+            wasCrossDocumentClamped: clampedReconciledPageData.wasCrossDocumentClamped
+          },
+          { throttleMs: 300 }
+        );
+
+        if (effectiveReconciledPage !== currentPageRef.current) {
+          goToPage(effectiveReconciledPage);
         }
 
-        const hasConverged = reconciledPage === currentPageRef.current;
+        const hasConverged = effectiveReconciledPage === currentPageRef.current;
         const timedOut = Date.now() - reconciliationStartedAt >= ZOOM_POST_RECONCILIATION_TIMEOUT_MS;
 
         if (hasConverged || timedOut) {
@@ -5434,7 +5562,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     prevZoomRef.current = state.zoom;
     zoomAnchorRef.current = null;
-  }, [deriveVisibleRangeFromContainer, goToPage, markProgrammaticScroll, releaseProgrammaticScroll, state.currentPage, state.totalPages, state.viewMode, state.zoom]);
+  }, [deriveVisibleRangeFromContainer, goToPage, markProgrammaticScroll, memoizedDocumentOffsets, releaseProgrammaticScroll, state.currentPage, state.totalPages, state.viewMode, state.zoom]);
 
   /**
    * Effect para centralizar o scroll horizontal quando o viewer abre
