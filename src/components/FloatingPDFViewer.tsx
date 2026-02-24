@@ -1819,13 +1819,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, []);
 
   const handleInterDocumentHeaderRef = useCallback((docId: string, node: HTMLDivElement | null) => {
-    if (node) {
-      interDocumentHeaderRefs.current.set(docId, node);
-    } else {
-      interDocumentHeaderRefs.current.delete(docId);
-    }
+    const currentNode = interDocumentHeaderRefs.current.get(docId);
 
-    setDocumentLayoutVersion((prev) => prev + 1);
+    if (node) {
+      if (currentNode !== node) {
+        interDocumentHeaderRefs.current.set(docId, node);
+        setDocumentLayoutVersion((prev) => prev + 1);
+      }
+    } else {
+      if (currentNode !== undefined) {
+        interDocumentHeaderRefs.current.delete(docId);
+        setDocumentLayoutVersion((prev) => prev + 1);
+      }
+    }
   }, []);
 
   /**
