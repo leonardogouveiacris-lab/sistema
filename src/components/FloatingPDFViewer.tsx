@@ -1370,12 +1370,44 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       goToPage(targetPage);
     }
 
-    const FALLBACK_SCROLL_ATTEMPT_MS = 500;
+    const FALLBACK_SCROLL_ATTEMPT_MS = 75;
     let fallbackAttempted = false;
+    let lastAppliedTargetPage: number | null = null;
+    let lastAppliedTargetScrollTop: number | null = null;
+
+    const applyFallbackByCumulativeTops = () => {
+      if (!scrollContainerRef.current) {
+        return;
+      }
+
+      const pageIndex = targetPage - 1;
+      const tops = cumulativePageTopsRef.current;
+      if (!tops || pageIndex < 0 || pageIndex >= tops.length) {
+        return;
+      }
+
+      const targetScrollTop = tops[pageIndex];
+      if (lastAppliedTargetPage === targetPage && lastAppliedTargetScrollTop === targetScrollTop) {
+        return;
+      }
+
+      scrollContainerRef.current.scrollTop = targetScrollTop;
+      lastAppliedTargetPage = targetPage;
+      lastAppliedTargetScrollTop = targetScrollTop;
+      fallbackAttempted = true;
+      logger.info(
+        `Fallback scroll para pagina ${targetPage} via cumulativePageTops: scrollTop=${targetScrollTop}`,
+        'FloatingPDFViewer.startProgrammaticPageNavigation'
+      );
+    };
 
     const scrollToTargetPage = () => {
       const pageElement = pageRefs.current.get(targetPage);
       if (pageElement && scrollContainerRef.current) {
+        if (lastAppliedTargetPage !== targetPage || lastAppliedTargetScrollTop !== scrollContainerRef.current.scrollTop) {
+          lastAppliedTargetPage = targetPage;
+          lastAppliedTargetScrollTop = scrollContainerRef.current.scrollTop;
+        }
         pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
         setTimeout(() => {
           releaseProgrammaticScroll('state-change');
@@ -1388,18 +1420,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       const elapsed = Date.now() - startedAt;
 
-      if (!fallbackAttempted && elapsed >= FALLBACK_SCROLL_ATTEMPT_MS && scrollContainerRef.current) {
-        const pageIndex = targetPage - 1;
-        const tops = cumulativePageTopsRef.current;
-        if (tops && pageIndex >= 0 && pageIndex < tops.length) {
-          const targetScrollTop = tops[pageIndex];
-          scrollContainerRef.current.scrollTop = targetScrollTop;
-          fallbackAttempted = true;
-          logger.info(
-            `Fallback scroll para pagina ${targetPage} via cumulativePageTops: scrollTop=${targetScrollTop}`,
-            'FloatingPDFViewer.startProgrammaticPageNavigation'
-          );
-        }
+      if (!fallbackAttempted || elapsed >= FALLBACK_SCROLL_ATTEMPT_MS) {
+        applyFallbackByCumulativeTops();
       }
 
       if (elapsed < PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS) {
