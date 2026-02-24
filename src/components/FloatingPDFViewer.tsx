@@ -91,6 +91,8 @@ const KEYBOARD_NAV_TARGET_STABLE_FRAMES = 3;
 const DOCUMENT_MOUNT_HYSTERESIS_TTL_MS = 3200;
 const DOCUMENT_REMOUNT_RECONCILIATION_BLOCK_MS = 900;
 const DOCUMENT_REMOUNT_CENTER_FREEZE_MS = 1200;
+const DOCUMENT_MOUNT_STABILIZATION_MS = 220;
+const DOCUMENT_DIVERGENCE_RETENTION_MS = 1200;
 const REMOUNT_ANOMALOUS_PAGE_DELTA = 4;
 const RECENT_NAVIGATION_WINDOW_MS = 2200;
 const TEXT_SELECTION_STALE_RESET_MS = 2500;
@@ -260,6 +262,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const initialScrollRecalcRafNestedRef = useRef<number | null>(null);
   const initialScrollRecalcTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const documentMountLastSeenAtRef = useRef<Map<string, number>>(new Map());
+  const documentMountStabilizationUntilRef = useRef<Map<string, number>>(new Map());
   const documentConfirmedHeightsRef = useRef<Map<string, number>>(new Map());
   const previouslyMountedDocumentsRef = useRef<Set<string>>(new Set());
   const offsetRebuildBlockUntilRef = useRef<number>(0);
@@ -4056,8 +4059,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const now = Date.now();
     const baseDocumentIndices = new Set<number>();
+    const retentionReasons = new Set<string>();
+    const activeDocumentId = continuousCanvasPipeline.activeDocumentId;
+
     state.documents.forEach((doc, docIndex) => {
-      if (continuousCanvasPipeline.visibleDocumentIds.has(doc.id) || continuousCanvasPipeline.activeDocumentId === doc.id) {
+      if (continuousCanvasPipeline.visibleDocumentIds.has(doc.id) || activeDocumentId === doc.id) {
         baseDocumentIndices.add(docIndex);
       }
     });
@@ -4096,6 +4102,52 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     });
 
+    const shouldRetainLoadedDocuments = isZoomChangingRef.current ||
+      isProgrammaticScrollRef.current ||
+      (currentPageVisibleDivergenceStartedAtRef.current !== null && now - currentPageVisibleDivergenceStartedAtRef.current <= DOCUMENT_DIVERGENCE_RETENTION_MS) ||
+      (scrollDivergenceStartedAtRef.current !== null && now - scrollDivergenceStartedAtRef.current <= DOCUMENT_DIVERGENCE_RETENTION_MS);
+
+    if (isZoomChangingRef.current) {
+      retentionReasons.add('zoom-changing');
+    }
+    if (isProgrammaticScrollRef.current) {
+      retentionReasons.add('programmatic-scroll');
+    }
+    if (currentPageVisibleDivergenceStartedAtRef.current !== null && now - currentPageVisibleDivergenceStartedAtRef.current <= DOCUMENT_DIVERGENCE_RETENTION_MS) {
+      retentionReasons.add('current-page-divergence');
+    }
+    if (scrollDivergenceStartedAtRef.current !== null && now - scrollDivergenceStartedAtRef.current <= DOCUMENT_DIVERGENCE_RETENTION_MS) {
+      retentionReasons.add('scroll-divergence');
+    }
+
+    if (shouldRetainLoadedDocuments) {
+      state.documents.forEach((doc, docIndex) => {
+        if (loadedDocumentRefsByGenerationRef.current.has(doc.id)) {
+          expandedWindowIndices.add(docIndex);
+        }
+      });
+    }
+
+    let currentPageDocumentIndex = -1;
+    state.documents.some((doc, docIndex) => {
+      const offset = memoizedDocumentOffsets.get(doc.id);
+      const isCurrentPageInDocument = Boolean(offset && state.currentPage >= offset.startPage && state.currentPage <= offset.endPage);
+      if (isCurrentPageInDocument) {
+        currentPageDocumentIndex = docIndex;
+      }
+      return isCurrentPageInDocument;
+    });
+
+    if (currentPageDocumentIndex >= 0 && currentPageDocumentIndex === state.documents.length - 1) {
+      state.documents.forEach((doc, docIndex) => {
+        const isRemoteDoc = /^(https?:)?\/\//i.test(doc.url || '');
+        if (isRemoteDoc && loadedDocumentRefsByGenerationRef.current.has(doc.id)) {
+          expandedWindowIndices.add(docIndex);
+          retentionReasons.add('last-doc-remote-retain');
+        }
+      });
+    }
+
     const hysteresisWindowIndices = new Set<number>(expandedWindowIndices);
     state.documents.forEach((doc, docIndex) => {
       if (expandedWindowIndices.has(docIndex)) {
@@ -4109,12 +4161,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     });
 
+    const mountedDocsAfter = state.documents
+      .filter((_, docIndex) => hysteresisWindowIndices.has(docIndex))
+      .map((doc) => doc.id);
+
+    logPdfDebugEvent('continuous-document-mount-window', {
+      mode: state.viewMode,
+      currentPage: state.currentPage,
+      activeDocumentId: activeDocumentId ?? null,
+      mountedDocsBefore: Array.from(previouslyMountedDocumentsRef.current),
+      mountedDocsAfter,
+      reason: retentionReasons.size > 0 ? Array.from(retentionReasons).join('+') : 'default-window'
+    }, {
+      throttleMs: 200,
+      throttleKey: `continuous-document-mount-window-${activeDocumentId ?? 'none'}`
+    });
+
     return hysteresisWindowIndices;
-  }, [state.viewMode, state.documents, memoizedDocumentOffsets, continuousCanvasPipeline, pagesToRender]);
+  }, [state.viewMode, state.documents, state.currentPage, memoizedDocumentOffsets, continuousCanvasPipeline, pagesToRender, logPdfDebugEvent]);
 
   useEffect(() => {
     if (state.viewMode !== 'continuous') {
       previouslyMountedDocumentsRef.current.clear();
+      documentMountStabilizationUntilRef.current.clear();
       return;
     }
 
@@ -4132,6 +4201,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const lastSeenAt = documentMountLastSeenAtRef.current.get(docId);
       const isRemountWithinTtl = !wasMounted && Boolean(lastSeenAt) && (now - (lastSeenAt || 0) <= DOCUMENT_MOUNT_HYSTERESIS_TTL_MS);
 
+      if (!wasMounted) {
+        documentMountStabilizationUntilRef.current.set(
+          docId,
+          now + DOCUMENT_MOUNT_STABILIZATION_MS
+        );
+      }
+
       if (isRemountWithinTtl) {
         offsetRebuildBlockUntilRef.current = Math.max(
           offsetRebuildBlockUntilRef.current,
@@ -4141,6 +4217,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           centerPageFreezeUntilRef.current,
           now + DOCUMENT_REMOUNT_CENTER_FREEZE_MS
         );
+      }
+    });
+
+    previouslyMountedDocumentsRef.current.forEach((docId) => {
+      if (!currentMountedDocuments.has(docId)) {
+        const stabilizationUntil = documentMountStabilizationUntilRef.current.get(docId) ?? 0;
+        if (stabilizationUntil <= now) {
+          documentMountStabilizationUntilRef.current.delete(docId);
+        }
       }
     });
 
@@ -5911,11 +5996,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                 <div className="flex flex-col items-center space-y-4">
               {state.documents.map((doc, docIndex) => {
                 const offset = memoizedDocumentOffsets.get(doc.id);
-                const shouldMountDocument = state.viewMode === 'paginated'
+                const shouldMountDocumentByWindow = state.viewMode === 'paginated'
                   ? (currentPageInfo ? currentPageInfo.document.id === doc.id : docIndex === 0)
                   : (documentsToMountInContinuous.size === 0
                     ? docIndex === 0
                     : documentsToMountInContinuous.has(docIndex));
+                const stabilizationUntil = documentMountStabilizationUntilRef.current.get(doc.id) ?? 0;
+                const shouldKeepMountedByStabilization = state.viewMode === 'continuous' && stabilizationUntil > Date.now();
+                const shouldMountDocument = shouldMountDocumentByWindow || shouldKeepMountedByStabilization;
 
                 if (state.viewMode === 'paginated') {
                   if (!shouldMountDocument) {
