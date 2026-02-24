@@ -1,0 +1,56 @@
+import { useEffect } from 'react';
+import type { UsePDFTextSelectionEffectsParams } from '../types/FloatingPDFViewerContracts';
+
+export function usePDFTextSelectionEffects({
+  selectionMode,
+  hasSelection,
+  onHandleTextSelection,
+  startedInsidePdfRef,
+  scrollContainerRef,
+  textSelectionDebounceRef,
+}: UsePDFTextSelectionEffectsParams) {
+  useEffect(() => {
+    const debouncedTextSelection = () => {
+      if (textSelectionDebounceRef.current) {
+        clearTimeout(textSelectionDebounceRef.current);
+      }
+      textSelectionDebounceRef.current = setTimeout(() => {
+        const hasTextSelected = (window.getSelection()?.toString() || '').trim().length >= 3;
+        if (selectionMode !== 'native-drag' || hasTextSelected) {
+          onHandleTextSelection();
+        }
+      }, 150);
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || e.key.startsWith('Arrow')) {
+        const selection = window.getSelection();
+        const text = selection?.toString() || '';
+        if (text.length >= 3) {
+          const scrollContainer = scrollContainerRef.current;
+          if (scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode)) {
+            startedInsidePdfRef.current = true;
+            debouncedTextSelection();
+          }
+        }
+      }
+    };
+
+    document.addEventListener('mouseup', debouncedTextSelection);
+    document.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      document.removeEventListener('mouseup', debouncedTextSelection);
+      document.removeEventListener('keyup', handleKeyUp);
+      if (textSelectionDebounceRef.current) {
+        clearTimeout(textSelectionDebounceRef.current);
+      }
+    };
+  }, [onHandleTextSelection, scrollContainerRef, selectionMode, startedInsidePdfRef, textSelectionDebounceRef]);
+
+  useEffect(() => {
+    if (hasSelection) {
+      onHandleTextSelection();
+    }
+  }, [hasSelection, onHandleTextSelection]);
+}

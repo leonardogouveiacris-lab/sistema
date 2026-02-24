@@ -33,10 +33,14 @@ import { useToast } from '../contexts/ToastContext';
 import { Columns2 as Columns, FileText, BookOpen, Highlighter, Search, FileOutput, PanelRightClose, PanelRight, MoreVertical, ChevronDown, MessageCircle } from 'lucide-react';
 import { useResponsivePanel } from '../hooks';
 import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_CONFIG } from '../types/Highlight';
-import { PDFSidebar, PDFBookmarkPanel, TextSelectionPopup, HighlightLayer, SelectionOverlay, PDFSearchPopup, PDFSearchHighlightLayer, RotationControls, PageRangeRotationModal, MemoizedPDFPage, PageExtractionModal, CommentLayer } from './pdf';
+import { PDFBookmarkPanel, PDFSearchPopup, RotationControls, MemoizedPDFPage, PDFViewerMinimizedButton, PDFViewerHeader, PDFViewerSidebarArea, PDFSelectionCommentLayers, PDFViewerPageNavigation, PDFViewerOverlays } from './pdf';
 import { COMMENT_COLORS, CommentColor, PDFComment } from '../types/PDFComment';
 import * as PDFCommentsService from '../services/pdfComments.service';
 import { useSelectionOverlay } from '../hooks/useSelectionOverlay';
+import { usePDFPageNavigation } from '../hooks/usePDFPageNavigation';
+import { usePDFKeyboardShortcuts } from '../hooks/usePDFKeyboardShortcuts';
+import { usePDFTextSelectionEffects } from '../hooks/usePDFTextSelectionEffects';
+import { usePDFScrollSync } from '../hooks/usePDFScrollSync';
 import { useTextSelectionGuard } from '../hooks/useTextSelectionGuard';
 import logger from '../utils/logger';
 import { createFlowContext, generateFlowId } from '../utils/flowId';
@@ -2163,10 +2167,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     markInteractionStartRef.current = markInteractionStart;
   }, [markInteractionStart]);
 
-  const handleScrollContainerRef = useCallback((node: HTMLDivElement | null) => {
-    scrollContainerRef.current = node;
-    setScrollContainerElement(node);
-  }, []);
+  const { handleScrollContainerRef } = usePDFScrollSync({
+    registerScrollContainer,
+    setScrollContainerElement,
+    scrollContainerRef,
+    scrollContainerElement,
+  });
 
   const handleInterDocumentHeaderRef = useCallback((docId: string, node: HTMLDivElement | null) => {
     if (node) {
@@ -2470,13 +2476,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       setScrollFallbackVisibleRange(null);
     };
   }, [scrollContainerElement, state.viewMode]);
-
-  useEffect(() => {
-    registerScrollContainer(scrollContainerElement);
-    return () => {
-      registerScrollContainer(null);
-    };
-  }, [registerScrollContainer, scrollContainerElement]);
 
   useEffect(() => {
     if (state.isSearchOpen) {
@@ -4957,18 +4956,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }[];
   }, [state.documents, memoizedDocumentOffsets, documentPages]);
 
-  /**
-   * Handler para navegação manual de página (input direto)
-   * Sincroniza as referências de detecção para evitar conflitos
-   */
-  const handleManualPageNavigation = useCallback((pageNum: number) => {
-    if (state.viewMode === 'continuous') {
-      startProgrammaticPageNavigation(pageNum, 'manual', true);
-      return;
-    }
-
-    goToPage(pageNum);
-  }, [goToPage, startProgrammaticPageNavigation, state.viewMode]);
+  const {
+    handleManualPageNavigation,
+    handlePreviousPage,
+    handleNextPage,
+  } = usePDFPageNavigation({
+    viewMode: state.viewMode,
+    currentPage: state.currentPage,
+    totalPages: state.totalPages,
+    isRotating: state.isRotating,
+    onNextPage: nextPage,
+    onPreviousPage: previousPage,
+    onGoToPage: goToPage,
+    onStartProgrammaticNavigation: startProgrammaticPageNavigation,
+    onMarkProgrammaticScroll: markProgrammaticScroll,
+    keyboardNavLockDurationMs: KEYBOARD_NAV_LOCK_DURATION_MS,
+    keyboardNavRefs: {
+      targetPageRef: keyboardNavTargetPageRef,
+      recentTargetPageRef: keyboardNavRecentTargetPageRef,
+      lockUntilRef: keyboardNavLockUntilRef,
+      targetReachedAtRef: keyboardNavTargetReachedAtRef,
+      stableFramesRef: keyboardNavStableFramesRef,
+    },
+  });
 
   /**
    * Handler para cliques em links internos do PDF (ex: sumário)
@@ -5415,92 +5425,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   ]);
 
 
-  /**
-   * Effect para capturar seleção de texto (mouse e teclado)
-   */
-  useEffect(() => {
-    const debouncedTextSelection = () => {
-      if (textSelectionDebounceRef.current) {
-        clearTimeout(textSelectionDebounceRef.current);
-      }
-      textSelectionDebounceRef.current = setTimeout(() => {
-        const hasTextSelected = (window.getSelection()?.toString() || '').trim().length >= 3;
-        if (selectionMode !== 'native-drag' || hasTextSelected) {
-          handleTextSelection();
-        }
-      }, 150);
-    };
+  usePDFTextSelectionEffects({
+    selectionMode,
+    hasSelection,
+    onHandleTextSelection: handleTextSelection,
+    startedInsidePdfRef,
+    scrollContainerRef,
+    textSelectionDebounceRef,
+  });
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift' || e.key.startsWith('Arrow')) {
-        const selection = window.getSelection();
-        const text = selection?.toString() || '';
-        if (text.length >= 3) {
-          const scrollContainer = scrollContainerRef.current;
-          if (scrollContainer && selection?.anchorNode && scrollContainer.contains(selection.anchorNode)) {
-            startedInsidePdfRef.current = true;
-            debouncedTextSelection();
-          }
-        }
-      }
-    };
-
-    document.addEventListener('mouseup', debouncedTextSelection);
-    document.addEventListener('keyup', handleKeyUp);
-
-    return () => {
-      document.removeEventListener('mouseup', debouncedTextSelection);
-      document.removeEventListener('keyup', handleKeyUp);
-      if (textSelectionDebounceRef.current) {
-        clearTimeout(textSelectionDebounceRef.current);
-      }
-    };
-  }, [handleTextSelection, selectionMode]);
-
-  useEffect(() => {
-    if (!hasSelection) {
-      return;
-    }
-
-    handleTextSelection();
-  }, [hasSelection, handleTextSelection]);
-
-  /**
-   * Wrappers para navegação de página com bloqueio durante rotação
-   * CORREÇÃO: Define isProgrammaticScrollRef ANTES de atualizar estado
-   * para evitar condição de corrida com a detecção de scroll
-   */
-  const handlePreviousPage = useCallback(() => {
-    if (state.isRotating) return;
-    if (state.currentPage <= 1) return;
-
-    if (state.viewMode === 'continuous') {
-      const targetPage = state.currentPage - 1;
-      keyboardNavTargetPageRef.current = targetPage;
-      keyboardNavRecentTargetPageRef.current = targetPage;
-      keyboardNavLockUntilRef.current = Date.now() + KEYBOARD_NAV_LOCK_DURATION_MS;
-      keyboardNavTargetReachedAtRef.current = null;
-      keyboardNavStableFramesRef.current = 0;
-      markProgrammaticScroll('state-change');
-    }
-    previousPage();
-  }, [markProgrammaticScroll, previousPage, state.isRotating, state.currentPage, state.viewMode]);
-
-  const handleNextPage = useCallback(() => {
-    if (state.isRotating) return;
-    if (state.currentPage >= state.totalPages) return;
-
-    if (state.viewMode === 'continuous') {
-      const targetPage = state.currentPage + 1;
-      keyboardNavTargetPageRef.current = targetPage;
-      keyboardNavRecentTargetPageRef.current = targetPage;
-      keyboardNavLockUntilRef.current = Date.now() + KEYBOARD_NAV_LOCK_DURATION_MS;
-      keyboardNavTargetReachedAtRef.current = null;
-      keyboardNavStableFramesRef.current = 0;
-      markProgrammaticScroll('state-change');
-    }
-    nextPage();
-  }, [markProgrammaticScroll, nextPage, state.isRotating, state.currentPage, state.totalPages, state.viewMode]);
 
   const handleToggleViewMode = useCallback(() => {
     isModeSwitchingRef.current = true;
@@ -5588,157 +5521,24 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
   }, [markProgrammaticScroll, releaseProgrammaticScroll, state.viewMode]);
 
-  /**
-   * Effect para navegação por teclado com throttle para evitar navegação excessiva
-   */
-  useEffect(() => {
-    const lastHandledRepeatByKey = new Map<string, number>();
-    const pressedNavigationKeys = new Set<string>();
-    const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
-    const KEYBOARD_LOG_CONTEXT = 'FloatingPDFViewer.handleKeyDown';
-
-    const getKeyboardLogPayload = (key: string, elapsed: number, throttle: number) => ({
-      key,
-      elapsed,
-      throttle,
-      lockState: {
-        targetPage: keyboardNavTargetPageRef.current,
-        lockUntil: keyboardNavLockUntilRef.current,
-        cooldownUntil: keyboardNavCooldownUntilRef.current,
-        isLockActive: Date.now() < keyboardNavLockUntilRef.current,
-        isCooldownActive: Date.now() < keyboardNavCooldownUntilRef.current,
-        stableFrames: keyboardNavStableFramesRef.current
-      },
-      pendingTarget: pendingNavigationTargetRef.current
-    });
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (NAVIGATION_KEYS.has(e.key)) {
-        pressedNavigationKeys.delete(e.key);
-
-        const now = Date.now();
-        const elapsedSinceLastInput = now - keyboardNavLastInputAtRef.current;
-        const hasRecentKeyboardNavigation = elapsedSinceLastInput <= KEYBOARD_NAV_LOCK_DURATION_MS * 2;
-        const throttle = keyboardNavigationThrottleMsRef.current;
-
-        if (hasRecentKeyboardNavigation) {
-          keyboardNavCooldownUntilRef.current = now + KEYBOARD_NAV_COOLDOWN_DURATION_MS;
-          keyboardNavStableFramesRef.current = 0;
-
-          logger.info(
-            'Keyboard navigation lock/cooldown release armed on keyup',
-            KEYBOARD_LOG_CONTEXT,
-            getKeyboardLogPayload(e.key, elapsedSinceLastInput, throttle)
-          );
-        }
-      }
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        toggleSearchRef.current();
-        return;
-      }
-
-      const target = e.target;
-      if (
-        target instanceof HTMLElement &&
-        (
-          target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable
-        )
-      ) {
-        return;
-      }
-
-      const now = Date.now();
-      const isNavigationKey = NAVIGATION_KEYS.has(e.key);
-
-      if (isNavigationKey) {
-        keyboardNavLastInputAtRef.current = now;
-        const wasPressed = pressedNavigationKeys.has(e.key);
-        pressedNavigationKeys.add(e.key);
-
-        if (e.repeat || wasPressed) {
-          const lastHandledAt = lastHandledRepeatByKey.get(e.key) ?? 0;
-          const elapsed = now - lastHandledAt;
-          const navigationThrottleMs = keyboardNavigationThrottleMsRef.current;
-
-          if (elapsed < navigationThrottleMs) {
-            logger.info(
-              'Keyboard navigation throttled',
-              KEYBOARD_LOG_CONTEXT,
-              {
-                ...getKeyboardLogPayload(e.key, elapsed, navigationThrottleMs),
-                reason: 'repeat/hold interval too short',
-                isRepeat: e.repeat,
-                wasPressed
-              }
-            );
-            e.preventDefault();
-            return;
-          }
-
-          logger.info(
-            'Keyboard navigation repeat/hold allowed',
-            KEYBOARD_LOG_CONTEXT,
-            {
-              ...getKeyboardLogPayload(e.key, elapsed, navigationThrottleMs),
-              isRepeat: e.repeat,
-              wasPressed
-            }
-          );
-          lastHandledRepeatByKey.set(e.key, now);
-        } else {
-          logger.info(
-            'Keyboard navigation discrete tap allowed',
-            KEYBOARD_LOG_CONTEXT,
-            {
-              ...getKeyboardLogPayload(e.key, 0, keyboardNavigationThrottleMsRef.current),
-              isRepeat: e.repeat,
-              wasPressed: false
-            }
-          );
-        }
-      }
-
-      switch (e.key) {
-        case 'ArrowUp':
-        case 'ArrowDown':
-          break;
-        case 'ArrowLeft':
-        case 'PageUp':
-          e.preventDefault();
-          handlePreviousPageRef.current();
-          break;
-        case 'ArrowRight':
-        case 'PageDown':
-          e.preventDefault();
-          handleNextPageRef.current();
-          break;
-        case 'Home':
-          e.preventDefault();
-          handleManualPageNavigationRef.current(1);
-          break;
-        case 'End':
-          e.preventDefault();
-          handleManualPageNavigationRef.current(totalPagesRef.current);
-          break;
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
-
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('keyup', handleKeyUp);
-    };
-    // Intencionalmente sem dependências: os callbacks são sempre lidos via refs
-    // sincronizadas para evitar re-attach dos listeners durante navegação.
-  }, []);
+  usePDFKeyboardShortcuts({
+    onToggleSearch: () => toggleSearchRef.current(),
+    onPreviousPage: () => handlePreviousPageRef.current(),
+    onNextPage: () => handleNextPageRef.current(),
+    onGoToPage: (page) => handleManualPageNavigationRef.current(page),
+    totalPagesRef,
+    keyboardNavigationThrottleMsRef,
+    keyboardNavRefs: {
+      targetPageRef: keyboardNavTargetPageRef,
+      lockUntilRef: keyboardNavLockUntilRef,
+      cooldownUntilRef: keyboardNavCooldownUntilRef,
+      stableFramesRef: keyboardNavStableFramesRef,
+      pendingNavigationTargetRef,
+      lastInputAtRef: keyboardNavLastInputAtRef,
+    },
+    lockDurationMs: KEYBOARD_NAV_LOCK_DURATION_MS,
+    cooldownDurationMs: KEYBOARD_NAV_COOLDOWN_DURATION_MS,
+  });
 
   /**
    * Callback para quando uma página é renderizada - captura suas dimensões reais
@@ -6245,21 +6045,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   if (state.isMinimized) {
     return (
-      <div className="fixed bottom-4 right-4 z-50">
-        <button
-          onClick={toggleMinimize}
-          className="flex items-center space-x-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-lg transition-colors duration-200"
-          title="Expandir visualizador de PDF"
-        >
-          <FileText size={18} />
-          <span className="font-medium">
-            {state.documents.length === 1
-              ? state.documents[0]?.displayName || 'Documento'
-              : `${state.documents.length} Documentos`}
-          </span>
-          <span className="text-xs opacity-75">({state.currentPage}/{state.totalPages})</span>
-        </button>
-      </div>
+      <PDFViewerMinimizedButton
+        documents={state.documents}
+        currentPage={state.currentPage}
+        totalPages={state.totalPages}
+        onExpand={toggleMinimize}
+      />
     );
   }
 
@@ -6278,37 +6069,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         style={{ width: state.panelWidth }}
         translate="no"
       >
-        {/* Cabeçalho */}
-        <div className="flex items-center justify-between px-4 py-3 bg-gray-100 border-b border-gray-200">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-gray-900 truncate">
-              {state.documents.length === 1
-                ? state.documents[0]?.fileName || 'Documento'
-                : `${state.documents.length} Documentos (Visualizador Unificado)`}
-            </h3>
-            <p className="text-xs text-gray-600">
-              Página {state.currentPage} de {state.totalPages} • Zoom: {Math.round(state.zoom * 100)}%
-            </p>
-          </div>
-
-          {/* Botões de controle do painel */}
-          <div className="flex items-center space-x-2 ml-4">
-            <button
-              onClick={toggleMinimize}
-              className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors duration-200"
-              title="Minimizar"
-            >
-              <span className="text-lg">−</span>
-            </button>
-            <button
-              onClick={closeViewer}
-              className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors duration-200"
-              title="Fechar"
-            >
-              <span className="text-lg">×</span>
-            </button>
-          </div>
-        </div>
+        <PDFViewerHeader
+          documents={state.documents}
+          currentPage={state.currentPage}
+          totalPages={state.totalPages}
+          zoom={state.zoom}
+          onMinimize={toggleMinimize}
+          onClose={closeViewer}
+        />
 
         {/* Barra de ferramentas responsiva */}
         <div className="flex items-center justify-between px-2 sm:px-4 py-2 bg-gray-50 border-b border-gray-200 gap-1 sm:gap-2">
@@ -6337,48 +6105,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             <div className="w-px h-6 bg-gray-300 hidden sm:block" />
 
             {/* Navegação de páginas */}
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={handlePreviousPage}
-                disabled={state.currentPage <= 1 || state.isRotating}
-                className="px-2 sm:px-3 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                title="Página anterior"
-              >
-                ←
-              </button>
-
-              <input
-                type="number"
-                value={pageInputValue || state.currentPage}
-                onChange={(e) => setPageInputValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    if (state.isRotating) return;
-                    const page = parseInt(pageInputValue) || state.currentPage;
-                    handleManualPageNavigation(page);
-                    setPageInputValue('');
-                    (e.target as HTMLInputElement).blur();
-                  }
-                }}
-                onBlur={() => setPageInputValue('')}
-                onFocus={(e) => {
-                  setPageInputValue(String(state.currentPage));
-                  e.target.select();
-                }}
-                className="w-12 sm:w-14 px-1 sm:px-2 py-1 text-xs text-center border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min={1}
-                max={state.totalPages}
-              />
-
-              <button
-                onClick={handleNextPage}
-                disabled={state.currentPage >= state.totalPages || state.isRotating}
-                className="px-2 sm:px-3 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                title="Próxima página"
-              >
-                →
-              </button>
-            </div>
+            <PDFViewerPageNavigation
+              currentPage={state.currentPage}
+              totalPages={state.totalPages}
+              isRotating={state.isRotating}
+              pageInputValue={pageInputValue}
+              onSetPageInputValue={setPageInputValue}
+              onPreviousPage={handlePreviousPage}
+              onNextPage={handleNextPage}
+              onManualNavigation={handleManualPageNavigation}
+            />
           </div>
 
           {/* Grupo de controles - lado direito */}
@@ -6876,27 +6612,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                 renderAnnotationLayer={!state.performanceMode.disableAnnotations}
                                 isInteracting={state.isInteracting && !state.isSearchOpen}
                               >
-                              <HighlightLayer pageNumber={state.currentPage} scale={state.displayZoom} />
-                              <CommentLayer
+                              <PDFSelectionCommentLayers
                                 pageNumber={state.currentPage}
                                 scale={state.displayZoom}
                                 pageWidth={getPageWidth(state.currentPage) / state.zoom}
                                 pageHeight={getPageHeight(state.currentPage) / state.zoom}
                                 processDocumentId={doc.id}
-                              />
-                              <PDFSearchHighlightLayer
-                                pageNumber={state.currentPage}
-                                scale={state.displayZoom}
-                                documentId={doc.id}
                                 localPageNumber={localPageNum}
                                 searchResults={state.searchResults}
                                 currentSearchIndex={state.currentSearchIndex}
-                                  searchQuery={state.searchQuery}
-                                />
-                                <SelectionOverlay
-                                  pageNumber={state.currentPage}
-                                  rects={selectionsByPage.get(state.currentPage) || []}
-                                />
+                                searchQuery={state.searchQuery}
+                                selectionRects={selectionsByPage.get(state.currentPage) || []}
+                              />
                               </MemoizedPDFPage>
                             </div>
                           );
@@ -6997,27 +6724,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                             renderAnnotationLayer={!state.performanceMode.disableAnnotations}
                                             isInteracting={state.isInteracting && !state.isSearchOpen}
                                           >
-                                        <HighlightLayer pageNumber={globalPageNum} scale={state.displayZoom} />
-                                        <CommentLayer
+                                        <PDFSelectionCommentLayers
                                           pageNumber={globalPageNum}
                                           scale={state.displayZoom}
                                           pageWidth={pageWidth / state.zoom}
                                           pageHeight={pageHeight / state.zoom}
                                           processDocumentId={doc.id}
-                                        />
-                                        <PDFSearchHighlightLayer
-                                          pageNumber={globalPageNum}
-                                          scale={state.displayZoom}
-                                          documentId={doc.id}
                                           localPageNumber={localPageNum}
                                           searchResults={state.searchResults}
                                           currentSearchIndex={state.currentSearchIndex}
-                                              searchQuery={state.searchQuery}
-                                            />
-                                            <SelectionOverlay
-                                              pageNumber={globalPageNum}
-                                              rects={selectionsByPage.get(globalPageNum) || []}
-                                            />
+                                          searchQuery={state.searchQuery}
+                                          selectionRects={selectionsByPage.get(globalPageNum) || []}
+                                        />
                                           </MemoizedPDFPage>
                                       </>
                                     ) : (
@@ -7054,58 +6772,30 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             </div>
           </div>
 
-          {/* Sidebar Area - Responsivo */}
-          <div
-            className={`border-l border-gray-300 bg-gray-50 transition-all duration-300 ease-in-out overflow-hidden ${
-              state.isSidebarVisible ? 'opacity-100' : 'opacity-0 w-0'
-            }`}
-            style={{
-              width: state.isSidebarVisible ? `${responsiveConfig.sidebarWidth}px` : '0px'
-            }}
-          >
-            {processId ? (
-              <PDFSidebar processId={processId} />
-            ) : (
-              <div className="flex items-center justify-center h-full p-6">
-                <div className="text-center text-gray-500">
-                  <FileText className="mx-auto mb-3 text-gray-400" size={48} />
-                  <p className="text-sm">Abra um documento de processo para gerenciar registros</p>
-                </div>
-              </div>
-            )}
-          </div>
+          <PDFViewerSidebarArea
+            isVisible={state.isSidebarVisible}
+            width={responsiveConfig.sidebarWidth}
+            processId={processId}
+          />
         </div>
       </div>
 
-      {/* Popup de seleção de texto */}
-      {state.selectedText && state.selectionPosition && (
-        <TextSelectionPopup
-          selectedText={state.selectedText}
-          position={state.selectionPosition}
-          onCopy={handleCopyText}
-          onHighlight={handleCreateHighlight}
-          onInsertFundamentacao={() => handleInsertInField('fundamentacao')}
-          onInsertComentarios={() => handleInsertInField(getCommentFieldForCurrentMode())}
-          onClose={clearSelection}
-          containerRef={scrollContainerRef}
-          hasActiveForm={state.formMode !== 'view'}
-          hasFundamentacaoField={state.formMode === 'create-verba' || state.formMode === 'edit-verba'}
-        />
-      )}
-
-      {/* Modal de rotação de intervalo de páginas */}
-      <PageRangeRotationModal totalPages={state.totalPages} />
-
-      {/* Modal de extração de páginas */}
-      {state.documents.length > 0 && (
-        <PageExtractionModal
-          isOpen={state.isPageExtractionModalOpen}
-          onClose={closePageExtractionModal}
-          documentName={extractionTarget?.document.displayName || extractionTarget?.document.fileName || 'documento.pdf'}
-          totalPages={state.totalPages}
-          sourceDocuments={extractionSourceDocuments}
-        />
-      )}
+      <PDFViewerOverlays
+        selectedText={state.selectedText}
+        selectionPosition={state.selectionPosition}
+        onCopy={handleCopyText}
+        onHighlight={handleCreateHighlight}
+        onInsertFundamentacao={() => handleInsertInField('fundamentacao')}
+        onInsertComentarios={() => handleInsertInField(getCommentFieldForCurrentMode())}
+        onCloseSelection={clearSelection}
+        containerRef={scrollContainerRef}
+        formMode={state.formMode}
+        totalPages={state.totalPages}
+        isPageExtractionModalOpen={state.isPageExtractionModalOpen}
+        onClosePageExtractionModal={closePageExtractionModal}
+        extractionTargetName={extractionTarget?.document.displayName || extractionTarget?.document.fileName || 'documento.pdf'}
+        extractionSourceDocuments={extractionSourceDocuments}
+      />
     </>
   );
 };

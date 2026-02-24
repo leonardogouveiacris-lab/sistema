@@ -23,3 +23,10 @@ export { default as CommentBalloon } from './CommentBalloon';
 export { default as ArrowConnector } from './ArrowConnector';
 export { default as HighlightBoxConnector } from './HighlightBoxConnector';
 export { default as ConnectorDrawer } from './ConnectorDrawer';
+
+export { default as PDFViewerMinimizedButton } from './PDFViewerMinimizedButton';
+export { default as PDFViewerHeader } from './PDFViewerHeader';
+export { default as PDFViewerSidebarArea } from './PDFViewerSidebarArea';
+export { default as PDFSelectionCommentLayers } from './PDFSelectionCommentLayers';
+export { default as PDFViewerPageNavigation } from './PDFViewerPageNavigation';
+export { default as PDFViewerOverlays } from './PDFViewerOverlays';
