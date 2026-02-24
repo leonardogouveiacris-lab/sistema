@@ -85,6 +85,7 @@ const ZOOM_POST_RECONCILIATION_TIMEOUT_MS = 240;
 const ZOOM_POST_BLOCK_DURATION_MS = 120;
 const ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES = 2;
 const ZOOM_ANCHOR_SMALL_DRIFT_TOLERANCE_PAGES = 1;
+const ACTIVE_PAGE_MIN_INTERSECTION_PX = 48;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -844,6 +845,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const visiblePages = new Set<number>();
     const viewportCenter = scrollTop + viewportHeight / 2;
     let centerPage = 1;
+    let maxVisibleIntersection = -1;
     let minDistanceToCenter = Infinity;
 
     const bufferedViewportStart = scrollTop - buffer;
@@ -872,15 +874,32 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       visibleStartPageRef.current = visibleStartIndex + 1;
       visibleEndPageRef.current = visibleEndIndex + 1;
 
+      let currentPageIntersectionPx = -1;
+      const minStickyIntersectionPx = Math.min(ACTIVE_PAGE_MIN_INTERSECTION_PX, viewportHeight * 0.2);
+
       for (let pageIndex = visibleStartIndex; pageIndex <= visibleEndIndex; pageIndex++) {
         const pageTop = cumulativePageTops[pageIndex];
         const pageBottom = cumulativePageBottoms[pageIndex];
+        const visibleIntersectionPx = Math.max(0, Math.min(pageBottom, viewportEnd) - Math.max(pageTop, viewportStart));
         const pageCenter = pageTop + (pageBottom - pageTop) / 2;
         const distanceToCenter = Math.abs(pageCenter - viewportCenter);
-        if (distanceToCenter < minDistanceToCenter) {
+
+        if (pageIndex + 1 === state.currentPage) {
+          currentPageIntersectionPx = visibleIntersectionPx;
+        }
+
+        if (
+          visibleIntersectionPx > maxVisibleIntersection ||
+          (visibleIntersectionPx === maxVisibleIntersection && distanceToCenter < minDistanceToCenter)
+        ) {
+          maxVisibleIntersection = visibleIntersectionPx;
           minDistanceToCenter = distanceToCenter;
           centerPage = pageIndex + 1;
         }
+      }
+
+      if (currentPageIntersectionPx >= minStickyIntersectionPx) {
+        centerPage = state.currentPage;
       }
     } else {
       const centerIndex = findFirstIndexByBottom(cumulativePageBottoms, viewportCenter);
