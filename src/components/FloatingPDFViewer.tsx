@@ -275,6 +275,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const centerPageFreezeUntilRef = useRef<number>(0);
 
   const zoomBlockedUntilRef = useRef<number>(0);
+  const continuousWindowByDocumentRef = useRef<Map<string, { firstVisibleLocalPage: number; lastVisibleLocalPage: number; rangeStart: number; rangeEnd: number }>>(new Map());
   const zoomAnchorRef = useRef<{ page: number; anchorDocumentId: string | null; relativeOffsetY: number; hasMeasuredPage: boolean } | null>(null);
   const zoomReconciliationAnchorRef = useRef<{
     documentId: string;
@@ -913,7 +914,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const continuousWindowRanges = state.viewMode === 'continuous'
       ? state.documents
         .map((doc) => {
-          const pageWindow = continuousWindowByDocument.get(doc.id);
+          const pageWindow = continuousWindowByDocumentRef.current.get(doc.id);
           const offset = memoizedDocumentOffsets.get(doc.id);
           if (!pageWindow || !offset) {
             return null;
@@ -1595,7 +1596,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [
     cumulativePageBottoms,
     cumulativePageTops,
-    continuousWindowByDocument,
     getCurrentDocument,
     getDocumentByGlobalPage,
     goToPage,
@@ -3908,6 +3908,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     return windows;
   }, [state.documents, state.currentPage, memoizedDocumentOffsets, documentPages, effectiveVisiblePages, fallbackVisibleRangeFromScroll]);
+
+  useEffect(() => {
+    continuousWindowByDocumentRef.current = continuousWindowByDocument;
+  }, [continuousWindowByDocument]);
 
   const continuousGlobalVisibleRange = useMemo(() => {
     if (state.viewMode !== 'continuous' || state.totalPages <= 0) {
