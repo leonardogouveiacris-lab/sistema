@@ -95,6 +95,8 @@ const ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO = 0.12;
 const ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS = 120;
 const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 140;
 const UPWARD_SCROLL_MICRO_DELTA_PX = 14;
+const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 24;
+const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.03;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -1755,13 +1757,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       );
     }
 
+    const isCurrentPageStillVisibleForUpwardGuard =
+      currentPageIntersectionPx >= UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX &&
+      currentPageVisibleRatio >= UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO;
+
     const shouldStabilizeUpwardMicroScroll =
       shouldNormalizeZoomScrollStep &&
       scrollDirection === 'up' &&
       scrollDelta <= UPWARD_SCROLL_MICRO_DELTA_PX &&
-      centerPage !== state.currentPage;
+      centerPage !== state.currentPage &&
+      isCurrentPageStillVisibleForUpwardGuard;
 
-    if (shouldStabilizeUpwardMicroScroll || (isDirectionSettling && centerPage !== state.currentPage)) {
+    const shouldStabilizeDirectionSettle =
+      isDirectionSettling &&
+      centerPage !== state.currentPage &&
+      isCurrentPageStillVisibleForUpwardGuard;
+
+    if (shouldStabilizeUpwardMicroScroll || shouldStabilizeDirectionSettle) {
       logPdfDebugEvent(
         'calculate_visible_pages_upward_stability_guard',
         {
@@ -1774,12 +1786,35 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           isDirectionSettling,
           timeSinceDirectionChange,
           shouldStabilizeUpwardMicroScroll,
+          shouldStabilizeDirectionSettle,
+          currentPageIntersectionPx,
+          currentPageVisibleRatio,
+          isCurrentPageStillVisibleForUpwardGuard,
           zoom: state.zoom
         },
         { throttleMs: 180, throttleKey: 'upward-stability-guard' }
       );
 
       centerPage = state.currentPage;
+    } else if ((isDirectionSettling || scrollDirection === 'up') && centerPage !== state.currentPage) {
+      logPdfDebugEvent(
+        'calculate_visible_pages_upward_stability_guard_skipped',
+        {
+          mode: state.viewMode,
+          currentPage: state.currentPage,
+          centerPage,
+          scrollDirection,
+          scrollDelta,
+          signedScrollDelta,
+          isDirectionSettling,
+          timeSinceDirectionChange,
+          currentPageIntersectionPx,
+          currentPageVisibleRatio,
+          isCurrentPageStillVisibleForUpwardGuard,
+          zoom: state.zoom
+        },
+        { throttleMs: 220, throttleKey: 'upward-stability-guard-skipped' }
+      );
     }
 
     logPdfDebugEvent(
