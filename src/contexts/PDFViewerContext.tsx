@@ -118,6 +118,7 @@ interface PDFViewerState {
   formMode: FormMode;
   editingRecordId: string | null;
   highlightedPage: number | null;
+  highlightNavigationFlowId: string | null;
   viewMode: PDFViewMode;
   bookmarks: PDFBookmark[];
   bookmarksStatusByDoc: Map<string, BookmarkLoadStatus>;
@@ -374,6 +375,7 @@ const DEFAULT_STATE: PDFViewerState = {
   formMode: 'view',
   editingRecordId: null,
   highlightedPage: null,
+  highlightNavigationFlowId: null,
   viewMode: 'paginated',
   bookmarks: [],
   bookmarksStatusByDoc: new Map(),
@@ -531,7 +533,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
       setState(prev => {
         if (prev.highlightedPage === null) return prev;
-        return { ...prev, highlightedPage: null };
+        return { ...prev, highlightedPage: null, highlightNavigationFlowId: null };
       });
     }, delayMs);
   }, [cancelScheduledHighlightClear]);
@@ -608,7 +610,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
         ...prev,
         currentSearchIndex: safeIndex,
         currentPage: validPage,
-        highlightedPage: validPage
+        highlightedPage: validPage,
+        highlightNavigationFlowId: null
       };
     });
 
@@ -657,6 +660,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       isMinimized: false,
       documentPageInfo: [],
       highlightedPage: null,
+      highlightNavigationFlowId: null,
       bookmarks: [],
       isLoadingBookmarks: false,
       bookmarksError: null,
@@ -703,6 +707,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       currentSearchIndex: -1,
       isSearching: false,
       textExtractionProgress: null,
+      highlightNavigationFlowId: null,
       highlightedPage: null
     }));
   }, [cancelScheduledHighlightClear]);
@@ -792,7 +797,12 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setState(prev => {
       if (prev.currentPage < prev.totalPages) {
         const nextPageNum = prev.currentPage + 1;
-        return { ...prev, currentPage: nextPageNum, highlightedPage: nextPageNum };
+        return {
+          ...prev,
+          currentPage: nextPageNum,
+          highlightedPage: nextPageNum,
+          highlightNavigationFlowId: null
+        };
       }
       return prev;
     });
@@ -807,7 +817,12 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setState(prev => {
       if (prev.currentPage > 1) {
         const prevPageNum = prev.currentPage - 1;
-        return { ...prev, currentPage: prevPageNum, highlightedPage: prevPageNum };
+        return {
+          ...prev,
+          currentPage: prevPageNum,
+          highlightedPage: prevPageNum,
+          highlightNavigationFlowId: null
+        };
       }
       return prev;
     });
@@ -980,6 +995,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       setState(prev => ({
         ...prev,
         highlightedPage: page,
+        highlightNavigationFlowId: operationFlowId,
         editingRecordId: recordId || null
       }));
 
