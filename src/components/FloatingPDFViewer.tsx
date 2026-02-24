@@ -87,6 +87,7 @@ const ZOOM_POST_BLOCK_DURATION_MS = 120;
 const ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES = 2;
 const ZOOM_ANCHOR_SMALL_DRIFT_TOLERANCE_PAGES = 1;
 const ACTIVE_PAGE_MIN_INTERSECTION_PX = 48;
+const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -928,11 +929,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       findLastIndexByTop(cumulativePageTops, viewportEnd)
     );
 
+    let currentPageIntersectionPx = -1;
+
     if (visibleStartIndex <= visibleEndIndex) {
       visibleStartPageRef.current = visibleStartIndex + 1;
       visibleEndPageRef.current = visibleEndIndex + 1;
 
-      let currentPageIntersectionPx = -1;
       const minStickyIntersectionPx = Math.min(ACTIVE_PAGE_MIN_INTERSECTION_PX, viewportHeight * 0.2);
 
       for (let pageIndex = visibleStartIndex; pageIndex <= visibleEndIndex; pageIndex++) {
@@ -958,6 +960,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (currentPageIntersectionPx >= minStickyIntersectionPx) {
         centerPage = state.currentPage;
+      }
+
+      const shouldApplyScrollHysteresis =
+        !isProgrammaticScrollRef.current &&
+        !hasPendingNavigationTarget &&
+        state.currentPage >= visibleStartPageRef.current &&
+        state.currentPage <= visibleEndPageRef.current;
+
+      if (shouldApplyScrollHysteresis && centerPage !== state.currentPage && currentPageIntersectionPx > 0) {
+        const switchDeltaPx = maxVisibleIntersection - currentPageIntersectionPx;
+        const minSwitchDeltaPx = Math.min(ACTIVE_PAGE_SWITCH_MIN_DELTA_PX, viewportHeight * 0.18);
+        if (switchDeltaPx < minSwitchDeltaPx) {
+          centerPage = state.currentPage;
+        }
       }
     } else {
       const centerIndex = findFirstIndexByBottom(cumulativePageBottoms, viewportCenter);
