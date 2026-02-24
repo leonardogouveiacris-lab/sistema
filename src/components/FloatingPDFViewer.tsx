@@ -252,9 +252,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const calculateVisiblePagesFromScrollRef = useRef<(options?: { allowLargeJump?: boolean; previousScrollTop?: number; ignoreZoomLock?: boolean }) => void>(() => {});
   const estimateCenterPageFromScrollRef = useRef<(scrollTop: number, viewportHeight: number) => number>(() => 1);
   const markInteractionStartRef = useRef<() => void>(() => {});
-  const deriveVisibleRangeFromContainerRef = useRef<() => { start: number; end: number } | null>(() => null);
-  const goToPageRef = useRef<(pageNum: number) => void>(() => {});
-  const isRotatingRef = useRef<boolean>(state.isRotating);
   const initialScrollRecalcRafRef = useRef<number | null>(null);
   const initialScrollRecalcRafNestedRef = useRef<number | null>(null);
   const initialScrollRecalcTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1406,18 +1403,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     markInteractionStartRef.current = markInteractionStart;
   }, [markInteractionStart]);
 
-  useEffect(() => {
-    deriveVisibleRangeFromContainerRef.current = deriveVisibleRangeFromContainer;
-  }, [deriveVisibleRangeFromContainer]);
-
-  useEffect(() => {
-    goToPageRef.current = goToPage;
-  }, [goToPage]);
-
-  useEffect(() => {
-    isRotatingRef.current = state.isRotating;
-  }, [state.isRotating]);
-
   const handleScrollContainerRef = useCallback((node: HTMLDivElement | null) => {
     scrollContainerRef.current = node;
     setScrollContainerElement(node);
@@ -1487,7 +1472,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           scrollDivergenceStartedAtRef.current = null;
           lastDetectedPageRef.current = centerPage;
           lastDetectionTimeRef.current = now;
-          goToPageRef.current(centerPage);
+          goToPage(centerPage);
         }
       }
     };
@@ -1516,7 +1501,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           return;
         }
 
-        if (isModeSwitchingRef.current || isRotatingRef.current) {
+        if (isModeSwitchingRef.current || state.isRotating) {
           return;
         }
 
@@ -1545,7 +1530,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       if (scrollBasedVisiblePagesRef.current.size === 0) {
         emptyVisiblePagesScrollFramesRef.current += 1;
         if (emptyVisiblePagesScrollFramesRef.current > EMPTY_VISIBLE_PAGES_SCROLL_FRAME_THRESHOLD) {
-          const fallbackRange = deriveVisibleRangeFromContainerRef.current();
+          const fallbackRange = deriveVisibleRangeFromContainer();
           setScrollFallbackVisibleRange(prev => {
             if (!fallbackRange) {
               return prev;
@@ -1601,21 +1586,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     const scheduleInitialScrollRecalculation = () => {
-      if (initialScrollRecalcRafRef.current !== null) {
-        cancelAnimationFrame(initialScrollRecalcRafRef.current);
-        initialScrollRecalcRafRef.current = null;
-      }
-
-      if (initialScrollRecalcRafNestedRef.current !== null) {
-        cancelAnimationFrame(initialScrollRecalcRafNestedRef.current);
-        initialScrollRecalcRafNestedRef.current = null;
-      }
-
-      if (initialScrollRecalcTimeoutRef.current) {
-        clearTimeout(initialScrollRecalcTimeoutRef.current);
-        initialScrollRecalcTimeoutRef.current = null;
-      }
-
       let hasRun = false;
 
       const runInitialRecalculation = () => {
@@ -1674,7 +1644,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     logger.info(
       'Scroll listener instalado no container do PDF',
       'FloatingPDFViewer.handleScrollEffect',
-      { viewMode: state.viewMode, containerTagName: container.tagName }
+      { viewMode: state.viewMode }
     );
     scheduleInitialScrollRecalculation();
 
@@ -1708,7 +1678,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       scrollFallbackVisibleRangeRef.current = null;
       setScrollFallbackVisibleRange(null);
     };
-  }, [scrollContainerElement, state.viewMode]);
+  }, [deriveVisibleRangeFromContainer, scrollContainerElement, state.viewMode]);
 
   useEffect(() => {
     registerScrollContainer(scrollContainerElement);
