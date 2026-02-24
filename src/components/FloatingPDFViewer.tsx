@@ -1674,13 +1674,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const originalCenterPage = centerPage;
-    const averageViewportPageHeightPx = Math.max(
-      1,
-      getPageHeight(Math.max(1, Math.min(state.totalPages, state.currentPage)))
-    );
+    const baseReferencePage = Math.max(1, Math.min(state.totalPages, state.currentPage));
+    const upwardReferencePage = Math.max(1, Math.min(state.totalPages, state.currentPage - 1));
+    const directionalReferencePage = scrollDirection === 'up' ? upwardReferencePage : baseReferencePage;
+    const directionalReferenceHeightPx = Math.max(1, getPageHeight(directionalReferencePage));
     const zoomNormalizedScrollStep = Math.max(
       1,
-      Math.round((scrollDelta * Math.max(state.zoom, 0.5)) / Math.max(1, averageViewportPageHeightPx * 0.65))
+      Math.round((scrollDelta * Math.max(state.zoom, 0.5)) / Math.max(1, directionalReferenceHeightPx * 0.65))
     );
 
     const shouldNormalizeZoomScrollStep =
@@ -1692,9 +1692,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     let zoomStepCap = state.zoom < 1 ? 1 : 2;
     let maxStepFromCurrentPage = Math.max(1, Math.min(zoomStepCap, zoomNormalizedScrollStep));
     if (shouldNormalizeZoomScrollStep && centerPage !== state.currentPage) {
-      const stepDelta = centerPage - state.currentPage;
-      if (Math.abs(stepDelta) > maxStepFromCurrentPage) {
-        centerPage = state.currentPage + (stepDelta > 0 ? maxStepFromCurrentPage : -maxStepFromCurrentPage);
+      const maxAllowedPageByDirection = scrollDirection === 'up'
+        ? state.currentPage - maxStepFromCurrentPage
+        : scrollDirection === 'down'
+          ? state.currentPage + maxStepFromCurrentPage
+          : state.currentPage;
+
+      if (scrollDirection === 'up') {
+        centerPage = Math.max(centerPage, maxAllowedPageByDirection);
+      } else if (scrollDirection === 'down') {
+        centerPage = Math.min(centerPage, maxAllowedPageByDirection);
+      } else {
+        const stepDelta = centerPage - state.currentPage;
+        if (Math.abs(stepDelta) > maxStepFromCurrentPage) {
+          centerPage = state.currentPage + (stepDelta > 0 ? maxStepFromCurrentPage : -maxStepFromCurrentPage);
+        }
       }
     }
 
@@ -1743,7 +1755,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         signedScrollDelta,
         scrollDirection,
         zoom: state.zoom,
-        averageViewportPageHeightPx,
+        directionalReferenceHeightPx,
+        directionalReferencePage,
         zoomNormalizedScrollStep,
         zoomStepCap,
         maxStepFromCurrentPage,
