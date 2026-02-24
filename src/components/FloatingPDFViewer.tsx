@@ -1867,6 +1867,46 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       );
     }
 
+    const effectiveCurrentPage = currentPageRef.current;
+    const shouldApplyMonotonicDirectionClamp =
+      !shouldForcePageUpdate &&
+      !hasPendingNavigationTarget &&
+      !isKeyboardNavLockActive &&
+      !hasRecentKeyboardNavigation &&
+      scrollDirection !== 'neutral';
+
+    if (shouldApplyMonotonicDirectionClamp) {
+      const originalMonotonicCandidate = centerPage;
+      if (scrollDirection === 'up') {
+        centerPage = Math.min(centerPage, effectiveCurrentPage);
+        if (centerPage < effectiveCurrentPage - 1) {
+          centerPage = effectiveCurrentPage - 1;
+        }
+      } else if (scrollDirection === 'down') {
+        centerPage = Math.max(centerPage, effectiveCurrentPage);
+        if (centerPage > effectiveCurrentPage + 1) {
+          centerPage = effectiveCurrentPage + 1;
+        }
+      }
+
+      if (centerPage !== originalMonotonicCandidate) {
+        logPdfDebugEvent(
+          'calculate_visible_pages_monotonic_direction_clamp',
+          {
+            mode: state.viewMode,
+            currentPage: effectiveCurrentPage,
+            centerPage,
+            originalMonotonicCandidate,
+            scrollDirection,
+            signedScrollDelta,
+            scrollDelta,
+            zoom: state.zoom
+          },
+          { throttleMs: 500, throttleKey: 'monotonic-direction-clamp', force: true }
+        );
+      }
+    }
+
     const timeSinceLastDetection = now - lastDetectionTimeRef.current;
     const pageDifference = Math.abs(centerPage - lastDetectedPageRef.current);
     const jumpFromCurrentPage = Math.abs(centerPage - state.currentPage);
