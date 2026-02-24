@@ -87,7 +87,9 @@ const ZOOM_POST_BLOCK_DURATION_MS = 120;
 const ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES = 2;
 const ZOOM_ANCHOR_SMALL_DRIFT_TOLERANCE_PAGES = 1;
 const ACTIVE_PAGE_MIN_INTERSECTION_PX = 48;
+const ACTIVE_PAGE_MIN_VISIBLE_RATIO = 0.25;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
+const ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO = 0.12;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -930,35 +932,54 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     );
 
     let currentPageIntersectionPx = -1;
+    let currentPageVisibleRatio = 0;
 
     if (visibleStartIndex <= visibleEndIndex) {
       visibleStartPageRef.current = visibleStartIndex + 1;
       visibleEndPageRef.current = visibleEndIndex + 1;
 
       const minStickyIntersectionPx = Math.min(ACTIVE_PAGE_MIN_INTERSECTION_PX, viewportHeight * 0.2);
+      let maxVisibleRatio = -1;
+      const visibilityDebugEntries: Array<{ page: number; visibleIntersectionPx: number; visibleRatio: number }> = [];
 
       for (let pageIndex = visibleStartIndex; pageIndex <= visibleEndIndex; pageIndex++) {
         const pageTop = cumulativePageTops[pageIndex];
         const pageBottom = cumulativePageBottoms[pageIndex];
+        const pageHeight = Math.max(1, pageBottom - pageTop);
         const visibleIntersectionPx = Math.max(0, Math.min(pageBottom, viewportEnd) - Math.max(pageTop, viewportStart));
+        const visibleRatio = visibleIntersectionPx / pageHeight;
         const pageCenter = pageTop + (pageBottom - pageTop) / 2;
         const distanceToCenter = Math.abs(pageCenter - viewportCenter);
 
+        visibilityDebugEntries.push({
+          page: pageIndex + 1,
+          visibleIntersectionPx,
+          visibleRatio
+        });
+
         if (pageIndex + 1 === state.currentPage) {
           currentPageIntersectionPx = visibleIntersectionPx;
+          currentPageVisibleRatio = visibleRatio;
         }
 
         if (
           visibleIntersectionPx > maxVisibleIntersection ||
-          (visibleIntersectionPx === maxVisibleIntersection && distanceToCenter < minDistanceToCenter)
+          (
+            visibleIntersectionPx === maxVisibleIntersection &&
+            (visibleRatio > maxVisibleRatio || (visibleRatio === maxVisibleRatio && distanceToCenter < minDistanceToCenter))
+          )
         ) {
           maxVisibleIntersection = visibleIntersectionPx;
+          maxVisibleRatio = visibleRatio;
           minDistanceToCenter = distanceToCenter;
           centerPage = pageIndex + 1;
         }
       }
 
-      if (currentPageIntersectionPx >= minStickyIntersectionPx) {
+      if (
+        currentPageIntersectionPx >= minStickyIntersectionPx &&
+        currentPageVisibleRatio >= ACTIVE_PAGE_MIN_VISIBLE_RATIO
+      ) {
         centerPage = state.currentPage;
       }
 
@@ -970,11 +991,27 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (shouldApplyScrollHysteresis && centerPage !== state.currentPage && currentPageIntersectionPx > 0) {
         const switchDeltaPx = maxVisibleIntersection - currentPageIntersectionPx;
+        const switchDeltaRatio = maxVisibleRatio - currentPageVisibleRatio;
         const minSwitchDeltaPx = Math.min(ACTIVE_PAGE_SWITCH_MIN_DELTA_PX, viewportHeight * 0.18);
-        if (switchDeltaPx < minSwitchDeltaPx) {
+        if (switchDeltaPx < minSwitchDeltaPx && switchDeltaRatio < ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO) {
           centerPage = state.currentPage;
         }
       }
+
+      logPdfDebugEvent(
+        'calculate_visible_pages_visibility_metrics',
+        {
+          mode: state.viewMode,
+          centerPage,
+          currentPage: state.currentPage,
+          maxVisibleIntersection,
+          maxVisibleRatio,
+          currentPageIntersectionPx,
+          currentPageVisibleRatio,
+          visibilityByPage: visibilityDebugEntries
+        },
+        { throttleMs: 600 }
+      );
     } else {
       const centerIndex = findFirstIndexByBottom(cumulativePageBottoms, viewportCenter);
       centerPage = Math.min(
