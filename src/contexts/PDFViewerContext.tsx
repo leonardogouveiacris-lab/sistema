@@ -994,7 +994,9 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
           source: 'PDFViewerContext.navigateToPageWithHighlight'
         }),
         page,
-        recordId: recordId || null
+        recordId: recordId || null,
+        deduplicatedNavigationPath: true,
+        navigationPrimaryTransition: 'context-goToPage'
       });
     },
     [goToPage, scheduleHighlightedPageClear]
