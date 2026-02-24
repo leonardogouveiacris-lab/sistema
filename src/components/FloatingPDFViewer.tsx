@@ -84,6 +84,7 @@ const PROGRAMMATIC_SCROLL_SAFETY_TIMEOUT_MS = 9000;
 const ZOOM_POST_RECONCILIATION_TIMEOUT_MS = 240;
 const ZOOM_POST_BLOCK_DURATION_MS = 120;
 const ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES = 2;
+const ZOOM_ANCHOR_SMALL_DRIFT_TOLERANCE_PAGES = 1;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -5364,11 +5365,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       if (candidatePage >= anchor.startPage && candidatePage <= anchor.endPage) {
-        anchor.lastValidPage = candidatePage;
+        const shouldPreferAnchorPage = Math.abs(candidatePage - anchor.anchorGlobalPage) <= ZOOM_ANCHOR_SMALL_DRIFT_TOLERANCE_PAGES;
+        const pageWithinAnchorDocument = shouldPreferAnchorPage ? anchor.anchorGlobalPage : candidatePage;
+
+        anchor.lastValidPage = pageWithinAnchorDocument;
         return {
           anchorDocumentId: anchor.documentId,
           candidatePage,
-          clampedPage: candidatePage,
+          clampedPage: pageWithinAnchorDocument,
           wasCrossDocumentClamped: false,
           anchorGlobalPage: anchor.anchorGlobalPage
         };
