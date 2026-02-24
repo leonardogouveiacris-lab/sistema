@@ -5169,14 +5169,45 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     if (prevZoomRef.current === state.zoom) return;
 
-    const scrollRatio = scrollRatioBeforeZoomRef.current;
     const zoomAnchor = zoomAnchorRef.current;
+    const hasVisibleRangeSnapshot = visibleStartPageRef.current > 0 && visibleEndPageRef.current > 0;
+    const snapshotDerivedAnchorPage = hasVisibleRangeSnapshot
+      ? Math.min(
+          state.totalPages,
+          Math.max(1, Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2))
+        )
+      : null;
+    const derivedRangeBeforeZoom = deriveVisibleRangeFromContainer();
+    const derivedAnchorPageBeforeZoom = derivedRangeBeforeZoom
+      ? Math.min(
+          state.totalPages,
+          Math.max(1, Math.round((derivedRangeBeforeZoom.start + derivedRangeBeforeZoom.end) / 2))
+        )
+      : null;
+    const frozenAnchorPage = zoomAnchor?.page
+      ?? derivedAnchorPageBeforeZoom
+      ?? snapshotDerivedAnchorPage
+      ?? currentPageRef.current;
+    const frozenAnchorDocument = findDocumentByGlobalPage(frozenAnchorPage);
+    const activeDocumentId = findDocumentByGlobalPage(state.currentPage)?.document.id ?? null;
+
+    logPdfDebugEvent(
+      'zoom_anchor_snapshot',
+      {
+        anchorPage: frozenAnchorPage,
+        derivedRange: derivedRangeBeforeZoom,
+        currentPage: state.currentPage,
+        documentId: activeDocumentId,
+        anchorDocumentId: frozenAnchorDocument?.document.id ?? null
+      },
+      { throttleMs: 1500 }
+    );
 
     markProgrammaticScroll('state-change');
     lastZoomTimestampRef.current = Date.now();
     zoomBlockedUntilRef.current = 0;
 
-    const anchorPageForForce = zoomAnchor?.page ?? currentPageRef.current;
+    const anchorPageForForce = frozenAnchorPage;
     setForceRenderPages((prev) => {
       const next = new Set(prev);
       for (let i = -5; i <= 5; i += 1) {
@@ -5197,7 +5228,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       isZoomChangingRef.current = false;
 
       const activeContainer = scrollContainerRef.current;
-      const anchorPage = zoomAnchor?.page ?? currentPageRef.current;
+      const anchorPage = frozenAnchorPage;
       const pageAnchorEl = pageRefs.current.get(anchorPage);
 
       const canUseAnchorPage = Boolean(zoomAnchor?.hasMeasuredPage && pageAnchorEl && pageAnchorEl.offsetHeight > 0);
@@ -5243,7 +5274,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true, ignoreZoomLock: true });
 
-      const hasVisibleRangeSnapshot = visibleStartPageRef.current > 0 && visibleEndPageRef.current > 0;
       const detectedFromVisibleRange = hasVisibleRangeSnapshot
         ? Math.min(
             state.totalPages,
@@ -5251,7 +5281,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           )
         : null;
       const derivedRange = deriveVisibleRangeFromContainer();
-      const targetPageSnapshot = zoomAnchor?.page ?? currentPageRef.current;
+      const targetPageSnapshot = frozenAnchorPage;
       const derivedPageAfterZoom = derivedRange
         ? Math.min(
             state.totalPages,
@@ -5260,12 +5290,29 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         : null;
       const targetPageDetected = derivedPageAfterZoom ?? detectedFromVisibleRange ?? targetPageSnapshot;
       const currentPageBeforeSync = state.currentPage;
+      const targetPageDocument = findDocumentByGlobalPage(targetPageDetected);
+      const targetPageMatchesAnchorDocument = !frozenAnchorDocument
+        || targetPageDocument?.document.id === frozenAnchorDocument.document.id;
+      const isTargetPageInsideExpectedOffsets = Boolean(
+        targetPageDocument
+        && (!frozenAnchorDocument || (
+          targetPageDetected >= frozenAnchorDocument.offset.startPage
+          && targetPageDetected <= frozenAnchorDocument.offset.endPage
+        ))
+      );
+      const canSyncTargetPage = targetPageMatchesAnchorDocument && isTargetPageInsideExpectedOffsets;
 
       logPdfDebugEvent(
         'zoom_page_sync',
         {
           page: targetPageDetected,
+          anchorPage: frozenAnchorPage,
+          derivedRange,
           currentPage: currentPageBeforeSync,
+          documentId: activeDocumentId,
+          targetPageDocumentId: targetPageDocument?.document.id ?? null,
+          anchorDocumentId: frozenAnchorDocument?.document.id ?? null,
+          canSyncTargetPage,
           mode: state.viewMode,
           reason: 'post-zoom-reconciliation',
           targetPageSnapshot,
@@ -5281,7 +5328,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       lastDetectedPageRef.current = targetPageDetected;
       lastDetectionTimeRef.current = Date.now();
-      if (targetPageDetected !== currentPageBeforeSync) {
+      if (canSyncTargetPage && targetPageDetected !== currentPageBeforeSync) {
         goToPage(targetPageDetected);
       }
 
@@ -5293,14 +5340,45 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const reconcilePageAndRelease = () => {
         calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true, ignoreZoomLock: true });
 
+        const visibleRangeStart = visibleStartPageRef.current;
+        const visibleRangeEnd = visibleEndPageRef.current;
         const reconciledPage = Math.min(
           state.totalPages,
-          Math.max(1, Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2))
+          Math.max(1, Math.round((visibleRangeStart + visibleRangeEnd) / 2))
         );
+        const reconciledPageDocument = findDocumentByGlobalPage(reconciledPage);
+        const reconciledMatchesAnchorDocument = !frozenAnchorDocument
+          || reconciledPageDocument?.document.id === frozenAnchorDocument.document.id;
+        const visibleRangeDivergence = Math.max(
+          Math.abs(visibleRangeStart - frozenAnchorPage),
+          Math.abs(visibleRangeEnd - frozenAnchorPage)
+        );
+        const shouldDelayTransientReconcile = visibleRangeDivergence >= CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES
+          && Date.now() - reconciliationStartedAt < ZOOM_POST_RECONCILIATION_TIMEOUT_MS;
 
-        if (reconciledPage !== currentPageRef.current) {
+        if (shouldDelayTransientReconcile) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(reconcilePageAndRelease);
+          });
+          return;
+        }
+
+        if (reconciledMatchesAnchorDocument && reconciledPage !== currentPageRef.current) {
           goToPage(reconciledPage);
         }
+
+        logPdfDebugEvent(
+          'zoom_page_reconcile',
+          {
+            anchorPage: frozenAnchorPage,
+            derivedRange: { start: visibleRangeStart, end: visibleRangeEnd },
+            currentPage: currentPageRef.current,
+            documentId: reconciledPageDocument?.document.id ?? activeDocumentId,
+            reconciledMatchesAnchorDocument,
+            visibleRangeDivergence
+          },
+          { throttleMs: 1200 }
+        );
 
         const hasConverged = reconciledPage === currentPageRef.current;
         const timedOut = Date.now() - reconciliationStartedAt >= ZOOM_POST_RECONCILIATION_TIMEOUT_MS;
@@ -5318,7 +5396,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     prevZoomRef.current = state.zoom;
     zoomAnchorRef.current = null;
-  }, [deriveVisibleRangeFromContainer, goToPage, markProgrammaticScroll, releaseProgrammaticScroll, state.currentPage, state.totalPages, state.viewMode, state.zoom]);
+  }, [deriveVisibleRangeFromContainer, findDocumentByGlobalPage, goToPage, markProgrammaticScroll, releaseProgrammaticScroll, state.currentPage, state.totalPages, state.viewMode, state.zoom]);
 
   /**
    * Effect para centralizar o scroll horizontal quando o viewer abre
