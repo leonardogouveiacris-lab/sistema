@@ -5155,6 +5155,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     lastZoomTimestampRef.current = Date.now();
     zoomBlockedUntilRef.current = 0;
 
+    const anchorPageForForce = zoomAnchor?.page ?? currentPageRef.current;
+    setForceRenderPages((prev) => {
+      const next = new Set(prev);
+      for (let i = -5; i <= 5; i += 1) {
+        const page = anchorPageForForce + i;
+        if (page >= 1 && page <= state.totalPages) {
+          next.add(page);
+        }
+      }
+      return next;
+    });
+
     requestAnimationFrame(() => {
       if (!scrollContainerRef.current) {
         releaseProgrammaticScroll('state-change');
@@ -5183,13 +5195,22 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
         activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
       } else {
-        const estimatedTop = cumulativePageTops[anchorPage - 1] ?? 0;
-        const estimatedHeight = getPageHeight(anchorPage);
-        const relativeOffset = zoomAnchor?.relativeOffsetY ?? 0.5;
-        const targetCenterY = estimatedTop + relativeOffset * estimatedHeight;
-        const nextScrollTop = targetCenterY - activeContainer.clientHeight / 2;
-        const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
-        activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
+        const tops = cumulativePageTopsRef.current;
+        const hasValidTops = tops && tops.length > 0 && tops[anchorPage - 1] !== undefined;
+
+        if (hasValidTops) {
+          const estimatedTop = tops[anchorPage - 1];
+          const estimatedHeight = getPageHeight(anchorPage);
+          const relativeOffset = zoomAnchor?.relativeOffsetY ?? 0.5;
+          const targetCenterY = estimatedTop + relativeOffset * estimatedHeight;
+          const nextScrollTop = targetCenterY - activeContainer.clientHeight / 2;
+          const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
+          activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
+        } else {
+          const pageRatio = (anchorPage - 1) / Math.max(1, state.totalPages - 1);
+          const maxScrollTop = Math.max(0, activeContainer.scrollHeight - activeContainer.clientHeight);
+          activeContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, pageRatio * maxScrollTop));
+        }
       }
 
       const scrollWidth = activeContainer.scrollWidth;
