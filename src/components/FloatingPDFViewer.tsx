@@ -1960,7 +1960,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       activePageTransitionCandidateRef.current = null;
     }
 
-    if (!shouldForcePageUpdate && !isUpwardViewportExit && pageDifference === 1 && timeSinceLastDetection < 300) {
+    const shouldThrottleAdjacentDetection =
+      !shouldForcePageUpdate &&
+      !isUpwardViewportExit &&
+      !isLandscapeBoundary &&
+      scrollDirection === 'neutral' &&
+      pageDifference === 1 &&
+      timeSinceLastDetection < 300;
+
+    if (shouldThrottleAdjacentDetection) {
       return;
     }
 
@@ -1978,6 +1986,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       !isKeyboardNavLockActive &&
       !hasRecentKeyboardNavigation &&
       !isUpwardViewportExit &&
+      !isLandscapeBoundary &&
+      scrollDirection === 'neutral' &&
       jumpFromCurrentPage === 1;
 
     if (shouldDebounceVisualAdjacentTransition && centerPage !== state.currentPage) {
