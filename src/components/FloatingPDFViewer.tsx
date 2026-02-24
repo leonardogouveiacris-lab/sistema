@@ -1644,6 +1644,30 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
+    const averageViewportPageHeightPx = Math.max(
+      1,
+      getPageHeight(Math.max(1, Math.min(state.totalPages, state.currentPage)))
+    );
+    const zoomNormalizedScrollStep = Math.max(
+      1,
+      Math.round((scrollDelta * Math.max(state.zoom, 0.5)) / Math.max(1, averageViewportPageHeightPx * 0.65))
+    );
+
+    const shouldNormalizeZoomScrollStep =
+      !shouldForcePageUpdate &&
+      !hasPendingNavigationTarget &&
+      !isKeyboardNavLockActive &&
+      !hasRecentKeyboardNavigation;
+
+    if (shouldNormalizeZoomScrollStep && centerPage !== state.currentPage) {
+      const zoomStepCap = state.zoom < 1 ? 1 : 2;
+      const maxStepFromCurrentPage = Math.max(1, Math.min(zoomStepCap, zoomNormalizedScrollStep));
+      const stepDelta = centerPage - state.currentPage;
+      if (Math.abs(stepDelta) > maxStepFromCurrentPage) {
+        centerPage = state.currentPage + (stepDelta > 0 ? maxStepFromCurrentPage : -maxStepFromCurrentPage);
+      }
+    }
+
     const timeSinceLastDetection = now - lastDetectionTimeRef.current;
     const pageDifference = Math.abs(centerPage - lastDetectedPageRef.current);
     const jumpFromCurrentPage = Math.abs(centerPage - state.currentPage);
@@ -1702,6 +1726,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     cumulativePageTops,
     getCurrentDocument,
     getDocumentByGlobalPage,
+    getPageHeight,
     goToPage,
     isSearchNavigationActive,
     logNavigationLatencySummary,
