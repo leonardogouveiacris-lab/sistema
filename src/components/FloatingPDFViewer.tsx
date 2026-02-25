@@ -308,6 +308,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const offsetRebuildBlockUntilRef = useRef<number>(0);
   const centerPageFreezeUntilRef = useRef<number>(0);
 
+  const effectiveCurrentPage = state.currentPage;
+
   const zoomBlockedUntilRef = useRef<number>(0);
   const continuousWindowByDocumentRef = useRef<Map<string, { firstVisibleLocalPage: number; lastVisibleLocalPage: number; rangeStart: number; rangeEnd: number }>>(new Map());
   const memoizedDocumentOffsetsRef = useRef<Map<string, { startPage: number; endPage: number; numPages: number }>>(new Map());
