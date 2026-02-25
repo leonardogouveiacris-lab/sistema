@@ -13,6 +13,9 @@ export { useBackToTop } from './useBackToTop';
 export { useRealtimeSubscription } from './useRealtimeSubscription';
 export { useResponsivePanel } from './useResponsivePanel';
 export { useSelectionOverlay } from './useSelectionOverlay';
+export { usePdfNavigationState } from './usePdfNavigationState';
+export { usePdfRenderBudget } from './usePdfRenderBudget';
+export { usePdfBookmarks } from './usePdfBookmarks';
 export type { SelectionRect, SelectionOverlayResult } from './useSelectionOverlay';
 
 export { useDecisionContext as useDecisions } from '../contexts/DecisionContext';

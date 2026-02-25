@@ -32,6 +32,9 @@ import { usePDFViewer, InsertionField } from '../contexts/PDFViewerContext';
 import { useToast } from '../contexts/ToastContext';
 import { Columns2 as Columns, FileText, BookOpen, Highlighter, Search, FileOutput, PanelRightClose, PanelRight, MoreVertical, ChevronDown, MessageCircle } from 'lucide-react';
 import { useResponsivePanel } from '../hooks';
+import { usePdfNavigationState } from '../hooks/usePdfNavigationState';
+import { usePdfRenderBudget } from '../hooks/usePdfRenderBudget';
+import { usePdfBookmarks } from '../hooks/usePdfBookmarks';
 import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_CONFIG } from '../types/Highlight';
 import { PDFBookmarkPanel, PDFSearchPopup, RotationControls, MemoizedPDFPage, PDFViewerMinimizedButton, PDFViewerHeader, PDFViewerSidebarArea, PDFSelectionCommentLayers, PDFViewerPageNavigation, PDFViewerOverlays } from './pdf';
 import { COMMENT_COLORS, CommentColor, PDFComment } from '../types/PDFComment';
@@ -56,6 +59,11 @@ import {
   throttle
 } from '../utils/performance';
 import type { DocumentInfo } from '../utils/pdfBookmarkExtractor';
+import { buildNavigationPaginationDomain } from './pdf/floatingViewer/navigationPagination';
+import { buildBookmarksDomain } from './pdf/floatingViewer/bookmarksDomain';
+import { buildSelectionCommentsDomain } from './pdf/floatingViewer/selectionCommentsDomain';
+import { buildRenderStrategyDomain } from './pdf/floatingViewer/renderStrategyDomain';
+import { buildToolbarVisualDomain } from './pdf/floatingViewer/toolbarVisualDomain';
 import { countTotalBookmarks, mergeBookmarksFromMultipleDocuments } from '../utils/pdfBookmarkExtractor';
 
 const lazyExtractBookmarks = () => import('../utils/pdfBookmarkExtractor').then(m => m.extractBookmarksWithDocumentInfo);
@@ -222,18 +230,31 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const { config: responsiveConfig } = useResponsivePanel();
 
   const [documentPages, setDocumentPages] = useState<Map<string, number>>(new Map());
-  const [documentBookmarks, setDocumentBookmarks] = useState<Map<string, { bookmarks: any[]; documentName: string; documentIndex: number; pageCount: number }>>(new Map());
+  const {
+    documentBookmarks,
+    setDocumentBookmarks,
+    bookmarkExtractionInFlightRef,
+    bookmarkExtractionLoadedRef,
+    bookmarkExtractionFailedRef,
+    mergedBookmarksFingerprintRef
+  } = usePdfBookmarks();
   const [pdfDocumentProxies, setPdfDocumentProxies] = useState<Map<string, pdfjs.PDFDocumentProxy>>(new Map());
-  const [idlePages, setIdlePages] = useState<Set<number>>(new Set());
+  const {
+    idlePages,
+    setIdlePages,
+    visitedPages,
+    setVisitedPages,
+    forceRenderPages,
+    setForceRenderPages,
+    scrollRenderCache,
+    setScrollRenderCache,
+    scrollRenderCacheRecencyQueueRef
+  } = usePdfRenderBudget();
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showCommentColorPicker, setShowCommentColorPicker] = useState(false);
   const [showToolbarOverflow, setShowToolbarOverflow] = useState(false);
-  const [visitedPages, setVisitedPages] = useState<Set<number>>(new Set());
-  const [forceRenderPages, setForceRenderPages] = useState<Set<number>>(new Set());
   const [scrollBasedVisiblePages, setScrollBasedVisiblePages] = useState<Set<number>>(new Set());
   const [scrollFallbackVisibleRange, setScrollFallbackVisibleRange] = useState<{ start: number; end: number } | null>(null);
-  const [scrollRenderCache, setScrollRenderCache] = useState<Set<number>>(new Set());
-  const [pageInputValue, setPageInputValue] = useState<string>('');
   const [documentLayoutVersion, setDocumentLayoutVersion] = useState(0);
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const isSelectingTextRef = useRef(false);
@@ -243,8 +264,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const startedInsidePdfRef = useRef(false);
   const hasDragRef = useRef(false);
   const activeCaretElementRef = useRef<HTMLElement | null>(null);
-  const pageInputSequenceRef = useRef<string>('');
-  const pageInputTickRef = useRef<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [scrollContainerElement, setScrollContainerElement] = useState<HTMLDivElement | null>(null);
@@ -252,7 +271,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const pageDetectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProgrammaticScrollRef = useRef(false);
   const programmaticScrollSafetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const scrollRenderCacheRecencyQueueRef = useRef<number[]>([]);
   const lastDetectedPageRef = useRef<number>(1);
   const lastDetectionTimeRef = useRef<number>(0);
   const activePageTransitionCandidateRef = useRef<{ page: number; startedAt: number; samples: number } | null>(null);
@@ -301,6 +319,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const markInteractionStartRef = useRef<() => void>(() => {});
   const goToPageRef = useRef(goToPage);
   const logPdfDebugEventRef = useRef<typeof logPdfDebugEvent | null>(null);
+  const { pageInputValue, handleSetPageInputValue } = usePdfNavigationState({
+    logEvent: (event, payload) => logPdfDebugEventRef.current?.(event, payload),
+    getCurrentPage: () => state.currentPage,
+    currentPageRef
+  });
   const isRotatingRef = useRef(state.isRotating);
   const initialScrollRecalcRafRef = useRef<number | null>(null);
   const initialScrollRecalcRafNestedRef = useRef<number | null>(null);
@@ -343,10 +366,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const commentsLoadedDocsRef = useRef<Set<string>>(new Set());
   const commentsLoadInFlightRef = useRef<Set<string>>(new Set());
   const commentsByDocumentRef = useRef<Map<string, PDFComment[]>>(new Map());
-  const bookmarkExtractionInFlightRef = useRef<Set<string>>(new Set());
-  const bookmarkExtractionLoadedRef = useRef<Set<string>>(new Set());
-  const bookmarkExtractionFailedRef = useRef<Set<string>>(new Set());
-  const mergedBookmarksFingerprintRef = useRef<string | null>(null);
   const loadedDocumentRefsByGenerationRef = useRef<Set<string>>(new Set());
   const proxyGenerationByDocumentRef = useRef<Map<string, number>>(new Map());
   const documentSetGenerationRef = useRef(0);
@@ -6197,29 +6216,39 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     resetZoom();
   }, [captureZoomAnchor, resetZoom]);
 
-  const handleSetPageInputValue = useCallback((value: string) => {
-    const tickId = ++pageInputTickRef.current;
-    const previousValue = pageInputSequenceRef.current;
-    const isLinearSequence =
-      value.length >= previousValue.length
-        ? value.startsWith(previousValue)
-        : previousValue.startsWith(value);
-
-    logPdfDebugEvent(
-      'page_input_sequence_tick',
-      {
-        tickId,
-        previousValue,
-        nextValue: value,
-        isLinearSequence,
-        currentPageRef: currentPageRef.current,
-        currentPageState: state.currentPage
-      }
-    );
-
-    pageInputSequenceRef.current = value;
-    setPageInputValue(value);
-  }, [logPdfDebugEvent, state.currentPage]);
+  const navigationDomain = buildNavigationPaginationDomain({
+    pageInputValue,
+    onSetPageInputValue: handleSetPageInputValue,
+    onPreviousPage: handlePreviousPage,
+    onNextPage: handleNextPage,
+    onManualNavigation: handleManualPageNavigation
+  });
+  const bookmarksDomain = buildBookmarksDomain({
+    documentBookmarks,
+    topLevelBookmarkCount,
+    totalBookmarkCount,
+    isBookmarkPanelVisible: state.isBookmarkPanelVisible,
+    toggleBookmarkPanel
+  });
+  const selectionCommentsDomain = buildSelectionCommentsDomain({
+    showColorPicker,
+    setShowColorPicker,
+    showCommentColorPicker,
+    setShowCommentColorPicker,
+    onCreateHighlight: handleCreateHighlight
+  });
+  const renderStrategyDomain = buildRenderStrategyDomain({
+    idlePages,
+    visitedPages,
+    forceRenderPages,
+    scrollRenderCache
+  });
+  const toolbarVisualDomain = buildToolbarVisualDomain({
+    showToolbarOverflow,
+    setShowToolbarOverflow,
+    showToolbarLabels: responsiveConfig.showToolbarLabels,
+    toolbarCompact: responsiveConfig.toolbarCompact
+  });
 
   if (!state.isOpen || state.documents.length === 0) {
     return null;
@@ -6266,19 +6295,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             {/* Toggle do painel de índice - mais à esquerda */}
             <button
-              onClick={toggleBookmarkPanel}
+              onClick={bookmarksDomain.toggleBookmarkPanel}
               className={`flex items-center space-x-1 px-2 sm:px-3 py-1 text-xs font-medium border rounded transition-colors duration-200 ${
-                state.isBookmarkPanelVisible
+                bookmarksDomain.isBookmarkPanelVisible
                   ? 'bg-blue-50 text-blue-700 border-blue-300'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
               }`}
-              title={state.isBookmarkPanelVisible ? 'Ocultar Índice' : 'Mostrar Índice'}
+              title={bookmarksDomain.isBookmarkPanelVisible ? 'Ocultar Índice' : 'Mostrar Índice'}
             >
               <BookOpen size={14} />
-              {responsiveConfig.showToolbarLabels && <span>Índice</span>}
+              {toolbarVisualDomain.showToolbarLabels && <span>Índice</span>}
               {state.bookmarks.length > 0 && (
                 <span className="px-1 py-0.5 text-xs bg-gray-200 rounded-full min-w-[18px] text-center">
-                  {`${topLevelBookmarkCount}/${totalBookmarkCount}`}
+                  {`${bookmarksDomain.topLevelBookmarkCount}/${bookmarksDomain.totalBookmarkCount}`}
                 </span>
               )}
             </button>
@@ -6291,11 +6320,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               currentPage={state.currentPage}
               totalPages={state.totalPages}
               isRotating={state.isRotating}
-              pageInputValue={pageInputValue}
-              onSetPageInputValue={handleSetPageInputValue}
-              onPreviousPage={handlePreviousPage}
-              onNextPage={handleNextPage}
-              onManualNavigation={handleManualPageNavigation}
+              pageInputValue={navigationDomain.pageInputValue}
+              onSetPageInputValue={navigationDomain.onSetPageInputValue}
+              onPreviousPage={navigationDomain.onPreviousPage}
+              onNextPage={navigationDomain.onNextPage}
+              onManualNavigation={navigationDomain.onManualNavigation}
             />
           </div>
 
@@ -6342,11 +6371,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               title="Pesquisar (Ctrl+F)"
             >
               <Search size={14} />
-              {responsiveConfig.showToolbarLabels && <span>Buscar</span>}
+              {toolbarVisualDomain.showToolbarLabels && <span>Buscar</span>}
             </button>
 
             {/* Ferramentas principais - visíveis em telas normais */}
-            {!responsiveConfig.toolbarCompact && (
+            {!toolbarVisualDomain.toolbarCompact && (
               <>
                 {/* Separador */}
                 <div className="w-px h-6 bg-gray-300" />
@@ -6372,7 +6401,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                   </button>
 
                   {/* Color picker dropdown */}
-                  {showColorPicker && state.isHighlighterActive && (
+                  {selectionCommentsDomain.showColorPicker && state.isHighlighterActive && (
                     <div className="absolute top-full mt-1 right-0 bg-white rounded-lg shadow-xl border border-gray-200 p-2 z-50">
                       <div className="text-xs text-gray-600 font-medium mb-2 px-1">Cor do destaque:</div>
                       <div className="flex gap-2">
@@ -6497,10 +6526,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             )}
 
             {/* Menu overflow para telas compactas */}
-            {responsiveConfig.toolbarCompact && (
+            {toolbarVisualDomain.toolbarCompact && (
               <div className="relative" data-toolbar-overflow>
                 <button
-                  onClick={() => setShowToolbarOverflow(!showToolbarOverflow)}
+                  onClick={() => toolbarVisualDomain.setShowToolbarOverflow(!toolbarVisualDomain.showToolbarOverflow)}
                   className="flex items-center space-x-1 px-2 py-1 text-xs font-medium bg-white text-gray-700 border border-gray-300 rounded hover:bg-gray-50 transition-colors duration-200"
                   title="Mais opções"
                 >
@@ -6508,7 +6537,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                   <ChevronDown size={12} />
                 </button>
 
-                {showToolbarOverflow && (
+                {toolbarVisualDomain.showToolbarOverflow && (
                   <div className="absolute top-full mt-1 right-0 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 min-w-[180px]">
                     {/* Highlighter */}
                     <button
@@ -6517,7 +6546,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                         if (!state.isHighlighterActive) {
                           setShowColorPicker(true);
                         }
-                        setShowToolbarOverflow(false);
+                        toolbarVisualDomain.setShowToolbarOverflow(false);
                       }}
                       className={`w-full flex items-center space-x-2 px-3 py-2 text-sm ${
                         state.isHighlighterActive
@@ -6568,7 +6597,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                     <button
                       onClick={() => {
                         openPageExtractionModal();
-                        setShowToolbarOverflow(false);
+                        toolbarVisualDomain.setShowToolbarOverflow(false);
                       }}
                       disabled={state.documents.length === 0}
                       className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -6583,7 +6612,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                     <button
                       onClick={() => {
                         handleToggleViewMode();
-                        setShowToolbarOverflow(false);
+                        toolbarVisualDomain.setShowToolbarOverflow(false);
                       }}
                       className={`w-full flex items-center space-x-2 px-3 py-2 text-sm ${
                         state.viewMode === 'continuous'
@@ -6645,7 +6674,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           </div>
 
           {/* PDF Area */}
-          <div className="flex-1 relative overflow-hidden">
+          <div className="flex-1 relative overflow-hidden"
+            data-render-cache-size={renderStrategyDomain.scrollRenderCache.size}>
             <PDFSearchPopup
               processId={processId}
               documentOffsets={memoizedDocumentOffsets}
@@ -6966,7 +6996,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         selectedText={state.selectedText}
         selectionPosition={state.selectionPosition}
         onCopy={handleCopyText}
-        onHighlight={handleCreateHighlight}
+        onHighlight={selectionCommentsDomain.onCreateHighlight}
         onInsertFundamentacao={() => handleInsertInField('fundamentacao')}
         onInsertComentarios={() => handleInsertInField(getCommentFieldForCurrentMode())}
         onCloseSelection={clearSelection}

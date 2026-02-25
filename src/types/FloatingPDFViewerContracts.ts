@@ -75,3 +75,56 @@ export interface UsePDFTextSelectionEffectsParams {
   scrollContainerRef: React.MutableRefObject<HTMLDivElement | null>;
   textSelectionDebounceRef: React.MutableRefObject<NodeJS.Timeout | null>;
 }
+
+export interface BookmarkDocumentEntry {
+  bookmarks: unknown[];
+  documentName: string;
+  documentIndex: number;
+  pageCount: number;
+}
+
+export type BookmarkDocumentMap = Map<string, BookmarkDocumentEntry>;
+
+export interface UsePdfNavigationStateParams {
+  logEvent: (event: string, payload: Record<string, unknown>) => void;
+  getCurrentPage: () => number;
+  currentPageRef: React.MutableRefObject<number>;
+}
+
+export interface FloatingViewerNavigationDomain {
+  pageInputValue: string;
+  onSetPageInputValue: (value: string) => void;
+  onPreviousPage: () => void;
+  onNextPage: () => void;
+  onManualNavigation: (page: number) => void;
+}
+
+export interface FloatingViewerBookmarksDomain {
+  documentBookmarks: BookmarkDocumentMap;
+  topLevelBookmarkCount: number;
+  totalBookmarkCount: number;
+  isBookmarkPanelVisible: boolean;
+  toggleBookmarkPanel: () => void;
+}
+
+export interface FloatingViewerSelectionCommentsDomain {
+  showColorPicker: boolean;
+  setShowColorPicker: React.Dispatch<React.SetStateAction<boolean>>;
+  showCommentColorPicker: boolean;
+  setShowCommentColorPicker: React.Dispatch<React.SetStateAction<boolean>>;
+  onCreateHighlight: () => void | Promise<void>;
+}
+
+export interface FloatingViewerRenderStrategyDomain {
+  idlePages: Set<number>;
+  visitedPages: Set<number>;
+  forceRenderPages: Set<number>;
+  scrollRenderCache: Set<number>;
+}
+
+export interface FloatingViewerToolbarVisualDomain {
+  showToolbarOverflow: boolean;
+  setShowToolbarOverflow: React.Dispatch<React.SetStateAction<boolean>>;
+  showToolbarLabels: boolean;
+  toolbarCompact: boolean;
+}
