@@ -4921,7 +4921,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     logPdfDebugEvent('continuous-document-mount-window', {
       mode: state.viewMode,
-      currentPage: effectiveCurrentPage,
+      currentPage: state.currentPage,
       activeDocumentId: activeDocumentId ?? null,
       mountedDocsBefore: Array.from(previouslyMountedDocumentsRef.current),
       mountedDocsAfter,
