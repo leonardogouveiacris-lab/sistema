@@ -313,7 +313,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const currentPageRef = useRef<number>(state.currentPage);
   const stablePageRef = useRef<number>(state.currentPage);
   const lastPageChangeTimeRef = useRef<number>(0);
-  const PAGE_CHANGE_COOLDOWN_MS = 150;
+  const PAGE_CHANGE_COOLDOWN_MS = 350;
   const calculateVisiblePagesFromScrollRef = useRef<(options?: CalculateVisiblePagesFromScrollOptions) => void>(() => {});
   const scrollReconciliationTickIdRef = useRef<number>(0);
   const pendingScrollSnapshotRef = useRef<ScrollReconciliationSnapshot | null>(null);
