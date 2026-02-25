@@ -134,8 +134,28 @@ const EMPTY_VISIBLE_PAGES_SCROLL_FRAME_THRESHOLD = 4;
 const SCROLL_ACTIVITY_IDLE_TIMEOUT_MS = 160;
 const CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES = 3;
 const FORCED_RECONCILIATION_DIVERGENCE_DURATION_MS = 500;
+const PAGE_COMMIT_PRIORITY_WINDOW_MS = 160;
 const PDF_DEBUG_THROTTLE_MS = 3000;
 const PDF_DIAGNOSTIC_DEBUG_ENABLED = import.meta.env.VITE_DEBUG_PDF === 'true';
+
+type ActivePageCommitSource =
+  | 'scroll'
+  | 'zoom'
+  | 'forced-reconciliation'
+  | 'keyboard'
+  | 'manual'
+  | 'search'
+  | 'highlight';
+
+const ACTIVE_PAGE_COMMIT_SOURCE_PRIORITY: Record<ActivePageCommitSource, number> = {
+  scroll: 1,
+  zoom: 3,
+  keyboard: 2,
+  'forced-reconciliation': 4,
+  manual: 2,
+  search: 2,
+  highlight: 2
+};
 
 
 type HeavyTaskType = 'comments' | 'bookmarks';
@@ -313,6 +333,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const currentPageRef = useRef<number>(state.currentPage);
   const stablePageRef = useRef<number>(state.currentPage);
   const lastPageChangeTimeRef = useRef<number>(0);
+  const lastPageCommitRef = useRef<{ source: ActivePageCommitSource; priority: number; timestamp: number; page: number } | null>(null);
+  const pendingUpwardJumpConfirmationRef = useRef<{ page: number; source: ActivePageCommitSource; timestamp: number } | null>(null);
   const PAGE_CHANGE_COOLDOWN_MS = 350;
   const calculateVisiblePagesFromScrollRef = useRef<(options?: CalculateVisiblePagesFromScrollOptions) => void>(() => {});
   const scrollReconciliationTickIdRef = useRef<number>(0);
@@ -529,6 +551,96 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       ...extra
     });
   }, []);
+
+
+  const commitActivePageChange = useCallback(({
+    candidatePage,
+    source,
+    timestamp,
+    allowLargeJump = false,
+    scrollDirection = 'neutral'
+  }: {
+    candidatePage: number;
+    source: ActivePageCommitSource;
+    timestamp: number;
+    allowLargeJump?: boolean;
+    scrollDirection?: ScrollDirection;
+  }) => {
+    const nextPage = Math.min(state.totalPages, Math.max(1, candidatePage));
+    const previousPage = currentPageRef.current;
+    const commitPriority = ACTIVE_PAGE_COMMIT_SOURCE_PRIORITY[source];
+    let blockedReason: string | null = null;
+
+    const lastCommit = lastPageCommitRef.current;
+    if (lastCommit) {
+      const elapsedSinceLastCommit = timestamp - lastCommit.timestamp;
+      if (
+        elapsedSinceLastCommit >= 0 &&
+        elapsedSinceLastCommit <= PAGE_COMMIT_PRIORITY_WINDOW_MS &&
+        lastCommit.priority > commitPriority
+      ) {
+        blockedReason = `suppressed_by_priority:${lastCommit.source}`;
+      }
+    }
+
+    const upwardJumpSize = Math.abs(nextPage - previousPage);
+    if (!blockedReason && scrollDirection === 'up' && upwardJumpSize > 1 && !allowLargeJump) {
+      const pendingConfirmation = pendingUpwardJumpConfirmationRef.current;
+      const hasPendingConfirmation = Boolean(
+        pendingConfirmation &&
+        pendingConfirmation.page === nextPage &&
+        pendingConfirmation.source === source &&
+        timestamp - pendingConfirmation.timestamp <= PAGE_COMMIT_PRIORITY_WINDOW_MS * 2
+      );
+
+      if (!hasPendingConfirmation) {
+        pendingUpwardJumpConfirmationRef.current = { page: nextPage, source, timestamp };
+        blockedReason = 'pending_upward_jump_confirmation';
+      } else {
+        pendingUpwardJumpConfirmationRef.current = null;
+      }
+    } else if (pendingUpwardJumpConfirmationRef.current?.page !== nextPage) {
+      pendingUpwardJumpConfirmationRef.current = null;
+    }
+
+    logPdfDebugEvent(
+      'active_page_commit',
+      {
+        source,
+        previousPage,
+        nextPage,
+        blockedReason,
+        allowLargeJump,
+        scrollDirection,
+        priority: commitPriority
+      },
+      {
+        throttleMs: blockedReason ? 0 : 40,
+        throttleKey: blockedReason ? `active-page-commit-blocked-${source}` : 'active-page-commit'
+      }
+    );
+
+    if (blockedReason) {
+      return false;
+    }
+
+    lastDetectedPageRef.current = nextPage;
+    lastDetectionTimeRef.current = timestamp;
+    stablePageRef.current = nextPage;
+    lastPageChangeTimeRef.current = timestamp;
+    lastPageCommitRef.current = {
+      source,
+      priority: commitPriority,
+      timestamp,
+      page: nextPage
+    };
+
+    if (nextPage !== previousPage) {
+      goToPage(nextPage);
+    }
+
+    return true;
+  }, [goToPage, logPdfDebugEvent, state.totalPages]);
 
   const startPhaseTimer = useCallback((phase: string) => {
     phaseTimersRef.current.set(phase, performance.now());
@@ -1612,9 +1724,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           logNavigationLatencySummary(pendingNavigationTarget.flowId, pendingNavigationTarget.source);
         }
 
-        if (currentPageRef.current !== targetPage) {
-          goToPage(targetPage);
-        }
+        commitActivePageChange({
+          candidatePage: targetPage,
+          source: pendingNavigationTarget.source,
+          timestamp: now,
+          allowLargeJump: true,
+          scrollDirection
+        });
         pendingNavigationTargetRef.current = null;
         return;
       }
@@ -1628,10 +1744,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         pendingNavigationTargetRef.current = null;
         releaseProgrammaticScroll('state-change');
       } else {
-        if (lastDetectedPageRef.current !== targetPage) {
-          lastDetectedPageRef.current = targetPage;
-          lastDetectionTimeRef.current = now;
-        }
         return;
       }
     }
@@ -1668,10 +1780,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       offsetRebuildBlockUntilRef.current = 0;
       centerPageFreezeUntilRef.current = 0;
 
-      lastDetectedPageRef.current = centerPage;
-      lastDetectionTimeRef.current = now;
       releaseProgrammaticScroll('forced-page-reconciliation');
-      goToPage(centerPage);
+      commitActivePageChange({
+        candidatePage: centerPage,
+        source: 'forced-reconciliation',
+        timestamp: now,
+        allowLargeJump: true,
+        scrollDirection
+      });
       return;
     }
 
@@ -1708,9 +1824,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         keyboardNavStableFramesRef.current += 1;
 
         if (currentPageRef.current !== centerPage) {
-          lastDetectedPageRef.current = centerPage;
-          lastDetectionTimeRef.current = now;
-          goToPage(centerPage);
+          commitActivePageChange({
+            candidatePage: centerPage,
+            source: 'keyboard',
+            timestamp: now,
+            allowLargeJump: true,
+            scrollDirection
+          });
           return;
         }
 
@@ -2176,14 +2296,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     if (centerPage !== lastDetectedPageRef.current) {
       activePageTransitionCandidateRef.current = null;
-      lastDetectedPageRef.current = centerPage;
-      lastDetectionTimeRef.current = now;
-      lastPageChangeTimeRef.current = now;
-      const pageChangeIsSequential = Math.abs(centerPage - stablePageRef.current) <= 1;
-      if (pageChangeIsSequential || allowLargeJump) {
-        stablePageRef.current = centerPage;
-      }
-      goToPage(centerPage);
+      commitActivePageChange({
+        candidatePage: centerPage,
+        source: 'scroll',
+        timestamp: now,
+        allowLargeJump,
+        scrollDirection
+      });
     }
   }, [
     cumulativePageBottoms,
@@ -2192,7 +2311,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     getDocumentByGlobalPage,
     getPageHeight,
     getPageWidth,
-    goToPage,
+    commitActivePageChange,
     isSearchNavigationActive,
     logNavigationLatencySummary,
     logPdfDebugEvent,
@@ -4664,13 +4783,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       offsetRebuildBlockUntilRef.current = 0;
       centerPageFreezeUntilRef.current = 0;
 
-      lastDetectedPageRef.current = reconciledPage;
-      lastDetectionTimeRef.current = now;
-      stablePageRef.current = reconciledPage;
       currentPageVisibleDivergenceStartedAtRef.current = null;
       currentPageVisibleDivergenceLastLogAtRef.current = now;
       releaseProgrammaticScroll('current-page-visible-divergence-correction');
-      goToPage(reconciledPage);
+      commitActivePageChange({
+        candidatePage: reconciledPage,
+        source: 'forced-reconciliation',
+        timestamp: now,
+        allowLargeJump: true,
+        scrollDirection: 'neutral'
+      });
     }
   }, [
     state.viewMode,
@@ -4681,7 +4803,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     fallbackVisibleRangeFromScroll,
     deriveVisibleRangeFromContainer,
     releaseProgrammaticScroll,
-    goToPage,
+    commitActivePageChange,
     isModeTransitioning
   ]);
 
@@ -6104,11 +6226,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         zoomBlockedUntilRef.current = Date.now() + ZOOM_POST_BLOCK_DURATION_MS;
       }
 
-      lastDetectedPageRef.current = effectiveTargetPageDetected;
-      lastDetectionTimeRef.current = Date.now();
-      stablePageRef.current = effectiveTargetPageDetected;
       if (effectiveTargetPageDetected !== currentPageBeforeSync) {
-        goToPage(effectiveTargetPageDetected);
+        commitActivePageChange({
+          candidatePage: effectiveTargetPageDetected,
+          source: 'zoom',
+          timestamp: Date.now(),
+          allowLargeJump: true,
+          scrollDirection: 'neutral'
+        });
       }
 
       const reconciliationStartedAt = Date.now();
@@ -6139,8 +6264,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         );
 
         if (effectiveReconciledPage !== currentPageRef.current) {
-          stablePageRef.current = effectiveReconciledPage;
-          goToPage(effectiveReconciledPage);
+          commitActivePageChange({
+            candidatePage: effectiveReconciledPage,
+            source: 'zoom',
+            timestamp: Date.now(),
+            allowLargeJump: true,
+            scrollDirection: 'neutral'
+          });
         }
 
         const hasConverged = effectiveReconciledPage === currentPageRef.current;
@@ -6159,7 +6289,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     prevZoomRef.current = state.zoom;
     zoomAnchorRef.current = null;
-  }, [deriveVisibleRangeFromContainer, getGlobalPageTopOffset, goToPage, markProgrammaticScroll, memoizedDocumentOffsets, releaseProgrammaticScroll, state.currentPage, state.totalPages, state.viewMode, state.zoom]);
+  }, [commitActivePageChange, deriveVisibleRangeFromContainer, getGlobalPageTopOffset, markProgrammaticScroll, memoizedDocumentOffsets, releaseProgrammaticScroll, state.currentPage, state.totalPages, state.viewMode, state.zoom]);
 
   /**
    * Effect para centralizar o scroll horizontal quando o viewer abre
