@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { throttle } from '../utils/performance';
 
 export interface ResponsiveBreakpoint {
   name: 'tiny' | 'small' | 'compact' | 'normal' | 'wide';
@@ -23,6 +24,8 @@ const BREAKPOINTS: ResponsiveBreakpoint[] = [
   { name: 'normal', minWidth: 1200 },
   { name: 'wide', minWidth: 1600 }
 ];
+
+const RESIZE_THROTTLE_MS = 120;
 
 const getBreakpoint = (width: number): ResponsiveBreakpoint['name'] => {
   for (let i = BREAKPOINTS.length - 1; i >= 0; i--) {
@@ -93,6 +96,24 @@ const getConfig = (breakpoint: ResponsiveBreakpoint['name']): ResponsivePanelCon
   }
 };
 
+
+const isSameConfig = (a: ResponsivePanelConfig, b: ResponsivePanelConfig): boolean => {
+  return (
+    a.breakpoint === b.breakpoint &&
+    a.panelWidthPercent === b.panelWidthPercent &&
+    a.sidebarWidth === b.sidebarWidth &&
+    a.bookmarkPanelWidth === b.bookmarkPanelWidth &&
+    a.toolbarCompact === b.toolbarCompact &&
+    a.showToolbarLabels === b.showToolbarLabels &&
+    a.autoHideBookmarkPanel === b.autoHideBookmarkPanel &&
+    a.autoHideSidebar === b.autoHideSidebar
+  );
+};
+
+/**
+ * Frequência: resize limitado para 120ms.
+ * Motivo: evitar commits em cascata durante drag de janela mantendo transição de breakpoint fluida.
+ */
 export const useResponsivePanel = () => {
   const [windowWidth, setWindowWidth] = useState<number>(
     typeof window !== 'undefined' ? window.innerWidth : 1920
@@ -104,17 +125,21 @@ export const useResponsivePanel = () => {
 
   const handleResize = useCallback(() => {
     const width = window.innerWidth;
-    setWindowWidth(width);
+    setWindowWidth(prev => (prev === width ? prev : width));
+
     const breakpoint = getBreakpoint(width);
-    setConfig(getConfig(breakpoint));
+    const nextConfig = getConfig(breakpoint);
+    setConfig(prev => (isSameConfig(prev, nextConfig) ? prev : nextConfig));
   }, []);
+
+  const throttledHandleResize = useCallback(throttle(handleResize, RESIZE_THROTTLE_MS), [handleResize]);
 
   useEffect(() => {
     handleResize();
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [handleResize]);
+    window.addEventListener('resize', throttledHandleResize);
+    return () => window.removeEventListener('resize', throttledHandleResize);
+  }, [handleResize, throttledHandleResize]);
 
   const calculatePanelWidth = useCallback((percent?: number): number => {
     const effectivePercent = percent ?? config.panelWidthPercent;
