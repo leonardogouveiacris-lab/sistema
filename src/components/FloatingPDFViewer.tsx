@@ -2043,6 +2043,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         centerPageBeforeGuards,
         guardedCenterPage,
         shouldApplySequentialDirectionalClamp,
+        seqClampConditions: {
+          shouldForcePageUpdate,
+          hasPendingNavigationTarget,
+          isKeyboardNavLockActive,
+          hasRecentKeyboardNavigation,
+          scrollDirection,
+          guardedCenterPageDiffFromCurrent: guardedCenterPage - effectiveCurrentPage
+        },
         shouldApplyMonotonicDirectionClamp,
         signedScrollDelta,
         scrollDelta,
