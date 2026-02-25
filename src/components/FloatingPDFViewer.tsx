@@ -2036,6 +2036,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     }
 
+    if (scrollDirection === 'up') {
+      console.log('[SCROLL_UP_DEBUG]', {
+        tick: Date.now(),
+        effectiveCurrentPage,
+        centerPageBeforeGuards,
+        guardedCenterPage,
+        shouldApplySequentialDirectionalClamp,
+        shouldApplyMonotonicDirectionClamp,
+        signedScrollDelta,
+        scrollDelta,
+        currentPageVisibleRatio: currentPageVisibleRatio.toFixed(4),
+        currentPageIntersectionPx: currentPageIntersectionPx.toFixed(1),
+        isUpwardViewportExit,
+        isLandscapeBoundary
+      });
+    }
+
     const candidateBeforeFinalGuardConsolidation = guardedCenterPage;
     if (shouldApplyMonotonicDirectionClamp) {
       if (scrollDirection === 'up') {
