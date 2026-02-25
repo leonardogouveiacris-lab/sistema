@@ -108,6 +108,8 @@ const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO = 0.12;
 const ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS = 180;
 const ACTIVE_PAGE_TRANSITION_MIN_SAMPLES = 2;
+const DIRECTION_CHANGE_TRANSITION_SAMPLE_BOOST_WINDOW_MS = 220;
+const DIRECTION_CHANGE_TRANSITION_SAMPLE_BOOST_INCREMENT = 1;
 const UPWARD_LANDSCAPE_TRANSITION_MIN_SAMPLES = 3;
 const UPWARD_LANDSCAPE_TRANSITION_MIN_AGE_MS = 150;
 const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 200;
@@ -307,6 +309,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const activePageTransitionCandidateRef = useRef<{ page: number; startedAt: number; samples: number } | null>(null);
   const lastScrollDirectionRef = useRef<'up' | 'down' | 'neutral'>('neutral');
   const scrollDirectionChangedAtRef = useRef<number>(0);
+  const transitionSampleBoostUntilRef = useRef<number>(0);
   const idleCallbackIdRef = useRef<number | null>(null);
   const renderFallbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastScrollTopRef = useRef<number>(0);
@@ -1180,8 +1183,37 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const viewportToPageRatio = Math.max(0.55, Math.min(1.7, viewportHeight / effectiveCurrentPageHeightPx));
     const zoomNormalizationFactor = Math.max(0.72, Math.min(1.34, 1 / Math.sqrt(effectiveZoom)));
     if (scrollDirection !== 'neutral' && scrollDirection !== lastScrollDirectionRef.current) {
+      const previousDirection = lastScrollDirectionRef.current;
+      const discardedCandidatePage = activePageTransitionCandidateRef.current?.page ?? null;
+      const shouldResetTransitionCandidate =
+        !isProgrammaticScrollRef.current &&
+        keyboardNavTargetPageRef.current === null &&
+        now >= keyboardNavCooldownUntilRef.current &&
+        (now - keyboardNavLastInputAtRef.current) > RECENT_NAVIGATION_WINDOW_MS;
+
       lastScrollDirectionRef.current = scrollDirection;
       scrollDirectionChangedAtRef.current = now;
+
+      if (shouldResetTransitionCandidate) {
+        activePageTransitionCandidateRef.current = null;
+        if (scrollDirection !== 'up') {
+          pendingUpwardJumpConfirmationRef.current = null;
+        }
+        transitionSampleBoostUntilRef.current = now + DIRECTION_CHANGE_TRANSITION_SAMPLE_BOOST_WINDOW_MS;
+
+        logPdfDebugEvent(
+          'transition_candidate_reset_on_direction_change',
+          {
+            previousDirection,
+            nextDirection: scrollDirection,
+            discardedCandidatePage,
+            currentPage: effectiveCurrentPage,
+            mode: state.viewMode,
+            reason: 'scroll-direction-change'
+          },
+          { throttleMs: 0, throttleKey: `transition-candidate-reset-${now}` }
+        );
+      }
     }
     const timeSinceDirectionChange = scrollDirection === 'neutral'
       ? Number.POSITIVE_INFINITY
@@ -2271,9 +2303,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     ) => {
       const isDownwardCommit = scrollDirection === 'down' && candidatePage > effectiveCurrentPage;
       const isDownwardSettlingCommit = isDownwardCommit && isDirectionSettling;
-      const requiredSamples = isDownwardSettlingCommit
+      const shouldBoostSamplesAfterDirectionChange = now <= transitionSampleBoostUntilRef.current;
+      const requiredSamples = (isDownwardSettlingCommit
         ? minSamples + DOWNWARD_SETTLING_EXTRA_TRANSITION_SAMPLES
-        : minSamples;
+        : minSamples) + (shouldBoostSamplesAfterDirectionChange ? DIRECTION_CHANGE_TRANSITION_SAMPLE_BOOST_INCREMENT : 0);
       const requiredAgeMs = isDownwardSettlingCommit
         ? minAgeMs + DOWNWARD_SETTLING_EXTRA_TRANSITION_AGE_MS
         : minAgeMs;
