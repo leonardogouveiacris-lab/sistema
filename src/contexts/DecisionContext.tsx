@@ -38,7 +38,6 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
       setError(null);
       const data = await DecisionsService.getAll();
       setDecisions(data);
-      logger.info('Decisões recarregadas do Supabase', 'DecisionContext - refresh');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao recarregar';
       setError(errorMessage);
@@ -64,7 +63,6 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
         const data = await DecisionsService.getAll();
         completed = true;
         setDecisions(data);
-        logger.debug(`${data.length} decisões carregadas`, 'DecisionContext');
       } catch (err) {
         completed = true;
         const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';

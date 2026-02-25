@@ -63,27 +63,9 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
     setError(null);
 
     try {
-      logger.info(
-        `Carregando documentos do processo: ${processId}`,
-        'useProcessDocuments.loadDocuments'
-      );
-
       const docs = await ProcessDocumentService.getDocumentsByProcessId(processId);
       setDocuments(docs);
       setDocument(docs.length > 0 ? docs[0] : null);
-
-      if (docs.length > 0) {
-        logger.success(
-          `${docs.length} documento(s) carregado(s)`,
-          'useProcessDocuments.loadDocuments',
-          { processId, count: docs.length }
-        );
-      } else {
-        logger.info(
-          'Nenhum documento encontrado para o processo',
-          'useProcessDocuments.loadDocuments'
-        );
-      }
     } catch (err) {
       const errorMessage = 'Erro ao carregar documentos';
       setError(errorMessage);
@@ -116,9 +98,7 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
     displayName?: string
   ): Promise<DocumentUploadResult> => {
     if (!processId || !file) {
-      const error = 'ProcessId e arquivo são obrigatórios';
-      logger.warn('Falha ao fazer upload do documento', 'useProcessDocuments.uploadDocument', error);
-      return { success: false, error };
+      return { success: false, error: 'ProcessId e arquivo são obrigatórios' };
     }
 
     setIsLoading(true);
@@ -126,13 +106,6 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
     setUploadProgress(0);
 
     try {
-      logger.info(
-        `Iniciando upload de documento: ${file.name}`,
-        'useProcessDocuments.uploadDocument',
-        { processId, fileSize: file.size }
-      );
-
-      // Simula progresso (react-pdf não fornece progresso real)
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => Math.min(prev + 10, 90));
       }, 200);
@@ -143,16 +116,8 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
       setUploadProgress(100);
 
       if (result.success && result.document) {
-        // Recarrega todos os documentos após upload
         await loadDocuments(processId);
 
-        logger.success(
-          `Upload concluído: ${file.name}`,
-          'useProcessDocuments.uploadDocument',
-          { documentId: result.document.id }
-        );
-
-        // Reseta progresso após 1 segundo
         if (progressResetTimeoutRef.current) {
           clearTimeout(progressResetTimeoutRef.current);
         }
@@ -197,21 +162,10 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
     setError(null);
 
     try {
-      logger.info(
-        `Removendo documento do processo: ${processId}`,
-        'useProcessDocuments.deleteDocument'
-      );
-
       const success = await ProcessDocumentService.deleteDocument(processId);
 
       if (success) {
         setDocument(null);
-
-        logger.success(
-          'Documento removido com sucesso',
-          'useProcessDocuments.deleteDocument',
-          { processId }
-        );
       } else {
         setError('Erro ao remover documento');
       }
@@ -247,25 +201,11 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
     setError(null);
 
     try {
-      logger.info(
-        `Removendo documento: ${documentId}`,
-        'useProcessDocuments.deleteDocumentById'
-      );
-
       const success = await ProcessDocumentService.deleteDocumentById(documentId);
 
       if (success) {
-        // Atualiza o array removendo o documento deletado
         setDocuments(prev => prev.filter(doc => doc.id !== documentId));
-
-        // Atualiza o documento principal se foi removido
         setDocument(prev => prev?.id === documentId ? null : prev);
-
-        logger.success(
-          'Documento removido com sucesso',
-          'useProcessDocuments.deleteDocumentById',
-          { documentId }
-        );
       } else {
         setError('Erro ao remover documento');
       }

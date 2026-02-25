@@ -40,7 +40,6 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setError(null);
       const data = await VerbasService.getAll();
       setVerbas(data);
-      logger.info('Verbas recarregadas do Supabase', 'VerbaContext - refreshVerbas');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao recarregar';
       setError(errorMessage);
@@ -66,7 +65,6 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const data = await VerbasService.getAll();
         completed = true;
         setVerbas(data);
-        logger.debug(`${data.length} verbas carregadas`, 'VerbaContext');
       } catch (err) {
         completed = true;
         const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';

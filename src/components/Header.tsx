@@ -72,12 +72,6 @@ const Header: React.FC<HeaderProps> = ({ onLogout }) => {
         try {
           const isConnected = await testSupabaseConnection();
           setConnectionStatus(isConnected ? ConnectionStatus.CONNECTED : ConnectionStatus.ERROR);
-          
-          logger.info(
-            `Teste inicial de conexão: ${isConnected ? 'sucesso' : 'falha'}`,
-            'Header - useEffect',
-            { isConnected }
-          );
         } catch (error) {
           setConnectionStatus(ConnectionStatus.ERROR);
           logger.errorWithException(
@@ -101,8 +95,6 @@ const Header: React.FC<HeaderProps> = ({ onLogout }) => {
    * para evitar saídas acidentais
    */
   const handleLogout = useCallback(() => {
-    logger.info('Logout executado pelo usuário', 'Header - handleLogout');
-
     if (onLogout) {
       onLogout();
     } else {
@@ -123,16 +115,8 @@ const Header: React.FC<HeaderProps> = ({ onLogout }) => {
     setConnectionStatus(ConnectionStatus.TESTING);
 
     try {
-      logger.info('Retestando conexão com Supabase...', 'Header - handleRetestConnection');
-      
       const isConnected = await testSupabaseConnection();
       setConnectionStatus(isConnected ? ConnectionStatus.CONNECTED : ConnectionStatus.ERROR);
-      
-      logger.info(
-        `Reteste de conexão: ${isConnected ? 'sucesso' : 'falha'}`,
-        'Header - handleRetestConnection',
-        { isConnected }
-      );
     } catch (error) {
       setConnectionStatus(ConnectionStatus.ERROR);
       logger.errorWithException(

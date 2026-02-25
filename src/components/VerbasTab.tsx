@@ -51,45 +51,21 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
 
   const handleOpenManagementModal = useCallback(() => {
     setIsManagementModalOpen(true);
-
-    logger.info(
-      `Modal de gerenciamento de tipos aberto${selectedProcess ? ` para processo: ${selectedProcess.numeroProcesso}` : ''}`,
-      'VerbasTab - handleOpenManagementModal',
-      { processId: selectedProcess?.id }
-    );
   }, [selectedProcess]);
 
   const handleCloseManagementModal = useCallback(() => {
     setIsManagementModalOpen(false);
-
-    logger.info('Modal de gerenciamento de tipos fechado', 'VerbasTab - handleCloseManagementModal');
   }, []);
 
   const handleTiposUpdated = useCallback(() => {
     setTiposVersion(prev => prev + 1);
-
-    logger.info(
-      'Tipos atualizados, forçando refresh no VerbaForm',
-      'VerbasTab - handleTiposUpdated',
-      { newVersion: tiposVersion + 1 }
-    );
   }, [tiposVersion]);
 
   const handleVerbasUpdated = useCallback(async () => {
     setVerbasVersion(prev => prev + 1);
 
-    logger.info(
-      'VerbasTab: Forçando refresh completo após atualização',
-      'VerbasTab - handleVerbasUpdated',
-      { newVersion: verbasVersion + 1, processId: selectedProcess?.id }
-    );
-
     try {
       await refreshVerbas();
-      logger.success(
-        'VerbasTab: Verbas recarregadas do banco com sucesso',
-        'VerbasTab - handleVerbasUpdated'
-      );
     } catch (error) {
       logger.errorWithException(
         'VerbasTab: Erro ao recarregar verbas',
@@ -115,17 +91,6 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
 
   const renderVerbasContent = () => {
     if (!selectedProcess) return null;
-
-    logger.info(
-      `Renderizando aba de verbas para processo: ${selectedProcess.numeroProcesso}`,
-      'VerbasTab - renderVerbasContent',
-      {
-        processId: selectedProcess.id,
-        processNumber: selectedProcess.numeroProcesso,
-        verbaCount: verbas.filter(v => v.processId === selectedProcess.id).length,
-        decisionCount: decisions.filter(d => d.processId === selectedProcess.id).length
-      }
-    );
 
     return (
       <>

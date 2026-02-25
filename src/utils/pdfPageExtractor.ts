@@ -100,12 +100,6 @@ export async function extractPagesFromPDF(
     throw new Error('Nenhuma página selecionada para extração');
   }
 
-  logger.info(
-    `Iniciando extração de ${pagesToExtract.length} páginas`,
-    'pdfPageExtractor.extractPagesFromPDF',
-    { pages: pagesToExtract }
-  );
-
   onProgress?.({
     phase: 'loading',
     current: 0,
@@ -184,11 +178,6 @@ export async function extractPagesFromPDF(
     total: 100,
     message: 'Concluído!'
   });
-
-  logger.success(
-    `Extração concluída: ${validPages.length} páginas`,
-    'pdfPageExtractor.extractPagesFromPDF'
-  );
 
   return newPdfBytes;
 }
@@ -335,11 +324,6 @@ export function downloadPDF(pdfBytes: Uint8Array, filename: string): void {
   document.body.removeChild(link);
 
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-  logger.info(
-    `PDF baixado: ${filename}`,
-    'pdfPageExtractor.downloadPDF'
-  );
 }
 
 export function generateExtractedFilename(originalName: string, pages: number[]): string {

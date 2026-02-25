@@ -64,16 +64,6 @@ const DecisionsTab: React.FC<DecisionsTabProps> = ({
   const renderDecisionsContent = () => {
     if (!selectedProcess) return null;
 
-    logger.info(
-      `Renderizando aba de decisões para processo: ${selectedProcess.numeroProcesso}`,
-      'DecisionsTab - renderDecisionsContent',
-      {
-        processId: selectedProcess.id,
-        processNumber: selectedProcess.numeroProcesso,
-        decisionCount: decisions.filter(d => d.processId === selectedProcess.id).length
-      }
-    );
-
     return (
       <div className="space-y-6">
         <ProcessDocumentUpload processId={selectedProcess.id} />

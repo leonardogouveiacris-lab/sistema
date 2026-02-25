@@ -155,19 +155,9 @@ const HighlightLayer: React.FC<HighlightLayerProps> = ({ pageNumber, scale }) =>
       x: e.clientX,
       y: e.clientY
     });
-
-    logger.info(
-      `Context menu opened for highlight ${highlightId}`,
-      'HighlightLayer.handleContextMenu'
-    );
   }, []);
 
   const handleColorChange = useCallback(async (highlightId: string, color: HighlightColor) => {
-    logger.info(
-      `Changing highlight color: ${highlightId} -> ${color}`,
-      'HighlightLayer.handleColorChange'
-    );
-
     const success = await HighlightsService.updateHighlightColor(highlightId, color);
 
     if (success) {
@@ -182,21 +172,12 @@ const HighlightLayer: React.FC<HighlightLayerProps> = ({ pageNumber, scale }) =>
     setIsDeleting(highlightId);
     setContextMenu(null);
 
-    logger.info(
-      `Deleting highlight: ${highlightId}`,
-      'HighlightLayer.handleDelete'
-    );
-
     try {
       const success = await HighlightsService.deleteHighlight(highlightId);
 
       if (success) {
         removeHighlight(highlightId);
         toast.success('Destaque excluido com sucesso');
-        logger.success(
-          `Highlight deleted from UI: ${highlightId}`,
-          'HighlightLayer.handleDelete'
-        );
       } else {
         logger.error(
           `Failed to delete highlight: ${highlightId}`,

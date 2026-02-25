@@ -78,12 +78,6 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
    */
   React.useEffect(() => {
     if (refreshTrigger > 0) {
-      logger.info(
-        `RefreshTrigger ativado (${refreshTrigger}), recarregando tipos para processo: ${processId}`,
-        'VerbaForm - refreshTrigger',
-        { processId, refreshTrigger }
-      );
-      
       carregarTipos(processId);
     }
   }, [refreshTrigger, carregarTipos, processId]);
@@ -166,7 +160,7 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
     // Determina o conteúdo baseado no campo
     let content = '';
     let mappedField = field;
-    
+
     if (field === 'fundamentacao') {
       content = formData.lancamento.fundamentacao || '';
       mappedField = 'fundamentacao';
@@ -181,12 +175,6 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
       title,
       content
     });
-    
-    logger.info(
-      `Modal expandido aberto para campo: ${field}`,
-      'VerbaForm - handleExpandText',
-      { originalField: field, mappedField, contentLength: content.length }
-    );
   }, [formData.lancamento]);
 
   /**
@@ -207,18 +195,12 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
    */
   const handleSaveExpandedText = useCallback((content: string) => {
     // Mapeia de volta o campo para o nome original
-    const originalField = expandedTextModal.field === 'comentarios' 
-      ? 'comentariosCalculistas' 
+    const originalField = expandedTextModal.field === 'comentarios'
+      ? 'comentariosCalculistas'
       : expandedTextModal.field as 'fundamentacao' | 'comentariosCalculistas';
-    
+
     handleInputChange(originalField, content);
     handleCloseExpandedModal();
-    
-    logger.success(
-      `Conteúdo salvo do modal expandido para campo: ${originalField}`,
-      'VerbaForm - handleSaveExpandedText',
-      { field: expandedTextModal.field, originalField, contentLength: content.length }
-    );
   }, [expandedTextModal.field, handleInputChange, handleCloseExpandedModal]);
 
   /**

@@ -118,27 +118,11 @@ const DecisionList: React.FC<DecisionListProps> = ({
   const handleEditDecision = (decision: Decision) => {
     setEditingDecision(decision);
     setIsModalOpen(true);
-
-    logger.info(
-      `Iniciando edicao da decisao: ${decision.idDecisao}`,
-      'DecisionList - handleEditDecision',
-      {
-        decisionId: decision.id,
-        tipo: decision.tipoDecisao,
-        situacao: decision.situacao
-      }
-    );
   };
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingDecision(null);
-
-    logger.info(
-      'Modal de edicao fechado',
-      'DecisionList - handleCloseModal',
-      { previousDecision: editingDecision?.idDecisao }
-    );
   };
 
   const handleSaveDecision = async (id: string, updatedData: Partial<NewDecision>) => {
@@ -147,16 +131,6 @@ const DecisionList: React.FC<DecisionListProps> = ({
         await onUpdateDecision(id, updatedData);
       }
       handleCloseModal();
-
-      logger.success(
-        `Decisao atualizada com sucesso: ${updatedData.idDecisao || 'ID nao alterado'}`,
-        'DecisionList - handleSaveDecision',
-        {
-          decisionId: id,
-          updatedFields: Object.keys(updatedData)
-        }
-      );
-
     } catch (error) {
       logger.errorWithException(
         'Falha ao salvar alteracoes na decisao',
@@ -170,16 +144,6 @@ const DecisionList: React.FC<DecisionListProps> = ({
   };
 
   const handleSelectDecision = (decision: Decision) => {
-    logger.info(
-      `Decisao selecionada: ${decision.idDecisao}`,
-      'DecisionList - handleSelectDecision',
-      {
-        decisionId: decision.id,
-        tipo: decision.tipoDecisao,
-        situacao: decision.situacao
-      }
-    );
-
     if (onSelectDecision) {
       onSelectDecision(decision);
     }
@@ -189,16 +153,6 @@ const DecisionList: React.FC<DecisionListProps> = ({
     if (onRemoveDecision) {
       onRemoveDecision(decision.id);
     }
-
-    logger.info(
-      `Decisao excluida: ${decision.idDecisao}`,
-      'DecisionList - handleDeleteDecision',
-      {
-        decisionId: decision.id,
-        tipo: decision.tipoDecisao,
-        situacao: decision.situacao
-      }
-    );
   };
 
   const toggleCardExpansion = (decisionId: string) => {

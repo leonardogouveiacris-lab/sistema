@@ -124,23 +124,11 @@ export class DynamicEnumService {
       if (this.cache.has(cacheKey)) {
         const cachedValues = this.cache.get(cacheKey)!;
         const exists = cachedValues.has(normalizedValue);
-        
+
         if (exists) {
-          logger.info(
-            `Valor encontrado no cache: "${normalizedValue}" em ${enumName}`,
-            'DynamicEnumService.valueExistsInEnum',
-            { enumName, value: normalizedValue, cacheHit: true }
-          );
           return true;
         }
       }
-      
-      // Se não está no cache, verifica no banco fazendo um cast
-      logger.info(
-        `Verificando existência do valor no banco: "${normalizedValue}" em ${enumName}${processId ? ` para processo ${processId}` : ' (global)'}`,
-        'DynamicEnumService.valueExistsInEnum',
-        { enumName, value: normalizedValue, processId }
-      );
       
       // Usa função SQL atualizada para verificar considerando contexto do processo
       const { data, error } = await supabase.rpc('check_enum_value_exists', {
@@ -153,8 +141,7 @@ export class DynamicEnumService {
         // Se a função não existir ou houver erro, tentamos criar o valor diretamente
         logger.warn(
           `Erro na função check_enum_value_exists: ${error.message}, assumindo valor não existe`,
-          'DynamicEnumService.valueExistsInEnum',
-          { enumName, value: normalizedValue, processId, error: error.message }
+          'DynamicEnumService.valueExistsInEnum'
         );
         return false;
       }
@@ -215,17 +202,6 @@ export class DynamicEnumService {
         };
       }
 
-      logger.info(
-        `Tentando adicionar valor ao enum: "${normalizedValue}" em ${enumName}`,
-        'DynamicEnumService.addValueToEnum',
-        {
-          enumName,
-          originalValue: value,
-          normalizedValue,
-          processId
-        }
-      );
-
       // Chama a função do banco para adicionar o valor
       const { data, error } = await supabase.rpc('add_custom_enum_value', {
         p_enum_name: enumName,
@@ -242,18 +218,6 @@ export class DynamicEnumService {
         throw new Error('Função add_custom_enum_value não retornou dados');
       }
 
-      // Log detalhado do resultado
-      logger.info(
-        'Resposta da função add_custom_enum_value',
-        'DynamicEnumService.addValueToEnum',
-        {
-          data,
-          inserted: data.inserted,
-          alreadyExisted: data.already_existed,
-          normalizedValue: data.normalized_value
-        }
-      );
-
       // Invalida cache para forçar recarregamento
       this.invalidateCache(enumName);
 
@@ -265,19 +229,6 @@ export class DynamicEnumService {
         wasAlreadyPresent: data.already_existed,
         normalizedValue: data.normalized_value
       };
-
-      logger.success(
-        result.message,
-        'DynamicEnumService.addValueToEnum',
-        {
-          enumName,
-          value: normalizedValue,
-          processId,
-          wasAlreadyPresent: result.wasAlreadyPresent,
-          success: result.success,
-          inserted: data.inserted
-        }
-      );
 
       return result;
       
@@ -318,12 +269,6 @@ export class DynamicEnumService {
         return [];
       }
 
-      logger.info(
-        `Buscando valores personalizados do enum: ${enumName}${processId ? ` para processo ${processId}` : ' (globais)'}`,
-        'DynamicEnumService.getCustomValuesForEnum',
-        { enumName, processId }
-      );
-
       const { data: globalData, error: globalError } = await supabase
         .from('custom_enum_values')
         .select('*')
@@ -360,12 +305,6 @@ export class DynamicEnumService {
         createdAt: new Date(record.created_at)
       }));
 
-      logger.success(
-        `${customValues.length} valores personalizados encontrados para ${enumName}${processId ? ` (${globalData?.length || 0} globais + ${processData.length} do processo)` : ''}`,
-        'DynamicEnumService.getCustomValuesForEnum',
-        { enumName, processId, count: customValues.length }
-      );
-
       return customValues;
 
     } catch (error) {
@@ -398,27 +337,21 @@ export class DynamicEnumService {
         return [];
       }
 
-      logger.info(
-        `Buscando valores personalizados do processo: ${processId}${enumName ? ` para enum: ${enumName}` : ''}`,
-        'DynamicEnumService.getValuesByProcess',
-        { processId, enumName }
-      );
-      
       let query = supabase
         .from('custom_enum_values')
         .select('*')
         .eq('created_by_process_id', processId);
-      
+
       if (enumName) {
         query = query.eq('enum_name', enumName);
       }
-      
+
       const { data, error } = await query.order('created_at', { ascending: false });
-      
+
       if (error) {
         throw new Error(`Erro ao buscar valores do processo: ${error.message}`);
       }
-      
+
       const values = (data || []).map(record => ({
         id: record.id,
         enumName: record.enum_name,
@@ -426,13 +359,7 @@ export class DynamicEnumService {
         createdByProcessId: record.created_by_process_id,
         createdAt: new Date(record.created_at)
       }));
-      
-      logger.success(
-        `${values.length} valores personalizados encontrados para o processo`,
-        'DynamicEnumService.getValuesByProcess',
-        { processId, enumName, count: values.length }
-      );
-      
+
       return values;
       
     } catch (error) {
@@ -461,12 +388,6 @@ export class DynamicEnumService {
       }
     }
     keysToDelete.forEach(key => this.cache.delete(key));
-
-    logger.info(
-      `Cache invalidado para enum: ${enumName} (${keysToDelete.length} entradas)`,
-      'DynamicEnumService.invalidateCache',
-      { enumName, entriesCleared: keysToDelete.length }
-    );
   }
   
   /**
@@ -475,7 +396,6 @@ export class DynamicEnumService {
    */
   static clearAllCache(): void {
     this.cache.clear();
-    logger.info('Todo cache de enums dinâmicos limpo', 'DynamicEnumService.clearAllCache');
   }
   
   /**
@@ -501,8 +421,6 @@ export class DynamicEnumService {
         };
       }
 
-      logger.info('Calculando estatísticas do sistema de enums dinâmicos', 'DynamicEnumService.getSystemStats');
-      
       // Busca todos os valores personalizados
       const { data, error } = await supabase
         .from('custom_enum_values')
@@ -554,13 +472,7 @@ export class DynamicEnumService {
         recentlyAdded: recentValues,
         topProcesses
       };
-      
-      logger.success(
-        'Estatísticas do sistema de enums calculadas',
-        'DynamicEnumService.getSystemStats',
-        stats
-      );
-      
+
       return stats;
       
     } catch (error) {
@@ -601,19 +513,8 @@ export class DynamicEnumService {
       const cacheKey = `predefined_${enumName}`;
       if (this.predefinedCache.has(cacheKey)) {
         const cached = this.predefinedCache.get(cacheKey)!;
-        logger.info(
-          `Valores predefinidos carregados do cache: ${enumName} (${cached.length} valores)`,
-          'DynamicEnumService.getPredefinedValues',
-          { enumName, count: cached.length, cacheHit: true }
-        );
         return cached;
       }
-
-      logger.info(
-        `Buscando valores predefinidos da tabela dropdown_options: ${enumName}`,
-        'DynamicEnumService.getPredefinedValues',
-        { enumName }
-      );
 
       const { data, error } = await supabase
         .from('dropdown_options')
@@ -629,12 +530,6 @@ export class DynamicEnumService {
       const values = (data || []).map(record => record.option_value);
 
       this.predefinedCache.set(cacheKey, values);
-
-      logger.success(
-        `${values.length} valores predefinidos encontrados para ${enumName}`,
-        'DynamicEnumService.getPredefinedValues',
-        { enumName, count: values.length, values }
-      );
 
       return values;
 
@@ -655,7 +550,6 @@ export class DynamicEnumService {
    */
   static clearPredefinedCache(): void {
     this.predefinedCache.clear();
-    logger.info('Cache de valores predefinidos limpo', 'DynamicEnumService.clearPredefinedCache');
   }
 }
 

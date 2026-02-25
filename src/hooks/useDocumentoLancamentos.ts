@@ -30,11 +30,8 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
       setLoading(true);
       setError(null);
 
-      logger.info(`Fetching document launches for process: ${processId}`, 'useDocumentoLancamentos');
       const data = await documentoLancamentoService.getByProcessId(processId);
-
       setDocumentos(data);
-      logger.success(`Loaded ${data.length} document launches`, 'useDocumentoLancamentos');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch document launches';
       setError(errorMessage);
@@ -58,7 +55,6 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
         if (prev.some(d => d.id === newDoc.id)) return prev;
         return [newDoc, ...prev];
       });
-      logger.info('Realtime: Document inserted by another user', 'useDocumentoLancamentos');
     }
   }, [processId]);
 
@@ -69,7 +65,6 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
     }
     if (updatedDoc.processId === processId) {
       setDocumentos(prev => prev.map(d => d.id === updatedDoc.id ? updatedDoc : d));
-      logger.info('Realtime: Document updated by another user', 'useDocumentoLancamentos');
     }
   }, [processId]);
 
@@ -79,7 +74,6 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
       return;
     }
     setDocumentos(prev => prev.filter(d => d.id !== id));
-    logger.info('Realtime: Document deleted by another user', 'useDocumentoLancamentos');
   }, []);
 
   useRealtimeSubscription<DocumentoLancamento>({
@@ -94,12 +88,9 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
     try {
       setError(null);
       isLocalUpdate.current = true;
-      logger.info('Creating new document launch', 'useDocumentoLancamentos.createDocumento');
 
       const newDocumento = await documentoLancamentoService.create(input);
-
       setDocumentos(prev => [newDocumento, ...prev]);
-      logger.success(`Document launch created: ${newDocumento.id}`, 'useDocumentoLancamentos.createDocumento');
 
       return newDocumento;
     } catch (err) {
@@ -115,14 +106,11 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
     try {
       setError(null);
       isLocalUpdate.current = true;
-      logger.info(`Updating document launch: ${id}`, 'useDocumentoLancamentos.updateDocumento');
 
       const updatedDocumento = await documentoLancamentoService.update(id, input);
-
       setDocumentos(prev =>
         prev.map(doc => doc.id === id ? updatedDocumento : doc)
       );
-      logger.success(`Document launch updated: ${id}`, 'useDocumentoLancamentos.updateDocumento');
 
       return updatedDocumento;
     } catch (err) {
@@ -138,12 +126,9 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
     try {
       setError(null);
       isLocalUpdate.current = true;
-      logger.info(`Deleting document launch: ${id}`, 'useDocumentoLancamentos.deleteDocumento');
 
       await documentoLancamentoService.delete(id);
-
       setDocumentos(prev => prev.filter(doc => doc.id !== id));
-      logger.success(`Document launch deleted: ${id}`, 'useDocumentoLancamentos.deleteDocumento');
 
       return true;
     } catch (err) {

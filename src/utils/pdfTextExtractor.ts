@@ -129,20 +129,12 @@ export async function extractAllPagesText(
 ): Promise<DocumentTextCache> {
   const existing = textCache.get(documentId);
   if (existing && existing.pages.size === pdfDocument.numPages) {
-    logger.info(
-      `Using memory cached text for document ${documentId}`,
-      'pdfTextExtractor.extractAllPagesText'
-    );
     return existing;
   }
 
   const dbCache = await loadFromDatabase(documentId);
   if (dbCache && dbCache.pages.size === pdfDocument.numPages) {
     textCache.set(documentId, dbCache);
-    logger.info(
-      `Using database cached text for document ${documentId}`,
-      'pdfTextExtractor.extractAllPagesText'
-    );
     if (onProgress) {
       onProgress(pdfDocument.numPages, pdfDocument.numPages);
     }
@@ -152,10 +144,6 @@ export async function extractAllPagesText(
   const persistedCache = await getCachedDocument(documentId);
   if (persistedCache && persistedCache.pages.size === pdfDocument.numPages) {
     textCache.set(documentId, persistedCache);
-    logger.info(
-      `Using IndexedDB cached text for document ${documentId}`,
-      'pdfTextExtractor.extractAllPagesText'
-    );
     if (onProgress) {
       onProgress(pdfDocument.numPages, pdfDocument.numPages);
     }
@@ -188,10 +176,6 @@ export async function extractAllPagesText(
 
   for (let batchStart = 0; batchStart < orderedPages.length; batchStart += BATCH_CONCURRENCY) {
     if (abortSignal?.aborted) {
-      logger.info(
-        `Text extraction aborted for document ${documentId} at batch ${batchStart}`,
-        'pdfTextExtractor.extractAllPagesText'
-      );
       return cache;
     }
 
@@ -231,11 +215,6 @@ export async function extractAllPagesText(
       });
     }, 1000);
   }
-
-  logger.success(
-    `Extracted text from ${numPages} pages of document ${documentId}`,
-    'pdfTextExtractor.extractAllPagesText'
-  );
 
   return cache;
 }

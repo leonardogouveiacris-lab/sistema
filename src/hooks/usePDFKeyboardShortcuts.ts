@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import logger from '../utils/logger';
 import type { UsePDFKeyboardShortcutsParams } from '../types/FloatingPDFViewerContracts';
 
 const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
@@ -18,7 +17,6 @@ export function usePDFKeyboardShortcuts({
   useEffect(() => {
     const lastHandledRepeatByKey = new Map<string, number>();
     const pressedNavigationKeys = new Set<string>();
-    const KEYBOARD_LOG_CONTEXT = 'FloatingPDFViewer.handleKeyDown';
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (NAVIGATION_KEYS.has(e.key)) {
@@ -60,7 +58,6 @@ export function usePDFKeyboardShortcuts({
           const navigationThrottleMs = keyboardNavigationThrottleMsRef.current;
 
           if (elapsed < navigationThrottleMs) {
-            logger.info('Keyboard navigation throttled', KEYBOARD_LOG_CONTEXT, { key: e.key, elapsed, navigationThrottleMs });
             e.preventDefault();
             return;
           }

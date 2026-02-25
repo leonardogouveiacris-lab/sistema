@@ -51,17 +51,6 @@ const ExpandedTextModal: React.FC<ExpandedTextModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setContent(initialContent);
-      
-      logger.info(
-        `Modal expandido aberto: "${title}"`,
-        'ExpandedTextModal - useEffect',
-        { 
-          title, 
-          dataField,
-          contentLength: initialContent.length,
-          hasContent: initialContent.length > 0
-        }
-      );
     }
   }, [isOpen, initialContent, title, dataField]);
 
@@ -80,18 +69,6 @@ const ExpandedTextModal: React.FC<ExpandedTextModalProps> = ({
     
     try {
       await onSave(content);
-      
-      logger.success(
-        `Conteúdo salvo no modal expandido: "${title}"`,
-        'ExpandedTextModal - handleSave',
-        { 
-          title,
-          dataField,
-          contentLength: content.length,
-          hasChanges: hasChanges()
-        }
-      );
-      
     } catch (error) {
       logger.errorWithException(
         'Falha ao salvar conteúdo no modal expandido',
@@ -105,18 +82,8 @@ const ExpandedTextModal: React.FC<ExpandedTextModalProps> = ({
   }, [content, onSave, title, dataField, hasChanges]);
 
   const handleClose = useCallback(() => {
-    logger.info(
-      `Modal expandido fechado: "${title}"`,
-      'ExpandedTextModal - handleClose',
-      {
-        title,
-        dataField,
-        contentLength: content.length
-      }
-    );
-
     onClose();
-  }, [onClose, title, dataField, content.length]);
+  }, [onClose]);
 
   /**
    * Lida com mudanças no conteúdo do editor

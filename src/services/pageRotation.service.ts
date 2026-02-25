@@ -20,9 +20,6 @@ export async function getPageRotations(processDocumentId: string): Promise<PageR
       logger.warn('Supabase client unavailable', 'pageRotation.service.getPageRotations');
       return {};
     }
-    logger.info('Fetching page rotations', 'pageRotation.service.getPageRotations', {
-      processDocumentId
-    });
 
     const { data, error } = await supabase
       .from('pdf_page_rotations')
@@ -44,12 +41,6 @@ export async function getPageRotations(processDocumentId: string): Promise<PageR
         rotationMap[row.page_number] = row.rotation_degrees;
       }
     });
-
-    logger.success(
-      `Fetched ${Object.keys(rotationMap).length} page rotations`,
-      'pageRotation.service.getPageRotations',
-      { count: Object.keys(rotationMap).length }
-    );
 
     return rotationMap;
   } catch (error) {
@@ -74,12 +65,6 @@ export async function upsertPageRotation(
     }
     const normalizedDegrees = ((rotationDegrees % 360) + 360) % 360;
 
-    logger.info('Upserting page rotation', 'pageRotation.service.upsertPageRotation', {
-      processDocumentId,
-      pageNumber,
-      rotationDegrees: normalizedDegrees
-    });
-
     if (normalizedDegrees === 0) {
       return await deletePageRotation(processDocumentId, pageNumber);
     }
@@ -103,11 +88,6 @@ export async function upsertPageRotation(
       return false;
     }
 
-    logger.success('Page rotation upserted successfully', 'pageRotation.service.upsertPageRotation', {
-      pageNumber,
-      rotationDegrees: normalizedDegrees
-    });
-
     return true;
   } catch (error) {
     logger.errorWithException(
@@ -128,10 +108,6 @@ export async function upsertPageRotations(
       logger.warn('Supabase client unavailable', 'pageRotation.service.upsertPageRotations');
       return false;
     }
-    logger.info('Batch upserting page rotations', 'pageRotation.service.upsertPageRotations', {
-      processDocumentId,
-      count: rotations.length
-    });
 
     const toDelete: number[] = [];
     const toUpsert: Array<{
@@ -191,11 +167,6 @@ export async function upsertPageRotations(
       }
     }
 
-    logger.success('Batch page rotations completed', 'pageRotation.service.upsertPageRotations', {
-      deleted: toDelete.length,
-      upserted: toUpsert.length
-    });
-
     return true;
   } catch (error) {
     logger.errorWithException(
@@ -216,10 +187,6 @@ export async function deletePageRotation(
       logger.warn('Supabase client unavailable', 'pageRotation.service.deletePageRotation');
       return false;
     }
-    logger.info('Deleting page rotation', 'pageRotation.service.deletePageRotation', {
-      processDocumentId,
-      pageNumber
-    });
 
     const { error } = await supabase
       .from('pdf_page_rotations')
@@ -231,10 +198,6 @@ export async function deletePageRotation(
       logger.error('Error deleting page rotation', 'pageRotation.service.deletePageRotation', undefined, error);
       return false;
     }
-
-    logger.success('Page rotation deleted successfully', 'pageRotation.service.deletePageRotation', {
-      pageNumber
-    });
 
     return true;
   } catch (error) {
@@ -253,9 +216,6 @@ export async function deleteAllPageRotations(processDocumentId: string): Promise
       logger.warn('Supabase client unavailable', 'pageRotation.service.deleteAllPageRotations');
       return false;
     }
-    logger.info('Deleting all page rotations', 'pageRotation.service.deleteAllPageRotations', {
-      processDocumentId
-    });
 
     const { error } = await supabase
       .from('pdf_page_rotations')
@@ -271,10 +231,6 @@ export async function deleteAllPageRotations(processDocumentId: string): Promise
       );
       return false;
     }
-
-    logger.success('All page rotations deleted successfully', 'pageRotation.service.deleteAllPageRotations', {
-      processDocumentId
-    });
 
     return true;
   } catch (error) {

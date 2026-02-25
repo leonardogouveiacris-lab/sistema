@@ -65,12 +65,6 @@ const ProcessDocumentUpload: React.FC<ProcessDocumentUploadProps> = ({
       return;
     }
 
-    logger.info(
-      `Arquivo selecionado para upload: ${file.name}`,
-      'ProcessDocumentUpload.handleFileSelect',
-      { fileSize: file.size, processId }
-    );
-
     // Faz upload
     const result = await uploadDocument(processId, file);
 
@@ -136,12 +130,6 @@ const ProcessDocumentUpload: React.FC<ProcessDocumentUploadProps> = ({
   const handleDelete = useCallback(async () => {
     if (!document) return;
 
-    logger.info(
-      `Removendo documento: ${document.fileName}`,
-      'ProcessDocumentUpload.handleDelete',
-      { documentId: document.id, processId }
-    );
-
     const success = await deleteDocument(processId);
 
     if (success && onDeleteSuccess) {
@@ -154,12 +142,6 @@ const ProcessDocumentUpload: React.FC<ProcessDocumentUploadProps> = ({
    */
   const handleOpenViewer = useCallback(() => {
     if (!document) return;
-
-    logger.info(
-      `Abrindo visualizador para documento: ${document.fileName}`,
-      'ProcessDocumentUpload.handleOpenViewer',
-      { documentId: document.id }
-    );
 
     openViewer(document);
   }, [document, openViewer]);

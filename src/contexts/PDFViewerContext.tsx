@@ -632,17 +632,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     const documents = Array.isArray(documentsOrDocument) ? documentsOrDocument : [documentsOrDocument];
     const operationFlowId = flowId || generateFlowId();
 
-    logger.info('Abrindo visualizador de PDF', 'PDFViewerContext.openViewer', {
-      metadata: createFlowContext({
-        flowId: operationFlowId,
-        entityType: 'pdf-viewer',
-        action: 'open',
-        source: 'PDFViewerContext.openViewer'
-      }),
-      documentCount: documents.length,
-      documentIds: documents.map(document => document.id)
-    });
-
     // Se tiver qualquer highlight pendente/timeout de highlight, cancela ao abrir
     cancelScheduledHighlightClear();
     highlightClearTokenRef.current++;
@@ -681,8 +670,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    * Fecha o visualizador
    */
   const closeViewer = useCallback(() => {
-    logger.info('Fechando visualizador de PDF', 'PDFViewerContext.closeViewer');
-
     cancelScheduledHighlightClear();
     highlightClearTokenRef.current++;
 
@@ -775,7 +762,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const toggleMinimize = useCallback(() => {
     setState(prev => {
       const next = !prev.isMinimized;
-      logger.info(`Visualizador ${next ? 'minimizado' : 'expandido'}`, 'PDFViewerContext.toggleMinimize');
       return { ...prev, isMinimized: next };
     });
   }, []);
@@ -917,9 +903,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       };
     });
 
-    if (text) {
-      logger.info(`Texto selecionado (${text.length} caracteres)`, 'PDFViewerContext.setSelectedText', { hasPosition: !!position });
-    }
   }, []);
 
   /**
@@ -960,8 +943,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     } catch (error) {
       logger.errorWithException('Erro ao salvar modo de visualização', error as Error, 'PDFViewerContext.setViewMode');
     }
-
-    logger.info(`Modo de visualização alterado para: ${mode}`, 'PDFViewerContext.setViewMode');
   }, []);
 
   /**
@@ -977,9 +958,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       } catch (error) {
         logger.errorWithException('Erro ao salvar modo de visualização', error as Error, 'PDFViewerContext.toggleViewMode');
       }
-
-      logger.info(`Modo de visualização alternado para: ${newMode}`, 'PDFViewerContext.toggleViewMode');
-
       return { ...prev, viewMode: newMode };
     });
   }, []);
@@ -1000,20 +978,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       }));
 
       scheduleHighlightedPageClear(3000);
-
-      logger.info('Navegando para página com highlight temporário', 'PDFViewerContext.navigateToPageWithHighlight', {
-        metadata: createFlowContext({
-          flowId: operationFlowId,
-          entityType: 'pdf-page',
-          entityId: String(page),
-          action: 'navigate-with-highlight',
-          source: 'PDFViewerContext.navigateToPageWithHighlight'
-        }),
-        page,
-        recordId: recordId || null,
-        deduplicatedNavigationPath: true,
-        navigationPrimaryTransition: 'context-goToPage'
-      });
     },
     [goToPage, scheduleHighlightedPageClear]
   );
@@ -1023,7 +987,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    */
   const setSidebarTab = useCallback((tab: SidebarTab) => {
     setState(prev => ({ ...prev, sidebarTab: tab }));
-    logger.info(`Sidebar tab alterada para: ${tab}`, 'PDFViewerContext.setSidebarTab');
   }, []);
 
   /**
@@ -1031,7 +994,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    */
   const setFormMode = useCallback((mode: FormMode) => {
     setState(prev => ({ ...prev, formMode: mode }));
-    logger.info(`Form mode alterado para: ${mode}`, 'PDFViewerContext.setFormMode');
   }, []);
 
   /**
@@ -1044,8 +1006,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'create-decision',
       editingRecordId: null
     }));
-
-    logger.info(`Iniciando criação de decisão na página ${state.currentPage}`, 'PDFViewerContext.startCreateDecision');
   }, [state.currentPage]);
 
   /**
@@ -1058,8 +1018,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'create-verba',
       editingRecordId: null
     }));
-
-    logger.info(`Iniciando criação de verba na página ${state.currentPage}`, 'PDFViewerContext.startCreateVerba');
   }, [state.currentPage]);
 
   /**
@@ -1072,8 +1030,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'edit-decision',
       editingRecordId: decisionId
     }));
-
-    logger.info(`Iniciando edição de decisão: ${decisionId}`, 'PDFViewerContext.startEditDecision');
   }, []);
 
   /**
@@ -1086,8 +1042,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'edit-verba',
       editingRecordId: lancamentoId
     }));
-
-    logger.info(`Iniciando edição de lançamento: ${lancamentoId}`, 'PDFViewerContext.startEditVerba');
   }, []);
 
   /**
@@ -1100,8 +1054,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'create-documento',
       editingRecordId: null
     }));
-
-    logger.info(`Iniciando criação de documento na página ${state.currentPage}`, 'PDFViewerContext.startCreateDocumento');
   }, [state.currentPage]);
 
   /**
@@ -1114,8 +1066,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'edit-documento',
       editingRecordId: documentoId
     }));
-
-    logger.info(`Iniciando edição de documento: ${documentoId}`, 'PDFViewerContext.startEditDocumento');
   }, []);
 
   /**
@@ -1128,8 +1078,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'create-documento-lancamento',
       editingRecordId: null
     }));
-
-    logger.info(`Iniciando criação de lançamento de documento na página ${state.currentPage}`, 'PDFViewerContext.startCreateDocumentoLancamento');
   }, [state.currentPage]);
 
   /**
@@ -1142,8 +1090,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'edit-documento-lancamento',
       editingRecordId: documentoId
     }));
-
-    logger.info(`Iniciando edição de lançamento de documento: ${documentoId}`, 'PDFViewerContext.startEditDocumentoLancamento');
   }, []);
 
   /**
@@ -1155,8 +1101,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'view',
       editingRecordId: null
     }));
-
-    logger.info('Formulário cancelado, voltando para modo view', 'PDFViewerContext.cancelForm');
   }, []);
 
   /**
@@ -1165,8 +1109,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const registerEditor = useCallback(
     (field: InsertionField, ref: EditorRef) => {
       editorRefs.set(field, ref);
-
-      logger.info(`Editor registrado: ${field}`, 'PDFViewerContext.registerEditor');
     },
     [editorRefs]
   );
@@ -1177,8 +1119,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const unregisterEditor = useCallback(
     (field: InsertionField) => {
       editorRefs.delete(field);
-
-      logger.info(`Editor removido do registro: ${field}`, 'PDFViewerContext.unregisterEditor');
     },
     [editorRefs]
   );
@@ -1198,9 +1138,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       try {
         editorRef.insertText(text);
         editorRef.focus();
-
-        logger.success(`Texto inserido no campo ${field} (${text.length} caracteres)`, 'PDFViewerContext.insertTextInField');
-
         return true;
       } catch (error) {
         logger.errorWithException(`Erro ao inserir texto no campo ${field}`, error as Error, 'PDFViewerContext.insertTextInField');
@@ -1215,14 +1152,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    */
   const setBookmarks = useCallback((bookmarks: PDFBookmark[]) => {
     setState(prev => ({ ...prev, bookmarks }));
-    const topLevel = bookmarks.length;
-    const totalRecursive = countTotalBookmarks(bookmarks);
-
-    logger.info(
-      `Bookmarks carregados: topLevel=${topLevel}, totalRecursive=${totalRecursive}`,
-      'PDFViewerContext.setBookmarks',
-      { topLevel, totalRecursive }
-    );
   }, []);
 
   const setBookmarkStatusByDoc = useCallback((documentId: string, status: BookmarkLoadStatus) => {
@@ -1278,8 +1207,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       } catch (error) {
         logger.errorWithException('Erro ao salvar visibilidade do painel de bookmarks', error as Error, 'PDFViewerContext.toggleBookmarkPanel');
       }
-
-      logger.info(`Painel de bookmarks ${newVisible ? 'exibido' : 'ocultado'}`, 'PDFViewerContext.toggleBookmarkPanel');
 
       return { ...prev, isBookmarkPanelVisible: newVisible };
     });
@@ -1351,7 +1278,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
   const setComments = useCallback((comments: PDFComment[]) => {
     setState(prev => ({ ...prev, comments }));
-    logger.info(`Comentários carregados: ${comments.length} items`, 'PDFViewerContext.setComments');
   }, []);
 
   const addComment = useCallback((comment: PDFComment) => {
@@ -1359,7 +1285,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       ...prev,
       comments: [...prev.comments, comment]
     }));
-    logger.info(`Comentário adicionado na página ${comment.pageNumber}`, 'PDFViewerContext.addComment', { commentId: comment.id });
   }, []);
 
   const updateComment = useCallback((commentId: string, updates: Partial<PDFComment>) => {
@@ -1375,13 +1300,11 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       comments: prev.comments.filter(c => c.id !== commentId),
       selectedCommentId: prev.selectedCommentId === commentId ? null : prev.selectedCommentId
     }));
-    logger.info(`Comentário removido: ${commentId}`, 'PDFViewerContext.removeComment');
   }, []);
 
   const toggleCommentMode = useCallback(() => {
     setState(prev => {
       const newActive = !prev.isCommentModeActive;
-      logger.info(`Modo comentário ${newActive ? 'ativado' : 'desativado'}`, 'PDFViewerContext.toggleCommentMode');
       return {
         ...prev,
         isCommentModeActive: newActive,
@@ -1404,7 +1327,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
   const setSelectedCommentColor = useCallback((color: CommentColor) => {
     setState(prev => ({ ...prev, selectedCommentColor: color }));
-    logger.info(`Cor de comentário selecionada: ${color}`, 'PDFViewerContext.setSelectedCommentColor');
   }, []);
 
   const commentsByPageIndex = useMemo(() => {
@@ -1432,7 +1354,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       ...prev,
       comments: prev.comments.map(c => (c.id === commentId ? { ...c, connectors: [...(c.connectors || []), connector] } : c))
     }));
-    logger.info(`Conector adicionado ao comentário ${commentId}`, 'PDFViewerContext.addConnectorToComment', { connectorId: connector.id, type: connector.connectorType });
   }, []);
 
   const updateConnectorInComment = useCallback((commentId: string, connectorId: string, updates: Partial<PDFCommentConnector>) => {
@@ -1454,7 +1375,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       ...prev,
       comments: prev.comments.map(c => (c.id === commentId ? { ...c, connectors: (c.connectors || []).filter(conn => conn.id !== connectorId) } : c))
     }));
-    logger.info(`Conector removido do comentário ${commentId}`, 'PDFViewerContext.removeConnectorFromComment', { connectorId });
   }, []);
 
   const setDrawingConnector = useCallback((isDrawing: boolean, type: ConnectorType | null) => {
@@ -1654,7 +1574,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    */
   const setHighlights = useCallback((highlights: PDFHighlight[]) => {
     setState(prev => ({ ...prev, highlights }));
-    logger.info(`Highlights carregados: ${highlights.length} items`, 'PDFViewerContext.setHighlights');
   }, []);
 
   /**
@@ -1665,7 +1584,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       ...prev,
       highlights: [...prev.highlights, highlight]
     }));
-    logger.info(`Highlight adicionado na página ${highlight.pageNumber}`, 'PDFViewerContext.addHighlight', { highlightId: highlight.id, color: highlight.color });
   }, []);
 
   /**
@@ -1676,7 +1594,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       ...prev,
       highlights: prev.highlights.filter(h => h.id !== highlightId)
     }));
-    logger.info(`Highlight removido: ${highlightId}`, 'PDFViewerContext.removeHighlight');
   }, []);
 
   /**
@@ -1687,7 +1604,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       ...prev,
       highlights: prev.highlights.map(h => (h.id === highlightId ? { ...h, color } : h))
     }));
-    logger.info(`Cor do highlight atualizada: ${highlightId} -> ${color}`, 'PDFViewerContext.updateHighlightColor');
   }, []);
 
   /**
@@ -1696,7 +1612,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const toggleHighlighter = useCallback(() => {
     setState(prev => {
       const newActive = !prev.isHighlighterActive;
-      logger.info(`Modo highlighter ${newActive ? 'ativado' : 'desativado'}`, 'PDFViewerContext.toggleHighlighter');
       return { ...prev, isHighlighterActive: newActive };
     });
   }, []);
@@ -1713,7 +1628,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    */
   const setSelectedHighlightColor = useCallback((color: HighlightColor) => {
     setState(prev => ({ ...prev, selectedHighlightColor: color }));
-    logger.info(`Cor de highlight selecionada: ${color}`, 'PDFViewerContext.setSelectedHighlightColor');
   }, []);
 
   /**
@@ -1748,7 +1662,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    */
   const setSelectedHighlightIds = useCallback((highlightIds: string[]) => {
     setState(prev => ({ ...prev, selectedHighlightIds: highlightIds }));
-    logger.info(`Highlights selecionados: ${highlightIds.length > 0 ? highlightIds.join(', ') : 'none'}`, 'PDFViewerContext.setSelectedHighlightIds');
   }, []);
 
   /**
@@ -1759,7 +1672,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       ...prev,
       highlightIdsToLink: [...prev.highlightIdsToLink, highlightId]
     }));
-    logger.info(`Highlight ID adicionado para vincular: ${highlightId}`, 'PDFViewerContext.addHighlightIdToLink');
   }, []);
 
   /**
@@ -1767,7 +1679,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    */
   const clearHighlightIdsToLink = useCallback(() => {
     setState(prev => ({ ...prev, highlightIdsToLink: [] }));
-    logger.info('Highlight IDs para vincular limpos', 'PDFViewerContext.clearHighlightIdsToLink');
   }, []);
 
   /**
@@ -1776,12 +1687,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const scrollToMultipleHighlights = useCallback(
     (highlightIds: string[], pageNumber?: number) => {
       if (highlightIds.length === 0) {
-        logger.warn(
-          'Nenhum highlight ID fornecido para navegação',
-          'PDFViewerContext.scrollToMultipleHighlights'
-        );
         if (pageNumber) {
-          logger.info(`Fallback: navegando diretamente para página ${pageNumber}`, 'PDFViewerContext.scrollToMultipleHighlights');
           setState(prev => ({
             ...prev,
             currentPage: pageNumber,
@@ -1795,12 +1701,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       const relevantHighlights = state.highlights.filter(h => highlightIds.includes(h.id));
 
       if (relevantHighlights.length === 0) {
-        logger.warn(
-          'Nenhum highlight encontrado para os IDs fornecidos',
-          'PDFViewerContext.scrollToMultipleHighlights'
-        );
         if (pageNumber) {
-          logger.info(`Fallback: navegando diretamente para página ${pageNumber}`, 'PDFViewerContext.scrollToMultipleHighlights');
           setState(prev => ({
             ...prev,
             currentPage: pageNumber,
@@ -1820,11 +1721,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
       const sortedPages = Array.from(highlightsByPage.keys()).sort((a, b) => a - b);
 
-      logger.info(`Navegando para ${highlightIds.length} highlights em ${sortedPages.length} página(s)`, 'PDFViewerContext.scrollToMultipleHighlights', {
-        highlightIds,
-        pages: sortedPages
-      });
-
       const PAGE_RENDER_DELAY = 500;
       const HIGHLIGHT_BLINK_TIME = 2500;
 
@@ -1835,16 +1731,11 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
             selectedHighlightIds: [],
             highlightedPage: null
           }));
-          logger.success('Navegação sequencial de highlights concluída', 'PDFViewerContext.scrollToMultipleHighlights');
           return;
         }
 
         const targetPage = sortedPages[pageIndex];
         const pageHighlightIds = highlightsByPage.get(targetPage) || [];
-
-        logger.info(`Navegando para página ${targetPage} (${pageIndex + 1}/${sortedPages.length})`, 'PDFViewerContext.scrollToMultipleHighlights', {
-          pageHighlightIds
-        });
 
         setState(prev => ({
           ...prev,
@@ -1868,7 +1759,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
                 behavior: 'smooth',
                 block: 'center'
               });
-              logger.info(`Scroll para highlight ${firstHighlightOnPage} na página ${targetPage}`, 'PDFViewerContext.scrollToMultipleHighlights');
             }
           }, 200);
 
@@ -1885,7 +1775,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
   const openSearch = useCallback(() => {
     setState(prev => ({ ...prev, isSearchOpen: true }));
-    logger.info('Search panel opened', 'PDFViewerContext.openSearch');
   }, []);
 
   const closeSearch = useCallback(() => {
@@ -1903,7 +1792,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       isSearching: false,
       highlightedPage: null
     }));
-    logger.info('Search panel closed', 'PDFViewerContext.closeSearch');
   }, [cancelScheduledHighlightClear]);
 
   const toggleSearch = useCallback(() => {
@@ -2031,7 +1919,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       isSearching: false,
       highlightedPage: null
     }));
-    logger.info('Search cleared', 'PDFViewerContext.clearSearch');
   }, [cancelScheduledHighlightClear]);
 
   const pendingRotationSaves = useRef<Map<number, number>>(new Map());
@@ -2052,7 +1939,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
     try {
       await PageRotationService.upsertPageRotations(currentDoc.id, toSave);
-      logger.info(`Saved ${toSave.length} page rotation(s)`, 'PDFViewerContext.flushPendingRotationSaves');
     } catch (error) {
       logger.errorWithException('Failed to save page rotations', error as Error, 'PDFViewerContext.flushPendingRotationSaves');
     }
@@ -2085,7 +1971,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       try {
         const loadedRotations = await PageRotationService.getPageRotations(currentDoc.id);
         setState(prev => ({ ...prev, pageRotations: loadedRotations, isLoadingRotations: false }));
-        logger.info(`Loaded ${Object.keys(loadedRotations).length} page rotations for document`, 'PDFViewerContext.loadRotations');
       } catch (error) {
         logger.errorWithException('Failed to load page rotations', error as Error, 'PDFViewerContext.loadRotations');
         setState(prev => ({ ...prev, isLoadingRotations: false }));
@@ -2262,7 +2147,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
     try {
       await PageRotationService.deleteAllPageRotations(currentDoc.id);
-      logger.info('All page rotations reset', 'PDFViewerContext.resetAllRotations');
     } catch (error) {
       logger.errorWithException('Failed to reset all page rotations', error as Error, 'PDFViewerContext.resetAllRotations');
     }
@@ -2278,12 +2162,10 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
   const openPageExtractionModal = useCallback(() => {
     setState(prev => ({ ...prev, isPageExtractionModalOpen: true }));
-    logger.info('Page extraction modal opened', 'PDFViewerContext.openPageExtractionModal');
   }, []);
 
   const closePageExtractionModal = useCallback(() => {
     setState(prev => ({ ...prev, isPageExtractionModalOpen: false }));
-    logger.info('Page extraction modal closed', 'PDFViewerContext.closePageExtractionModal');
   }, []);
 
   const hasRotations = Object.keys(state.pageRotations).length > 0;

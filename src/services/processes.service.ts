@@ -111,8 +111,6 @@ export class ProcessesService {
    */
   static async getAll(): Promise<Process[]> {
     try {
-      logger.info('Buscando todos os processos...', 'ProcessesService.getAll');
-
       // Verifica se Supabase está disponível
       if (!supabase) {
         logger.warn('Supabase não configurado, retornando array vazio', 'ProcessesService.getAll');
@@ -129,12 +127,6 @@ export class ProcessesService {
       }
 
       const processes = (data || []).map(this.recordToProcess);
-
-      logger.success(
-        `${processes.length} processos carregados com sucesso`,
-        'ProcessesService.getAll',
-        { count: processes.length }
-      );
 
       return processes;
     } catch (error) {
@@ -156,8 +148,6 @@ export class ProcessesService {
    */
   static async getById(id: string): Promise<Process | null> {
     try {
-      logger.info(`Buscando processo por ID: ${id}`, 'ProcessesService.getById');
-
       if (!supabase) {
         throw new Error('Supabase não configurado');
       }
@@ -179,12 +169,6 @@ export class ProcessesService {
 
       const process = this.recordToProcess(data);
 
-      logger.success(
-        `Processo encontrado: ${process.numeroProcesso}`,
-        'ProcessesService.getById',
-        { id, numeroProcesso: process.numeroProcesso }
-      );
-
       return process;
     } catch (error) {
       logger.errorWithException(
@@ -205,12 +189,6 @@ export class ProcessesService {
    */
   static async create(newProcess: NewProcess): Promise<Process> {
     try {
-      logger.info(
-        `Criando novo processo: ${newProcess.numeroProcesso}`,
-        'ProcessesService.create',
-        { numeroProcesso: newProcess.numeroProcesso, reclamante: newProcess.reclamante }
-      );
-
       if (!supabase) {
         throw new Error('Supabase não configurado');
       }
@@ -245,16 +223,6 @@ export class ProcessesService {
 
       const createdProcess = this.recordToProcess(data);
 
-      logger.success(
-        `Processo criado com sucesso: ${createdProcess.numeroProcesso}`,
-        'ProcessesService.create',
-        {
-          id: createdProcess.id,
-          numeroProcesso: createdProcess.numeroProcesso,
-          reclamante: createdProcess.reclamante
-        }
-      );
-
       return createdProcess;
     } catch (error) {
       logger.errorWithException(
@@ -277,12 +245,6 @@ export class ProcessesService {
    */
   static async update(id: string, updates: Partial<NewProcess>): Promise<Process> {
     try {
-      logger.info(
-        `Atualizando processo: ${id}`,
-        'ProcessesService.update',
-        { id, updates: Object.keys(updates) }
-      );
-
       if (!supabase) {
         throw new Error('Supabase não configurado');
       }
@@ -327,16 +289,6 @@ export class ProcessesService {
 
       const updatedProcess = this.recordToProcess(data);
 
-      logger.success(
-        `Processo atualizado com sucesso: ${updatedProcess.numeroProcesso}`,
-        'ProcessesService.update',
-        {
-          id: updatedProcess.id,
-          numeroProcesso: updatedProcess.numeroProcesso,
-          changedFields: Object.keys(updates)
-        }
-      );
-
       return updatedProcess;
     } catch (error) {
       logger.errorWithException(
@@ -362,8 +314,6 @@ export class ProcessesService {
    */
   static async delete(id: string): Promise<boolean> {
     try {
-      logger.info(`Removendo processo: ${id}`, 'ProcessesService.delete');
-
       // Primeiro, busca o processo para logging
       const existingProcess = await this.getById(id);
       if (!existingProcess) {
@@ -371,12 +321,6 @@ export class ProcessesService {
       }
 
       // ETAPA 1: Remove tipos de verba personalizados criados por este processo
-      logger.info(
-        `Limpando tipos personalizados do processo: ${existingProcess.numeroProcesso}`,
-        'ProcessesService.delete - cleanup custom types',
-        { processId: id }
-      );
-
       if (supabase) {
         const { data: customTypes, error: selectError } = await supabase
           .from('custom_enum_values')
@@ -404,19 +348,7 @@ export class ProcessesService {
                 'ProcessesService.delete - cleanup custom types',
                 { processId: id, tipos: tiposParaRemover }
               );
-            } else {
-              logger.success(
-                `${tiposParaRemover.length} tipos personalizados removidos`,
-                'ProcessesService.delete - cleanup custom types',
-                { processId: id, tiposRemovidos: tiposParaRemover }
-              );
             }
-          } else {
-            logger.info(
-              'Nenhum tipo personalizado encontrado para limpeza',
-              'ProcessesService.delete - cleanup custom types',
-              { processId: id }
-            );
           }
         }
       }
@@ -434,16 +366,6 @@ export class ProcessesService {
       if (error) {
         throw new Error(`Erro ao remover processo: ${error.message}`);
       }
-
-      logger.success(
-        `Processo e tipos personalizados removidos com sucesso: ${existingProcess.numeroProcesso}`,
-        'ProcessesService.delete',
-        {
-          id,
-          numeroProcesso: existingProcess.numeroProcesso,
-          reclamante: existingProcess.reclamante
-        }
-      );
 
       return true;
     } catch (error) {
@@ -472,12 +394,6 @@ export class ProcessesService {
         return await this.getAll();
       }
 
-      logger.info(
-        `Pesquisando processos por: "${searchTerm}"`,
-        'ProcessesService.search',
-        { searchTerm }
-      );
-
       if (!supabase) {
         throw new Error('Supabase não configurado');
       }
@@ -494,12 +410,6 @@ export class ProcessesService {
       }
 
       const processes = (data || []).map(this.recordToProcess);
-
-      logger.success(
-        `Pesquisa concluída: ${processes.length} processos encontrados`,
-        'ProcessesService.search',
-        { searchTerm, count: processes.length }
-      );
 
       return processes;
     } catch (error) {
@@ -570,8 +480,6 @@ export class ProcessesService {
     };
   }> {
     try {
-      logger.info('Calculando estatísticas dos processos...', 'ProcessesService.getStats');
-
       // Data atual e períodos
       const now = new Date();
       const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -608,12 +516,6 @@ export class ProcessesService {
           ultimo_ano: ultimo_ano || 0
         }
       };
-
-      logger.success(
-        'Estatísticas calculadas com sucesso',
-        'ProcessesService.getStats',
-        stats
-      );
 
       return stats;
     } catch (error) {

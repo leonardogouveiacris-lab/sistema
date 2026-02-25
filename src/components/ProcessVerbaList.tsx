@@ -107,16 +107,6 @@ const ProcessVerbaList: React.FC<ProcessVerbaListProps> = ({
   }, [decisions]);
 
   const handleSelectVerba = useCallback((verba: Verba) => {
-    logger.info(
-      `Verba selecionada na visualizacao do processo: ${verba.tipoVerba}`,
-      'ProcessVerbaList - handleSelectVerba',
-      {
-        verbaId: verba.id,
-        tipoVerba: verba.tipoVerba,
-        totalLancamentos: verba.lancamentos.length
-      }
-    );
-
     if (onSelectVerba) {
       onSelectVerba(verba);
     }

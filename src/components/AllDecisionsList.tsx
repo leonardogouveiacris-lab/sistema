@@ -67,12 +67,6 @@ const AllDecisionsList: React.FC<AllDecisionsListProps> = ({
   }, [processes]);
 
   const handleNavigateToProcess = useCallback((process: Process) => {
-    logger.info(
-      `Navegacao para processo a partir da aba de decisoes: ${process.numeroProcesso}`,
-      'AllDecisionsList - handleNavigateToProcess',
-      { processId: process.id, reclamante: process.reclamante }
-    );
-
     if (onSelectProcess) {
       onSelectProcess(process);
     }

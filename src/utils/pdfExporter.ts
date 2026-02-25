@@ -69,16 +69,6 @@ class PDFExporter {
     options: PDFExportOptions = {}
   ): Promise<boolean> {
     try {
-      logger.info(
-        `Iniciando exportação PDF para processo: ${selectedProcess.numeroProcesso}`,
-        'PDFExporter - exportRelatorioPDF',
-        {
-          processId: selectedProcess.id,
-          totalVerbas: verbas.length,
-          totalLancamentos: verbas.reduce((acc, v) => acc + v.lancamentos.length, 0)
-        }
-      );
-
       const verbasDoProcesso = verbas.filter(verba => verba.processId === selectedProcess.id);
       const ultimaAtualizacao = this.calculateLastUpdate(verbasDoProcesso);
       const decisionsDoProcesso = decisions.filter(
@@ -121,12 +111,6 @@ class PDFExporter {
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
       };
 
-      logger.info(
-        `Conteúdo HTML gerado com ${htmlContent.length} caracteres`,
-        'PDFExporter - exportRelatorioPDF',
-        { contentLength: htmlContent.length }
-      );
-
       const element = document.createElement('div');
       element.innerHTML = htmlContent;
 
@@ -148,32 +132,12 @@ class PDFExporter {
 
       document.body.appendChild(element);
 
-      logger.info(
-        `Elemento adicionado ao DOM com ${element.innerHTML.length} caracteres`,
-        'PDFExporter - exportRelatorioPDF',
-        {
-          elementContentLength: element.innerHTML.length,
-          elementWidth: element.offsetWidth,
-          elementHeight: element.offsetHeight
-        }
-      );
-
       await new Promise(resolve => setTimeout(resolve, 200));
 
       try {
         await html2pdf().set(html2pdfOptions).from(element).save();
 
         await new Promise(resolve => setTimeout(resolve, 100));
-
-        logger.success(
-          `Relatório PDF exportado com sucesso: ${fileName}`,
-          'PDFExporter - exportRelatorioPDF',
-          {
-            processNumber: selectedProcess.numeroProcesso,
-            verbasCount: verbasDoProcesso.length,
-            quality
-          }
-        );
 
         return true;
       } finally {

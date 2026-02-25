@@ -112,7 +112,6 @@ export async function cacheDocument(cache: DocumentTextCache): Promise<void> {
       const request = store.put(data);
 
       request.onsuccess = () => {
-        logger.info(`Document ${cache.documentId} cached (${pages.length} pages)`, 'pdfTextCache.cacheDocument');
         resolve();
       };
 
@@ -130,7 +129,6 @@ export async function clearCache(): Promise<void> {
   try {
     const db = await openDB();
     if (!db) {
-      logger.warn('IndexedDB is not available; skipping cache clear', 'pdfTextCache.clearCache');
       return;
     }
     return new Promise((resolve) => {
@@ -138,7 +136,6 @@ export async function clearCache(): Promise<void> {
       const store = transaction.objectStore(STORE_NAME);
       store.clear();
       transaction.oncomplete = () => {
-        logger.info('PDF text cache cleared', 'pdfTextCache.clearCache');
         resolve();
       };
     });
@@ -160,10 +157,6 @@ export async function persistToDatabase(cache: DocumentTextCache): Promise<boole
       .limit(1);
 
     if (existing && existing.length > 0) {
-      logger.info(
-        `Document ${cache.documentId} already persisted to database`,
-        'pdfTextCache.persistToDatabase'
-      );
       return true;
     }
 
@@ -203,10 +196,6 @@ export async function persistToDatabase(cache: DocumentTextCache): Promise<boole
       }
     }
 
-    logger.success(
-      `Persisted ${insertData.length} pages of document ${cache.documentId} to database`,
-      'pdfTextCache.persistToDatabase'
-    );
     return true;
   } catch (error) {
     logger.error('Failed to persist to database', 'pdfTextCache.persistToDatabase', undefined, error);
@@ -238,11 +227,6 @@ export async function loadFromDatabase(documentId: string): Promise<DocumentText
         items: []
       });
     }
-
-    logger.info(
-      `Loaded ${data.length} pages from database for document ${documentId}`,
-      'pdfTextCache.loadFromDatabase'
-    );
 
     return { documentId, pages };
   } catch (error) {

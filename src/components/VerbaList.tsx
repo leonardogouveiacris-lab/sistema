@@ -160,17 +160,6 @@ const VerbaList: React.FC<VerbaListProps> = ({
   const handleEditLancamento = useCallback((verba: Verba, lancamento: VerbaLancamento) => {
     setEditingLancamento({ verba, lancamento });
     setIsModalOpen(true);
-    
-    logger.info(
-      `Iniciando edição do lançamento: ${lancamento.decisaoVinculada} da verba ${verba.tipoVerba}`,
-      'VerbaList - handleEditLancamento',
-      { 
-        verbaId: verba.id,
-        lancamentoId: lancamento.id,
-        tipo: verba.tipoVerba,
-        situacao: lancamento.situacao
-      }
-    );
   }, []);
 
   /**
@@ -179,12 +168,6 @@ const VerbaList: React.FC<VerbaListProps> = ({
   const handleCloseModal = useCallback(() => {
     setIsModalOpen(false);
     setEditingLancamento(null);
-    
-    logger.info(
-      'Modal de edição de lançamento fechado',
-      'VerbaList - handleCloseModal',
-      { previousLancamento: editingLancamento?.lancamento.decisaoVinculada }
-    );
   }, [editingLancamento]);
 
   /**
@@ -201,17 +184,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
         }
       }
       handleCloseModal();
-      
-      logger.success(
-        `Lançamento atualizado com sucesso: ${updatedData.decisaoVinculada || 'Decisão não alterada'}`,
-        'VerbaList - handleSaveLancamento',
-        { 
-          verbaId: editingLancamento.verba.id,
-          lancamentoId: editingLancamento.lancamento.id,
-          updatedFields: Object.keys(updatedData)
-        }
-      );
-      
+
     } catch (error) {
       logger.errorWithException(
         'Falha ao salvar alterações no lançamento',
@@ -235,11 +208,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
    */
   useEffect(() => {
     if (refreshTrigger > 0) {
-      logger.info(
-        'Lista de verbas atualizada por trigger externo',
-        'VerbaList - useEffect',
-        { refreshTrigger, processId }
-      );
+      // Refresh triggered
     }
   }, [refreshTrigger, processId]);
 
@@ -249,29 +218,19 @@ const VerbaList: React.FC<VerbaListProps> = ({
    */
   useEffect(() => {
    const handleVerbasUpdated = async () => {
-      logger.info(
-        '🔄 Lista detectou evento de atualização de verbas - executando refresh',
-        'VerbaList - verbasUpdatedEvent',
-        { processId }
-      );
-      
       // Força recarregamento das verbas do banco
       if (refreshVerbas) {
         try {
           await refreshVerbas();
-          logger.success(
-            '✅ Lista: Verbas recarregadas do banco com sucesso',
-            'VerbaList - verbasUpdatedEvent'
-          );
         } catch (error) {
           logger.errorWithException(
-            '❌ Lista: Erro ao recarregar verbas do banco',
+            'Lista: Erro ao recarregar verbas do banco',
             error as Error,
             'VerbaList - verbasUpdatedEvent'
           );
         }
       }
-      
+
       // Notifica componente pai sobre mudanças
       if (onVerbasUpdated) {
         onVerbasUpdated();
@@ -290,12 +249,6 @@ const VerbaList: React.FC<VerbaListProps> = ({
    * Lida com a seleção de uma verba
    */
   const handleSelectVerba = useCallback((verba: Verba) => {
-    logger.info(
-      `Verba selecionada: ${verba.tipoVerba}`,
-      'VerbaList - handleSelectVerba',
-      { verbaId: verba.id, tipo: verba.tipoVerba }
-    );
-    
     if (onSelectVerba) {
       onSelectVerba(verba);
     }
@@ -308,16 +261,6 @@ const VerbaList: React.FC<VerbaListProps> = ({
     if (onRemoveVerba) {
       onRemoveVerba(verba.id, lancamento.id);
     }
-
-    logger.info(
-      `Lançamento ${lancamento.decisaoVinculada} da verba ${verba.tipoVerba} excluído`,
-      'VerbaList - handleDeleteLancamento',
-      {
-        verbaId: verba.id,
-        lancamentoId: lancamento.id,
-        tipo: verba.tipoVerba
-      }
-    );
   }, [onRemoveVerba]);
 
   /**
@@ -331,11 +274,6 @@ const VerbaList: React.FC<VerbaListProps> = ({
       if (refreshVerbas) {
         await refreshVerbas();
       }
-      logger.success(
-        `Check calculista ${!currentValue ? 'marcado' : 'desmarcado'}`,
-        'VerbaList - handleToggleCalculista',
-        { lancamentoId }
-      );
     } catch (error) {
       logger.errorWithException(
         'Erro ao alternar check calculista',
@@ -366,11 +304,6 @@ const VerbaList: React.FC<VerbaListProps> = ({
       if (refreshVerbas) {
         await refreshVerbas();
       }
-      logger.success(
-        `Check revisor ${!currentValue ? 'marcado' : 'desmarcado'}`,
-        'VerbaList - handleToggleRevisor',
-        { lancamentoId }
-      );
     } catch (error) {
       logger.errorWithException(
         'Erro ao alternar check revisor',
@@ -433,7 +366,6 @@ const VerbaList: React.FC<VerbaListProps> = ({
               onClick={async () => {
                 if (refreshVerbas) {
                   await refreshVerbas();
-                  logger.info('Refresh manual da lista de verbas executado', 'VerbaList - manual refresh');
                 }
               }}
               className="inline-flex items-center space-x-2 px-3 py-2 text-xs font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded hover:bg-gray-200 transition-colors duration-200"

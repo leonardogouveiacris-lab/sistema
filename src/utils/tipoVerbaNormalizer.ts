@@ -70,12 +70,6 @@ export class TipoVerbaNormalizer {
    */
   static normalize(input: string): string {
     try {
-      logger.info(
-        `Normalizando tipo de verba: "${input}"`,
-        'TipoVerbaNormalizer.normalize',
-        { originalInput: input, inputLength: input.length }
-      );
-
       // Etapa 1: Limpeza inicial
       let normalized = input
         .trim()                           // Remove espaços no início e fim
@@ -117,16 +111,6 @@ export class TipoVerbaNormalizer {
 
       // Etapa 4: Correções finais específicas
       normalized = this.applySpecificCorrections(normalized);
-
-      logger.success(
-        `Tipo normalizado: "${input}" → "${normalized}"`,
-        'TipoVerbaNormalizer.normalize',
-        { 
-          originalInput: input, 
-          normalizedOutput: normalized,
-          wordsProcessed: normalizedWords.length
-        }
-      );
 
       return normalized;
 
@@ -230,12 +214,6 @@ export class TipoVerbaNormalizer {
       const normalizedValue = this.normalize(tipoVerba);
       const trimmedInput = tipoVerba.trim();
 
-      logger.info(
-        `Validando tipo de verba: "${tipoVerba}"`,
-        'TipoVerbaNormalizer.validate',
-        { originalInput: tipoVerba, normalizedValue, trimmedInput }
-      );
-
       // Verificação 1: Não pode estar vazio
       if (!trimmedInput) {
         return {
@@ -283,12 +261,6 @@ export class TipoVerbaNormalizer {
         normalizedValue
       };
 
-      logger.success(
-        `Tipo válido após validação: "${normalizedValue}"`,
-        'TipoVerbaNormalizer.validate',
-        { originalInput: tipoVerba, normalizedValue, isValid: true }
-      );
-
       return result;
 
     } catch (error) {
@@ -321,20 +293,8 @@ export class TipoVerbaNormalizer {
   static areEquivalent(tipo1: string, tipo2: string): boolean {
     const normalized1 = this.normalize(tipo1);
     const normalized2 = this.normalize(tipo2);
-    
+
     const areEqual = normalized1 === normalized2;
-    
-    logger.info(
-      `Comparação de tipos: "${tipo1}" vs "${tipo2}" = ${areEqual ? 'equivalentes' : 'diferentes'}`,
-      'TipoVerbaNormalizer.areEquivalent',
-      { 
-        tipo1, 
-        tipo2, 
-        normalized1, 
-        normalized2, 
-        areEqual 
-      }
-    );
 
     return areEqual;
   }
@@ -370,12 +330,6 @@ export class TipoVerbaNormalizer {
       if (trimmed.toLowerCase().includes('dano')) {
         suggestions.push('Exemplo: "Danos Morais"');
       }
-
-      logger.info(
-        `Geradas ${suggestions.length} sugestões para tipo inválido: "${invalidTipo}"`,
-        'TipoVerbaNormalizer.generateSuggestions',
-        { invalidTipo, suggestions }
-      );
 
     } catch (error) {
       logger.errorWithException(
@@ -432,19 +386,6 @@ export class TipoVerbaNormalizer {
     const areEquivalent = normalizedOld === normalizedNew;
     const needsRename = !areEquivalent;
     const isOnlyFormatting = !needsRename && tipoAntigo !== normalizedOld;
-
-    logger.info(
-      `Comparação para renomeação: "${tipoAntigo}" → "${tipoNovo}"`,
-      'TipoVerbaNormalizer.compareForRename',
-      { 
-        tipoAntigo, 
-        tipoNovo, 
-        normalizedOld, 
-        normalizedNew, 
-        needsRename, 
-        isOnlyFormatting 
-      }
-    );
 
     return {
       needsRename,

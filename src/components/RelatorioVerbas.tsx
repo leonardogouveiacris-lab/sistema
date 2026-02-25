@@ -159,9 +159,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
     }
 
     try {
-      logger.info(`Imprimindo: ${selectedProcess.numeroProcesso}`, 'RelatorioVerbas.exportPDF');
       window.print();
-      logger.success('Dialogo de impressao aberto', 'RelatorioVerbas.exportPDF');
     } catch (error) {
       logger.errorWithException('Erro ao imprimir', error as Error, 'RelatorioVerbas.exportPDF');
       toast.error('Erro ao abrir dialogo de impressao.');

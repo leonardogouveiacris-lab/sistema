@@ -76,12 +76,6 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
       return;
     }
 
-    logger.info(
-      `Arquivo selecionado: ${file.name}`,
-      'ProcessDocumentManager.handleFileSelect',
-      { fileSize: file.size, processId }
-    );
-
     setUploadFormData(prev => ({
       ...prev,
       file
@@ -139,12 +133,6 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
       lastModified: uploadFormData.file.lastModified
     });
 
-    logger.info(
-      `Fazendo upload de PDF: ${renamedFile.name}`,
-      'ProcessDocumentManager.handleConfirmUpload',
-      { processId, originalName: uploadFormData.file.name, newName: newFileName }
-    );
-
     const result = await uploadDocument(
       processId,
       renamedFile,
@@ -169,12 +157,6 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
   }, []);
 
   const handleDelete = useCallback(async (document: ProcessDocument) => {
-    logger.info(
-      `Removendo documento: ${document.fileName}`,
-      'ProcessDocumentManager.handleDelete',
-      { documentId: document.id, processId }
-    );
-
     const success = await deleteDocument(processId, document.id);
 
     if (success) {
@@ -187,12 +169,6 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
 
   const handleOpenViewer = useCallback(() => {
     if (!documents || documents.length === 0) return;
-
-    logger.info(
-      `Abrindo visualizador com ${documents.length} documento(s)`,
-      'ProcessDocumentManager.handleOpenViewer',
-      { processId, documentCount: documents.length }
-    );
 
     openViewer(documents);
   }, [documents, openViewer, processId]);

@@ -12,7 +12,6 @@ class DocumentoLancamentoService {
         logger.warn('Supabase client unavailable', 'DocumentoLancamentoService.getByProcessId');
         return [];
       }
-      logger.info(`Fetching document launches for process: ${processId}`, 'DocumentoLancamentoService.getByProcessId');
 
       const { data, error } = await supabase
         .from(this.tableName)
@@ -26,7 +25,6 @@ class DocumentoLancamentoService {
       }
 
       const documentos = (data || []).map(this.mapToDocumentoLancamento);
-      logger.success(`Fetched ${documentos.length} document launches`, 'DocumentoLancamentoService.getByProcessId');
 
       return documentos;
     } catch (error) {
@@ -46,7 +44,6 @@ class DocumentoLancamentoService {
           'DocumentoLancamentoService.create'
         );
       }
-      logger.info(`Creating document launch for process: ${input.processId}`, 'DocumentoLancamentoService.create');
 
       const { data, error } = await supabase
         .from(this.tableName)
@@ -65,7 +62,6 @@ class DocumentoLancamentoService {
       }
 
       const documento = this.mapToDocumentoLancamento(data);
-      logger.success(`Document launch created with ID: ${documento.id}`, 'DocumentoLancamentoService.create');
 
       return documento;
     } catch (error) {
@@ -85,7 +81,6 @@ class DocumentoLancamentoService {
           'DocumentoLancamentoService.update'
         );
       }
-      logger.info(`Updating document launch: ${id}`, 'DocumentoLancamentoService.update');
 
       const updateData: Record<string, unknown> = {};
 
@@ -107,7 +102,6 @@ class DocumentoLancamentoService {
       }
 
       const documento = this.mapToDocumentoLancamento(data);
-      logger.success(`Document launch updated: ${id}`, 'DocumentoLancamentoService.update');
 
       return documento;
     } catch (error) {
@@ -127,7 +121,6 @@ class DocumentoLancamentoService {
           'DocumentoLancamentoService.delete'
         );
       }
-      logger.info(`Deleting document launch: ${id}`, 'DocumentoLancamentoService.delete');
 
       const { error } = await supabase
         .from(this.tableName)
@@ -138,8 +131,6 @@ class DocumentoLancamentoService {
         logger.error(`Error deleting document launch: ${error.message}`, 'DocumentoLancamentoService.delete');
         throw error;
       }
-
-      logger.success(`Document launch deleted: ${id}`, 'DocumentoLancamentoService.delete');
     } catch (error) {
       logger.errorWithException('Failed to delete document launch', error as Error, 'DocumentoLancamentoService.delete');
       throw error;

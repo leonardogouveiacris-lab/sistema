@@ -118,8 +118,6 @@ export class DecisionsService {
    */
   static async getAll(): Promise<Decision[]> {
     try {
-      logger.info('Buscando todas as decisões...', 'DecisionsService.getAll');
-
       // Verifica se Supabase está disponível
       if (!supabase) {
         logger.warn('Supabase não configurado, retornando array vazio', 'DecisionsService.getAll');
@@ -136,12 +134,6 @@ export class DecisionsService {
       }
 
       const decisions = (data || []).map(this.recordToDecision);
-
-      logger.success(
-        `${decisions.length} decisões carregadas com sucesso`,
-        'DecisionsService.getAll',
-        { count: decisions.length }
-      );
 
       return decisions;
     } catch (error) {
@@ -172,8 +164,6 @@ export class DecisionsService {
    */
   static async getById(id: string): Promise<Decision | null> {
     try {
-      logger.info(`Buscando decisão por ID: ${id}`, 'DecisionsService.getById');
-
       const { data, error } = await supabase
         .from('decisions')
         .select('*')
@@ -190,12 +180,6 @@ export class DecisionsService {
       }
 
       const decision = this.recordToDecision(data);
-
-      logger.success(
-        `Decisão encontrada: ${decision.idDecisao}`,
-        'DecisionsService.getById',
-        { id, idDecisao: decision.idDecisao, tipoDecisao: decision.tipoDecisao }
-      );
 
       return decision;
     } catch (error) {
@@ -217,12 +201,6 @@ export class DecisionsService {
    */
   static async getByProcessId(processId: string): Promise<Decision[]> {
     try {
-      logger.info(
-        `Buscando decisões do processo: ${processId}`,
-        'DecisionsService.getByProcessId',
-        { processId }
-      );
-
       const { data, error } = await supabase
         .from('decisions')
         .select('*')
@@ -234,12 +212,6 @@ export class DecisionsService {
       }
 
       const decisions = (data || []).map(this.recordToDecision);
-
-      logger.success(
-        `${decisions.length} decisões encontradas para o processo`,
-        'DecisionsService.getByProcessId',
-        { processId, count: decisions.length }
-      );
 
       return decisions;
     } catch (error) {
@@ -262,16 +234,6 @@ export class DecisionsService {
    */
   static async create(newDecision: NewDecision): Promise<Decision> {
     try {
-      logger.info(
-        `Criando nova decisão: ${newDecision.idDecisao} (${newDecision.tipoDecisao})`,
-        'DecisionsService.create',
-        {
-          idDecisao: newDecision.idDecisao,
-          tipoDecisao: newDecision.tipoDecisao,
-          processId: newDecision.processId
-        }
-      );
-
       const insertData = this.decisionToInsert(newDecision);
 
       const { data, error } = await supabase
@@ -285,27 +247,16 @@ export class DecisionsService {
         if (error.code === '23505' && error.message.includes('decisions_unique_per_process')) {
           throw new Error(`Decisão com ID ${newDecision.idDecisao} já existe neste processo`);
         }
-        
+
         // Tratamento específico para erro de chave estrangeira (processo não existe)
         if (error.code === '23503' && error.message.includes('process_id')) {
           throw new Error(`Processo com ID ${newDecision.processId} não encontrado`);
         }
-        
+
         throw new Error(`Erro ao criar decisão: ${error.message}`);
       }
 
       const createdDecision = this.recordToDecision(data);
-
-      logger.success(
-        `Decisão criada com sucesso: ${createdDecision.idDecisao}`,
-        'DecisionsService.create',
-        {
-          id: createdDecision.id,
-          idDecisao: createdDecision.idDecisao,
-          tipoDecisao: createdDecision.tipoDecisao,
-          processId: createdDecision.processId
-        }
-      );
 
       return createdDecision;
     } catch (error) {
@@ -329,12 +280,6 @@ export class DecisionsService {
    */
   static async update(id: string, updates: Partial<NewDecision>): Promise<Decision> {
     try {
-      logger.info(
-        `Atualizando decisão: ${id}`,
-        'DecisionsService.update',
-        { id, updates: Object.keys(updates) }
-      );
-
       const updateData = this.updatesToRecord(updates);
 
       const { data, error } = await supabase
@@ -348,26 +293,16 @@ export class DecisionsService {
         if (error.code === 'PGRST116') {
           throw new Error(`Decisão com ID ${id} não encontrada`);
         }
-        
+
         // Tratamento específico para erro de duplicata
         if (error.code === '23505' && error.message.includes('decisions_unique_per_process')) {
           throw new Error(`Decisão com ID ${updates.idDecisao} já existe neste processo`);
         }
-        
+
         throw new Error(`Erro ao atualizar decisão: ${error.message}`);
       }
 
       const updatedDecision = this.recordToDecision(data);
-
-      logger.success(
-        `Decisão atualizada com sucesso: ${updatedDecision.idDecisao}`,
-        'DecisionsService.update',
-        {
-          id: updatedDecision.id,
-          idDecisao: updatedDecision.idDecisao,
-          changedFields: Object.keys(updates)
-        }
-      );
 
       return updatedDecision;
     } catch (error) {
@@ -393,8 +328,6 @@ export class DecisionsService {
    */
   static async delete(id: string): Promise<boolean> {
     try {
-      logger.info(`Removendo decisão: ${id}`, 'DecisionsService.delete');
-
       // Primeiro, busca a decisão para logging
       const existingDecision = await this.getById(id);
       if (!existingDecision) {
@@ -409,17 +342,6 @@ export class DecisionsService {
       if (error) {
         throw new Error(`Erro ao remover decisão: ${error.message}`);
       }
-
-      logger.success(
-        `Decisão removida com sucesso: ${existingDecision.idDecisao}`,
-        'DecisionsService.delete',
-        {
-          id,
-          idDecisao: existingDecision.idDecisao,
-          tipoDecisao: existingDecision.tipoDecisao,
-          processId: existingDecision.processId
-        }
-      );
 
       return true;
     } catch (error) {
@@ -449,12 +371,6 @@ export class DecisionsService {
         return processId ? await this.getByProcessId(processId) : await this.getAll();
       }
 
-      logger.info(
-        `Pesquisando decisões por: "${searchTerm}"${processId ? ` no processo: ${processId}` : ''}`,
-        'DecisionsService.search',
-        { searchTerm, processId }
-      );
-
       const sanitized = searchTerm.replace(/[%_,().*]/g, '');
       let query = supabase
         .from('decisions')
@@ -472,12 +388,6 @@ export class DecisionsService {
       }
 
       const decisions = (data || []).map(this.recordToDecision);
-
-      logger.success(
-        `Pesquisa concluída: ${decisions.length} decisões encontradas`,
-        'DecisionsService.search',
-        { searchTerm, processId, count: decisions.length }
-      );
 
       return decisions;
     } catch (error) {
@@ -544,15 +454,9 @@ export class DecisionsService {
     recentes: number;
   }> {
     try {
-      logger.info(
-        `Calculando estatísticas das decisões${processId ? ` para processo: ${processId}` : ''}`,
-        'DecisionsService.getStats',
-        { processId }
-      );
-
       // Monta a query base
       let query = supabase.from('decisions').select('tipo_decisao, situacao, created_at');
-      
+
       if (processId) {
         query = query.eq('process_id', processId);
       }
@@ -580,12 +484,6 @@ export class DecisionsService {
         }, {} as Record<string, number>),
         recentes: decisions.filter(d => new Date(d.created_at) >= oneWeekAgo).length
       };
-
-      logger.success(
-        'Estatísticas de decisões calculadas com sucesso',
-        'DecisionsService.getStats',
-        { processId, stats }
-      );
 
       return stats;
     } catch (error) {

@@ -46,19 +46,7 @@ const triggerTextExtraction = (documentId: string): void => {
   })
     .then(response => response.json())
     .then(result => {
-      if (result.success) {
-        logger.success(
-          `Text extraction completed: ${result.pages_extracted} pages`,
-          'processDocumentService.triggerTextExtraction',
-          { documentId, pagesExtracted: result.pages_extracted }
-        );
-      } else if (result.message) {
-        logger.info(
-          result.message,
-          'processDocumentService.triggerTextExtraction',
-          { documentId }
-        );
-      } else {
+      if (!result.success && result.message) {
         logger.warn(
           'Text extraction returned unexpected result',
           result,
@@ -127,11 +115,6 @@ const validatePublicUrl = (url: string): boolean => {
  */
 export const getDocumentsByProcessId = async (processId: string): Promise<ProcessDocument[]> => {
   try {
-    logger.info(
-      `Buscando documentos do processo: ${processId}`,
-      'processDocumentService.getDocumentsByProcessId'
-    );
-
     const { data, error } = await supabase
       .from('process_documents')
       .select('*')
@@ -141,10 +124,6 @@ export const getDocumentsByProcessId = async (processId: string): Promise<Proces
     if (error) throw error;
 
     if (!data || data.length === 0) {
-      logger.info(
-        `Nenhum documento encontrado para o processo: ${processId}`,
-        'processDocumentService.getDocumentsByProcessId'
-      );
       return [];
     }
 
@@ -170,12 +149,6 @@ export const getDocumentsByProcessId = async (processId: string): Promise<Proces
 
       return document;
     });
-
-    logger.success(
-      `${documents.length} documento(s) encontrado(s): ${documents.map(d => d.displayName).join(', ')}`,
-      'processDocumentService.getDocumentsByProcessId',
-      { processId, count: documents.length }
-    );
 
     return documents;
   } catch (error) {
@@ -233,12 +206,6 @@ export const uploadDocument = async (
   displayName?: string
 ): Promise<DocumentUploadResult> => {
   try {
-    logger.info(
-      `Iniciando upload de documento para processo: ${processId}`,
-      'processDocumentService.uploadDocument',
-      { fileName: file.name, fileSize: file.size }
-    );
-
     // Validação do arquivo
     const validation = DocumentValidation.validateFile(file);
     if (!validation.valid) {
@@ -251,23 +218,12 @@ export const uploadDocument = async (
     // Determina o sequence_order
     const finalSequenceOrder = sequenceOrder || await getNextSequenceOrder(processId);
 
-    logger.info(
-      `Adicionando documento na sequência ${finalSequenceOrder}`,
-      'processDocumentService.uploadDocument',
-      { processId, sequenceOrder: finalSequenceOrder }
-    );
-
     // Gera caminho único para o arquivo
     const timestamp = Date.now();
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filePath = `${processId}/${timestamp}_${sanitizedFileName}`;
 
     // Faz upload do arquivo para o storage
-    logger.info(
-      `Fazendo upload do arquivo: ${filePath}`,
-      'processDocumentService.uploadDocument'
-    );
-
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(DOCUMENT_CONSTANTS.STORAGE_BUCKET)
       .upload(filePath, file, {
@@ -290,17 +246,7 @@ export const uploadDocument = async (
       throw uploadError;
     }
 
-    logger.success(
-      `Arquivo enviado com sucesso para o storage: ${uploadData.path}`,
-      'processDocumentService.uploadDocument'
-    );
-
     // Prepara dados para o banco
-    logger.info(
-      `Criando novo registro do documento no banco`,
-      'processDocumentService.uploadDocument'
-    );
-
     const insertData: Record<string, unknown> = {
       process_id: processId,
       file_name: file.name,
@@ -354,12 +300,6 @@ export const uploadDocument = async (
       throw new Error('URL pública inválida. Verifique a configuração do Supabase Storage.');
     }
 
-    logger.success(
-      `Documento salvo com sucesso: ${document.fileName}`,
-      'processDocumentService.uploadDocument',
-      { documentId: document.id, processId, url: document.url }
-    );
-
     triggerTextExtraction(document.id);
 
     return {
@@ -410,11 +350,6 @@ export const uploadDocument = async (
  */
 export const deleteDocumentById = async (documentId: string): Promise<boolean> => {
   try {
-    logger.info(
-      `Iniciando remoção de documento: ${documentId}`,
-      'processDocumentService.deleteDocumentById'
-    );
-
     // Busca o documento para obter o caminho do arquivo
     const { data: document, error: fetchError } = await supabase
       .from('process_documents')
@@ -434,11 +369,6 @@ export const deleteDocumentById = async (documentId: string): Promise<boolean> =
     }
 
     // Remove o arquivo do storage
-    logger.info(
-      `Removendo arquivo do storage: ${document.file_path}`,
-      'processDocumentService.deleteDocumentById'
-    );
-
     const { error: storageError } = await supabase.storage
       .from(DOCUMENT_CONSTANTS.STORAGE_BUCKET)
       .remove([document.file_path]);
@@ -452,23 +382,12 @@ export const deleteDocumentById = async (documentId: string): Promise<boolean> =
     }
 
     // Remove o registro do banco (trigger automático reordena os restantes)
-    logger.info(
-      `Removendo registro do banco: ${documentId}`,
-      'processDocumentService.deleteDocumentById'
-    );
-
     const { error: dbError } = await supabase
       .from('process_documents')
       .delete()
       .eq('id', documentId);
 
     if (dbError) throw dbError;
-
-    logger.success(
-      `Documento removido com sucesso: ${document.file_name}`,
-      'processDocumentService.deleteDocumentById',
-      { documentId, processId: document.process_id }
-    );
 
     return true;
   } catch (error) {
@@ -508,12 +427,6 @@ export const downloadDocument = async (document: ProcessDocument): Promise<boole
       return false;
     }
 
-    logger.info(
-      `Iniciando download: ${document.displayName}`,
-      'processDocumentService.downloadDocument',
-      { documentId: document.id, url: document.url }
-    );
-
     const response = await fetch(document.url);
 
     if (!response.ok) {
@@ -531,12 +444,6 @@ export const downloadDocument = async (document: ProcessDocument): Promise<boole
     window.document.body.removeChild(link);
 
     window.URL.revokeObjectURL(downloadUrl);
-
-    logger.success(
-      `Download concluído: ${document.displayName}`,
-      'processDocumentService.downloadDocument',
-      { documentId: document.id }
-    );
 
     return true;
   } catch (error) {
@@ -576,12 +483,6 @@ export const saveTemporaryDocument = (processId: string, file: File): void => {
       sessionStorage.setItem(
         DOCUMENT_CONSTANTS.SESSION_STORAGE_KEY,
         JSON.stringify(filtered)
-      );
-
-      logger.info(
-        `Documento salvo temporariamente: ${file.name}`,
-        'processDocumentService.saveTemporaryDocument',
-        { processId }
       );
     };
 
@@ -627,11 +528,6 @@ export const clearTemporaryDocument = (processId: string): void => {
     sessionStorage.setItem(
       DOCUMENT_CONSTANTS.SESSION_STORAGE_KEY,
       JSON.stringify(filtered)
-    );
-
-    logger.info(
-      `Documento temporário removido: ${processId}`,
-      'processDocumentService.clearTemporaryDocument'
     );
   } catch (error) {
     logger.errorWithException(

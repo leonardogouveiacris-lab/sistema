@@ -104,13 +104,8 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
     }
 
     setIsSaving(true);
-    
+
     try {
-      logger.info('Iniciando salvamento de processo', 'ProcessForm', { 
-        numeroProcesso: formData.numeroProcesso,
-        reclamante: formData.reclamante
-      });
-      
       const success = await onSaveProcess(formData);
       
       if (success) {
@@ -118,10 +113,6 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
         setFormData(initialFormData);
         setErrors({});
         setSuccessMessage(SUCCESS_MESSAGES.SAVE_SUCCESS('Processo'));
-        
-        logger.success('Processo salvo com sucesso via formulário', 'ProcessForm', {
-          numeroProcesso: formData.numeroProcesso
-        });
       }
     } catch (error) {
       const friendlyMessage = getUserFriendlyMessage(error);
@@ -148,8 +139,6 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
     setErrors({});
     setSuccessMessage('');
     setGeneralError('');
-    
-    logger.info('Formulário de processo resetado', 'ProcessForm');
   }, [initialFormData]);
 
   /**

@@ -143,16 +143,6 @@ export async function getCommentsWithConnectorsByDocument(
 
 export async function createComment(input: CreateCommentInput, options: LogOptions = {}): Promise<PDFComment> {
   const flowId = options.flowId || generateFlowId();
-  logger.info('Creating comment', 'PDFCommentsService.createComment', {
-    metadata: createFlowContext({
-      flowId,
-      entityType: 'comment',
-      entityId: input.processDocumentId,
-      action: 'create',
-      source: 'PDFCommentsService.createComment'
-    }),
-    pageNumber: input.pageNumber
-  });
 
   if (!supabase) {
     logger.warn('Supabase client unavailable', 'PDFCommentsService.createComment', {
@@ -197,15 +187,6 @@ export async function createComment(input: CreateCommentInput, options: LogOptio
   }
 
   const createdComment = mapCommentFromDB(data);
-  logger.success('Comment created', 'PDFCommentsService.createComment', {
-    metadata: createFlowContext({
-      flowId,
-      entityType: 'comment',
-      entityId: createdComment.id,
-      action: 'create',
-      source: 'PDFCommentsService.createComment'
-    })
-  });
   return createdComment;
 }
 
@@ -275,16 +256,6 @@ export async function getConnectorsByComment(commentId: string): Promise<PDFComm
 
 export async function createConnector(input: CreateConnectorInput, options: LogOptions = {}): Promise<PDFCommentConnector> {
   const flowId = options.flowId || generateFlowId();
-  logger.info('Creating connector', 'PDFCommentsService.createConnector', {
-    metadata: createFlowContext({
-      flowId,
-      entityType: 'connector',
-      entityId: input.commentId,
-      action: 'create',
-      source: 'PDFCommentsService.createConnector'
-    }),
-    connectorType: input.connectorType
-  });
 
   if (!supabase) {
     logger.warn('Supabase client unavailable', 'PDFCommentsService.createConnector', {
@@ -336,15 +307,6 @@ export async function createConnector(input: CreateConnectorInput, options: LogO
   }
 
   const createdConnector = mapConnectorFromDB(data);
-  logger.success('Connector created', 'PDFCommentsService.createConnector', {
-    metadata: createFlowContext({
-      flowId,
-      entityType: 'connector',
-      entityId: createdConnector.id,
-      action: 'create',
-      source: 'PDFCommentsService.createConnector'
-    })
-  });
 
   return createdConnector;
 }

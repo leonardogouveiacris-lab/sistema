@@ -106,13 +106,6 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
       const cacheKey = `combined_${enumType}_${processId || 'global'}`;
       if (enumCache.has(cacheKey)) {
         const cachedValues = enumCache.get(cacheKey)!;
-
-        logger.info(
-          `Valores do enum carregados do cache: ${enumType}`,
-          'useDynamicEnums.getCombinedValues',
-          { enumType, processId, cacheHit: true, totalValues: cachedValues.length }
-        );
-
         return {
           all: Object.freeze(cachedValues),
           predefined: predefinedValues,
@@ -127,18 +120,6 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
       const allValues = Array.from(allValuesSet).sort();
 
       setEnumCache(prev => new Map(prev).set(cacheKey, allValues));
-
-      logger.success(
-        `Valores combinados para ${enumType}: ${predefinedValues.length} predefinidos + ${customValues.length} personalizados = ${allValues.length} total`,
-        'useDynamicEnums.getCombinedValues',
-        {
-          enumType,
-          processId,
-          predefinedCount: predefinedValues.length,
-          customCount: customValues.length,
-          totalCount: allValues.length
-        }
-      );
 
       return {
         all: Object.freeze(allValues),
@@ -185,15 +166,7 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
       const cacheKey = `db_${enumType}_${processId || 'global'}`;
       if (enumCache.has(cacheKey)) {
         const cachedValues = enumCache.get(cacheKey)!;
-
-        logger.info(
-          `Valores do enum carregados do cache (DB): ${enumType}`,
-          'useDynamicEnums.getValuesFromDatabase',
-          { enumType, processId, cacheHit: true, totalValues: cachedValues.length }
-        );
-
         const predefinedValues = await DynamicEnumService.getPredefinedValues(enumType);
-
         return {
           all: Object.freeze(cachedValues),
           predefined: Object.freeze(predefinedValues),
@@ -219,18 +192,6 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
       });
 
       setEnumCache(prev => new Map(prev).set(cacheKey, allValues));
-
-      logger.success(
-        `Valores do banco para ${enumType}: ${predefinedValues.length} predefinidos + ${customValues.length} personalizados = ${allValues.length} total`,
-        'useDynamicEnums.getValuesFromDatabase',
-        {
-          enumType,
-          processId,
-          predefinedCount: predefinedValues.length,
-          customCount: customValues.length,
-          totalCount: allValues.length
-        }
-      );
 
       return {
         all: Object.freeze(allValues),
@@ -278,38 +239,18 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
   ): Promise<AddValueResult> => {
     try {
       setError(null);
-      
-      logger.info(
-        `Adicionando valor personalizado: "${value}" ao enum ${enumType}`,
-        'useDynamicEnums.addCustomValue',
-        { enumType, value, processId }
-      );
-      
-      // Adiciona o valor através do serviço
+
       const result = await DynamicEnumService.addValueToEnum(enumType, value, processId);
-      
+
       if (result.success) {
-        // Invalida cache para forçar recarregamento na próxima consulta
         const cacheKey = `combined_${enumType}`;
         setEnumCache(prev => {
           const newCache = new Map(prev);
           newCache.delete(cacheKey);
           return newCache;
         });
-        
-        logger.success(
-          `Valor personalizado adicionado ao enum: "${result.normalizedValue}"`,
-          'useDynamicEnums.addCustomValue',
-          { 
-            enumType, 
-            originalValue: value, 
-            normalizedValue: result.normalizedValue,
-            wasAlreadyPresent: result.wasAlreadyPresent,
-            processId 
-          }
-        );
       }
-      
+
       return result;
       
     } catch (error) {
@@ -354,45 +295,19 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
     try {
       setError(null);
       
-      // Normaliza o valor para comparação
       const normalizedValue = value.trim();
       if (!normalizedValue) return false;
-      
-      // Se o valor está nos predefinidos, não precisa adicionar
+
       if (predefinedValues.includes(normalizedValue)) {
-        logger.info(
-          `Valor já existe nos predefinidos: "${normalizedValue}"`,
-          'useDynamicEnums.ensureValueExists',
-          { enumType, value: normalizedValue, processId }
-        );
         return true;
       }
-      
-      // Verifica se já existe no enum do banco (considerando contexto do processo)
+
       const existsInEnum = await DynamicEnumService.valueExistsInEnum(enumType, normalizedValue, processId);
       if (existsInEnum) {
-        logger.info(
-          `Valor já existe no enum: "${normalizedValue}"${processId ? ` para processo ${processId}` : ' (global)'}`,
-          'useDynamicEnums.ensureValueExists',
-          { enumType, value: normalizedValue, processId }
-        );
         return true;
       }
-      
-      // Adiciona como valor personalizado
+
       const result = await addCustomValue(enumType, normalizedValue, processId);
-      
-      logger.info(
-        `Valor garantido no enum: "${normalizedValue}" - ${result.success ? 'sucesso' : 'falha'}${processId ? ` para processo ${processId}` : ' (global)'}`,
-        'useDynamicEnums.ensureValueExists',
-        { 
-          enumType, 
-          value: normalizedValue, 
-          success: result.success,
-          message: result.message 
-        }
-      );
-      
       return result.success;
       
     } catch (error) {
@@ -434,20 +349,8 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
       });
 
       DynamicEnumService.clearAllCache();
-
-      logger.info(
-        `Cache do enum ${enumType} invalidado - proxima consulta recarregara do banco`,
-        'useDynamicEnums.refreshEnumValues',
-        { enumType, processId }
-      );
-
     } catch (error) {
-      logger.errorWithException(
-        `Erro ao recarregar enum: ${enumType}`,
-        error as Error,
-        'useDynamicEnums.refreshEnumValues',
-        { enumType, processId }
-      );
+      logger.error(`Erro ao recarregar enum: ${enumType}`, 'useDynamicEnums.refreshEnumValues');
     }
   }, []);
   
@@ -459,25 +362,6 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
   const clearCache = useCallback(() => {
     setEnumCache(new Map());
     DynamicEnumService.clearAllCache();
-    
-    logger.info(
-      'Todo cache de enums dinâmicos limpo pelo hook',
-      'useDynamicEnums.clearCache'
-    );
-  }, []);
-  
-  /**
-   * Effect para limpeza ao desmontar o componente
-   * Não limpa cache automaticamente para permitir reutilização
-   */
-  useEffect(() => {
-    return () => {
-      // Não limpa cache automaticamente - preserva para reutilização
-      logger.info(
-        'Hook useDynamicEnums desmontado, cache preservado',
-        'useDynamicEnums.cleanup'
-      );
-    };
   }, []);
   
   return {

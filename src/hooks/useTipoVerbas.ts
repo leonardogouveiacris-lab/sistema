@@ -71,33 +71,12 @@ export const useTipoVerbas = (processId?: string): UseTipoVerbasReturn => {
       setIsLoading(true);
       setError(null);
 
-      logger.info(
-        `Carregando tipos via hook ${processId ? `para processo ${processId}` : 'globalmente'}`,
-        'useTipoVerbas.carregarTipos',
-        { processId }
-      );
-
-      // Usa o serviço principal para buscar tipos
       const tiposCarregados = await TipoVerbaService.getTiposDistintos(processId);
-      
       setTipos(tiposCarregados);
-
-      logger.success(
-        `${tiposCarregados.length} tipos carregados via hook`,
-        'useTipoVerbas.carregarTipos',
-        { processId, count: tiposCarregados.length }
-      );
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro ao carregar tipos';
       setError(errorMessage);
-
-      logger.errorWithException(
-        'Erro ao carregar tipos via hook',
-        error as Error,
-        'useTipoVerbas.carregarTipos',
-        { processId }
-      );
+      logger.error(errorMessage, 'useTipoVerbas.carregarTipos');
     } finally {
       setIsLoading(false);
     }
@@ -119,32 +98,17 @@ export const useTipoVerbas = (processId?: string): UseTipoVerbasReturn => {
     try {
       setError(null);
 
-      logger.info(
-        `Criando tipo via hook: "${tipo}"`,
-        'useTipoVerbas.criarTipo',
-        { tipo, processId }
-      );
-
-      // Usa o serviço principal para criar
       const resultado = await TipoVerbaService.criarTipo(tipo, processId);
 
       if (resultado.success) {
-        // Recarrega tipos após criar
         await carregarTipos(processId);
       }
 
       return resultado;
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro ao criar tipo';
       setError(errorMessage);
-
-      logger.errorWithException(
-        'Erro ao criar tipo via hook',
-        error as Error,
-        'useTipoVerbas.criarTipo',
-        { tipo, processId }
-      );
+      logger.error(errorMessage, 'useTipoVerbas.criarTipo');
 
       return {
         success: false,
@@ -171,35 +135,19 @@ export const useTipoVerbas = (processId?: string): UseTipoVerbasReturn => {
     try {
       setError(null);
 
-      logger.info(
-        `Renomeando tipo via hook: "${tipoAntigo}" → "${tipoNovo}"`,
-        'useTipoVerbas.renomearTipo',
-        { tipoAntigo, tipoNovo, processId }
-      );
-
-      // Usa o serviço especializado de renomeação
       const resultado = await RenameService.renomearComAnalise(tipoAntigo, tipoNovo, processId);
 
       if (resultado.success) {
-        // Recarrega tipos após renomear
         await carregarTipos(processId);
       } else {
         setError(resultado.message);
       }
 
       return resultado;
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro ao renomear tipo';
       setError(errorMessage);
-
-      logger.errorWithException(
-        'Erro ao renomear tipo via hook',
-        error as Error,
-        'useTipoVerbas.renomearTipo',
-        { tipoAntigo, tipoNovo, processId }
-      );
-
+      logger.error(errorMessage, 'useTipoVerbas.renomearTipo');
       throw error;
     }
   }, [carregarTipos]);
@@ -223,17 +171,7 @@ export const useTipoVerbas = (processId?: string): UseTipoVerbasReturn => {
    * @returns Estatísticas detalhadas
    */
   const obterEstatisticas = useCallback(async (tipo: string): Promise<TipoStats> => {
-    try {
-      return await TipoVerbaService.obterEstatisticas(tipo);
-    } catch (error) {
-      logger.errorWithException(
-        'Erro ao obter estatísticas via hook',
-        error as Error,
-        'useTipoVerbas.obterEstatisticas',
-        { tipo }
-      );
-      throw error;
-    }
+    return await TipoVerbaService.obterEstatisticas(tipo);
   }, []);
 
   /**
@@ -242,7 +180,6 @@ export const useTipoVerbas = (processId?: string): UseTipoVerbasReturn => {
   const forcarRecarregamento = useCallback(async () => {
     TipoVerbaService.limparCache();
     await carregarTipos();
-    logger.info('Recarregamento forçado via hook', 'useTipoVerbas.forcarRecarregamento');
   }, [carregarTipos]);
 
   // ===== INICIALIZAÇÃO =====
@@ -252,26 +189,8 @@ export const useTipoVerbas = (processId?: string): UseTipoVerbasReturn => {
    * Agora carrega tipos já vinculados ao processId se fornecido
    */
   useEffect(() => {
-    const inicializar = async () => {
-      try {
-        logger.info(
-          `Inicializando hook useTipoVerbas${processId ? ` para processo ${processId}` : ' globalmente'}`,
-          'useTipoVerbas.inicializar',
-          { processId }
-        );
-        await carregarTipos(processId);
-      } catch (error) {
-        logger.errorWithException(
-          'Erro na inicialização do hook',
-          error as Error,
-          'useTipoVerbas.inicializar',
-          { processId }
-        );
-      }
-    };
-
-    inicializar();
-  }, [processId, carregarTipos]); // Recarrega quando processId muda
+    carregarTipos(processId);
+  }, [processId, carregarTipos]);
 
   // ===== RETORNO DO HOOK =====
   return {

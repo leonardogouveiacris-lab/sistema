@@ -291,7 +291,6 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
 
     const { data, error } = await runSearch(query);
     if (error) {
-      logger.error('Database search error', 'PDFSearchPopup.fetchDatabaseResults', undefined, error);
       return [];
     }
 
@@ -397,11 +396,6 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
 
       setSearchResults(indexedResults);
       setSearchComplete(true);
-
-      logger.info(
-        `Search: "${query}" - ${indexedResults.length} results (local ${localResults.length})`,
-        'PDFSearchPopup.searchWithFallback'
-      );
     } catch (error) {
       if (abortControllerRef.current?.signal.aborted) {
         return;

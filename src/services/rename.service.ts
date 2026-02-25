@@ -67,12 +67,6 @@ export class RenameService {
     processId?: string
   ): Promise<ImpactAnalysis> {
     try {
-      logger.info(
-        `Analisando impacto: "${tipoAntigo}" → "${tipoNovo}"`,
-        'RenameService.analisarImpacto',
-        { tipoAntigo, tipoNovo, processId }
-      );
-
       // Normaliza ambos os tipos
       const tipoAntigoNorm = TipoVerbaNormalizer.normalize(tipoAntigo);
       const tipoNovoNorm = TipoVerbaNormalizer.normalize(tipoNovo);
@@ -123,12 +117,6 @@ export class RenameService {
         avisos: verbas.length === 0 ? ['Nenhuma verba usa este tipo atualmente'] : undefined
       };
 
-      logger.success(
-        `Análise concluída: ${analise.verbasQueSeramAfetadas} verbas afetadas`,
-        'RenameService.analisarImpacto',
-        { analise }
-      );
-
       return analise;
 
     } catch (error) {
@@ -168,12 +156,6 @@ export class RenameService {
     const inicioExecucao = Date.now();
 
     try {
-      logger.info(
-        `🔄 INICIANDO RENOMEAÇÃO: "${tipoAntigo}" → "${tipoNovo}"`,
-        'RenameService.executarRenomeacao',
-        { tipoAntigo, tipoNovo, processId }
-      );
-
       // Normaliza ambos os tipos
       const tipoAntigoNorm = TipoVerbaNormalizer.normalize(tipoAntigo);
       const tipoNovoNorm = TipoVerbaNormalizer.normalize(tipoNovo);
@@ -190,12 +172,6 @@ export class RenameService {
       }
 
       // === ETAPA 1: ATUALIZA TABELA VERBAS ===
-      logger.info(
-        `💾 Atualizando tabela verbas: "${tipoAntigoNorm}" → "${tipoNovoNorm}"`,
-        'RenameService.executarRenomeacao',
-        { operacao: 'UPDATE verbas' }
-      );
-
       let queryVerbas = supabase
         .from('verbas')
         .update({ tipo_verba: tipoNovoNorm })
@@ -214,19 +190,7 @@ export class RenameService {
       const verbas = verbasAtualizadas || [];
       const processosUnicos = new Set(verbas.map(v => v.process_id));
 
-      logger.success(
-        `✅ Tabela verbas atualizada: ${verbas.length} registros`,
-        'RenameService.executarRenomeacao',
-        { verbasAtualizadas: verbas.length }
-      );
-
       // === ETAPA 2: ATUALIZA TABELA CUSTOM_ENUM_VALUES ===
-      logger.info(
-        `💾 Atualizando tabela custom_enum_values${processId ? ' para processo específico' : ' valores globais'}`,
-        'RenameService.executarRenomeacao',
-        { operacao: 'UPDATE custom_enum_values', processId }
-      );
-
       let queryCustom;
       if (processId) {
         // Atualiza apenas valores específicos do processo
@@ -255,11 +219,6 @@ export class RenameService {
           { erro: erroCustom }
         );
         // Não falha a operação se custom_enum_values não conseguir atualizar
-      } else {
-        logger.success(
-          `✅ Tabela custom_enum_values atualizada`,
-          'RenameService.executarRenomeacao'
-        );
       }
 
       // === ETAPA 3: LIMPA CACHES ===
@@ -280,19 +239,13 @@ export class RenameService {
         tempoExecucaoMs: tempoExecucao
       };
 
-      logger.success(
-        `🎉 RENOMEAÇÃO CONCLUÍDA em ${tempoExecucao}ms`,
-        'RenameService.executarRenomeacao',
-        { resultado }
-      );
-
       return resultado;
 
     } catch (error) {
       const tempoExecucao = Date.now() - inicioExecucao;
 
       logger.errorWithException(
-        `💥 ERRO NA RENOMEAÇÃO após ${tempoExecucao}ms`,
+        `Erro na renomeação após ${tempoExecucao}ms`,
         error as Error,
         'RenameService.executarRenomeacao',
         { tipoAntigo, tipoNovo, processId }

@@ -88,12 +88,6 @@ const TipoVerbaManagementModal: React.FC<TipoVerbaManagementModalProps> = ({
     if (isOpen) {
       const initializeModal = async () => {
         try {
-          logger.info(
-            'Inicializando modal de gerenciamento de tipos',
-            'TipoVerbaManagementModal - initialization',
-            { processId }
-          );
-
           // Carrega tipos disponíveis
           await carregarTipos(processId);
           
@@ -129,12 +123,6 @@ const TipoVerbaManagementModal: React.FC<TipoVerbaManagementModalProps> = ({
       // Ordena por total de verbas (mais usados primeiro)
       const sortedStats = stats.sort((a, b) => b.totalVerbas - a.totalVerbas);
       setTipoStats(sortedStats);
-
-      logger.success(
-        `Estatísticas carregadas para ${stats.length} tipos`,
-        'TipoVerbaManagementModal - loadStatsForAllTipos',
-        { tiposCount: stats.length }
-      );
 
     } catch (error) {
       logger.errorWithException(
@@ -181,14 +169,8 @@ const TipoVerbaManagementModal: React.FC<TipoVerbaManagementModalProps> = ({
         setNewTipoName('');
         setActiveTab(ManagementTab.LIST);
         await forcarRecarregamento();
-        
+
         if (onTipoUpdated) onTipoUpdated();
-        
-        logger.success(
-          `Novo tipo criado via modal: "${normalizedName}"`,
-          'TipoVerbaManagementModal - handleCreateTipo',
-          { originalInput: newTipoName, normalizedType: normalizedName, processId }
-        );
       } else {
         setCreateErrors({ name: resultado.message });
       }
@@ -251,12 +233,6 @@ const TipoVerbaManagementModal: React.FC<TipoVerbaManagementModalProps> = ({
       }
 
       // Executa a renomeação usando hook simplificado
-      logger.info(
-        `Executando renomeação confirmada: "${selectedTipoForRename}" → "${normalizedNewName}"`,
-        'TipoVerbaManagementModal.handleRenameTipo',
-        { oldType: selectedTipoForRename, newType: normalizedNewName, processId }
-      );
-
       const result = await renomearTipo(selectedTipoForRename, normalizedNewName, processId);
       
       if (result.success) {
@@ -276,17 +252,6 @@ const TipoVerbaManagementModal: React.FC<TipoVerbaManagementModalProps> = ({
         
         // Feedback para o usuário
         toast.success(`Tipo renomeado com sucesso! ${result.verbasAfetadas} verbas atualizadas.`);
-
-        logger.success(
-          `Renomeação via modal concluída com sucesso`,
-          'TipoVerbaManagementModal.handleRenameTipo',
-          { 
-            oldType: selectedTipoForRename, 
-            newType: normalizedNewName, 
-            processId,
-            result 
-          }
-        );
       } else {
         // Em caso de falha, mostra erro específico
         setRenameErrors({ newName: result.message });

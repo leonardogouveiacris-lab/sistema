@@ -38,11 +38,6 @@ const ProcessList: React.FC<ProcessListProps> = ({ processes, onSelectProcess })
   }, []);
 
   const handleSelectProcess = useCallback((process: Process) => {
-    logger.info(
-      `Processo selecionado: ${process.numeroProcesso}`,
-      'ProcessList',
-      { processId: process.id }
-    );
     onSelectProcess(process);
   }, [onSelectProcess]);
 

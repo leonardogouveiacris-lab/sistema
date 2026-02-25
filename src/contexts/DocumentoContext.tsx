@@ -36,7 +36,6 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
       setError(null);
       const data = await DocumentosService.getAll();
       setDocumentos(data);
-      logger.info('Documentos recarregados do Supabase', 'DocumentoContext - refresh');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao recarregar';
       setError(errorMessage);
@@ -62,7 +61,6 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
         const data = await DocumentosService.getAll();
         completed = true;
         setDocumentos(data);
-        logger.debug(`${data.length} documentos carregados`, 'DocumentoContext');
       } catch (err) {
         completed = true;
         const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';

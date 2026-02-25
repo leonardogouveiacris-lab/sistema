@@ -60,12 +60,6 @@ export class VerbasService {
    */
   private static async touchVerbaUpdatedAt(verbaId: string, processId: string): Promise<void> {
     try {
-      logger.info(
-        `Atualizando timestamp da verba pai: ${verbaId}`,
-        'VerbasService.touchVerbaUpdatedAt',
-        { verbaId, processId }
-      );
-
       // Executa um UPDATE que não altera dados, mas dispara o trigger updated_at
       const { error } = await supabase
         .from('verbas')
@@ -75,12 +69,6 @@ export class VerbasService {
       if (error) {
         throw new Error(`Erro ao atualizar timestamp da verba: ${error.message}`);
       }
-
-      logger.success(
-        `Timestamp da verba pai atualizado com sucesso`,
-        'VerbasService.touchVerbaUpdatedAt',
-        { verbaId }
-      );
     } catch (error) {
       logger.errorWithException(
         `Falha ao atualizar timestamp da verba pai: ${verbaId}`,
@@ -252,8 +240,6 @@ export class VerbasService {
    */
   static async getAll(): Promise<Verba[]> {
     try {
-      logger.info('Buscando todas as verbas com lançamentos...', 'VerbasService.getAll');
-
       // Verifica se Supabase está disponível
       if (!supabase) {
         logger.warn('Supabase não configurado, retornando array vazio', 'VerbasService.getAll');
@@ -281,15 +267,6 @@ export class VerbasService {
         );
       });
 
-      logger.success(
-        `${verbas.length} verbas carregadas com sucesso`,
-        'VerbasService.getAll',
-        { 
-          count: verbas.length,
-          totalLancamentos: verbas.reduce((acc, v) => acc + v.lancamentos.length, 0)
-        }
-      );
-
       return verbas;
     } catch (error) {
       logger.errorWithException(
@@ -310,8 +287,6 @@ export class VerbasService {
    */
   static async getById(id: string): Promise<Verba | null> {
     try {
-      logger.info(`Buscando verba por ID: ${id}`, 'VerbasService.getById');
-
       const { data, error } = await supabase
         .from('verbas')
         .select(`
@@ -336,16 +311,6 @@ export class VerbasService {
         (verba_lancamentos || []) as VerbaLancamentoRecord[]
       );
 
-      logger.success(
-        `Verba encontrada: ${verba.tipoVerba}`,
-        'VerbasService.getById',
-        { 
-          id, 
-          tipoVerba: verba.tipoVerba, 
-          lancamentosCount: verba.lancamentos.length 
-        }
-      );
-
       return verba;
     } catch (error) {
       logger.errorWithException(
@@ -366,12 +331,6 @@ export class VerbasService {
    */
   static async getByProcessId(processId: string): Promise<Verba[]> {
     try {
-      logger.info(
-        `Buscando verbas do processo: ${processId}`,
-        'VerbasService.getByProcessId',
-        { processId }
-      );
-
       const { data, error } = await supabase
         .from('verbas')
         .select(`
@@ -392,16 +351,6 @@ export class VerbasService {
           (verba_lancamentos || []) as VerbaLancamentoRecord[]
         );
       });
-
-      logger.success(
-        `${verbas.length} verbas encontradas para o processo`,
-        'VerbasService.getByProcessId',
-        { 
-          processId, 
-          count: verbas.length,
-          totalLancamentos: verbas.reduce((acc, v) => acc + v.lancamentos.length, 0)
-        }
-      );
 
       return verbas;
     } catch (error) {
@@ -426,28 +375,8 @@ export class VerbasService {
    */
   static async createVerbaComLancamento(novaVerba: NewVerbaComLancamento): Promise<Verba> {
     try {
-      logger.info(
-        `Criando verba com lançamento: ${novaVerba.tipoVerba}`,
-        'VerbasService.createVerbaComLancamento',
-        {
-          tipoVerba: novaVerba.tipoVerba,
-          processId: novaVerba.processId,
-          decisaoVinculada: novaVerba.lancamento.decisaoVinculada
-        }
-      );
-
       // Usa sempre o método manual para garantir compatibilidade
       const verba = await this.createVerbaComLancamentoManual(novaVerba);
-
-      logger.success(
-        `Verba com lançamento criada com sucesso: ${verba.tipoVerba}`,
-        'VerbasService.createVerbaComLancamento',
-        {
-          verbaId: verba.id,
-          tipoVerba: verba.tipoVerba,
-          lancamentosCount: verba.lancamentos.length
-        }
-      );
 
       return verba;
     } catch (error) {
@@ -468,12 +397,6 @@ export class VerbasService {
    * @returns Promise<Verba> - Verba criada ou atualizada
    */
   private static async createVerbaComLancamentoManual(novaVerba: NewVerbaComLancamento): Promise<Verba> {
-    logger.info(
-      'Iniciando criação manual de verba com lançamento',
-      'VerbasService.createVerbaComLancamentoManual',
-      { tipoVerba: novaVerba.tipoVerba, processId: novaVerba.processId, lancamento: novaVerba.lancamento }
-    );
-
     // Verifica se já existe uma verba deste tipo no processo
     const { data: verbaExistente, error: searchError } = await supabase
       .from('verbas')
@@ -497,11 +420,6 @@ export class VerbasService {
     if (verbaExistente) {
       // Usa verba existente
       verbaId = verbaExistente.id;
-      logger.info(
-        'Verba existente encontrada, adicionando lançamento',
-        'VerbasService.createVerbaComLancamentoManual',
-        { verbaId }
-      );
 
       // Atualiza timestamp da verba pai usando função auxiliar
       await this.touchVerbaUpdatedAt(verbaId, novaVerba.processId);
@@ -509,11 +427,6 @@ export class VerbasService {
     } else {
       // Cria nova verba
       const insertVerbaData = this.verbaToInsert(novaVerba.processId, novaVerba.tipoVerba);
-      logger.info(
-        'Criando nova verba',
-        'VerbasService.createVerbaComLancamentoManual',
-        { insertVerbaData }
-      );
 
       const { data: newVerba, error: createVerbaError } = await supabase
         .from('verbas')
@@ -536,20 +449,10 @@ export class VerbasService {
       }
 
       verbaId = newVerba.id;
-      logger.success(
-        'Nova verba criada com sucesso',
-        'VerbasService.createVerbaComLancamentoManual',
-        { verbaId }
-      );
     }
 
     // Cria o lançamento
     const insertLancamentoData = this.lancamentoToInsert(novaVerba.lancamento, verbaId);
-    logger.info(
-      'Criando lançamento da verba',
-      'VerbasService.createVerbaComLancamentoManual',
-      { insertLancamentoData, verbaId }
-    );
 
     const { error: createLancamentoError } = await supabase
       .from('verba_lancamentos')
@@ -564,12 +467,6 @@ export class VerbasService {
       );
       throw new Error(`Erro ao criar lançamento: ${createLancamentoError.message}`);
     }
-
-    logger.success(
-      'Lançamento criado com sucesso',
-      'VerbasService.createVerbaComLancamentoManual',
-      { verbaId, decisaoVinculada: novaVerba.lancamento.decisaoVinculada }
-    );
 
     // Retorna a verba completa
     const verba = await this.getById(verbaId);
@@ -595,12 +492,6 @@ export class VerbasService {
     updates: Partial<NewVerbaLancamento>
   ): Promise<VerbaLancamento> {
     try {
-      logger.info(
-        `Atualizando lançamento: ${lancamentoId} da verba: ${verbaId}`,
-        'VerbasService.updateLancamento',
-        { verbaId, lancamentoId, updates: Object.keys(updates) }
-      );
-
       const updateData = this.lancamentoUpdatesToRecord(updates);
 
       const { data, error } = await supabase
@@ -628,27 +519,10 @@ export class VerbasService {
         .eq('id', verbaId)
         .single();
 
-      if (verbaError) {
-        logger.warn(
-          `Não foi possível buscar process_id da verba para atualizar timestamp: ${verbaError.message}`,
-          'VerbasService.updateLancamento',
-          { verbaId, lancamentoId }
-        );
-      } else {
+      if (!verbaError && verbaData) {
         // Atualiza timestamp da verba pai usando função auxiliar
         await this.touchVerbaUpdatedAt(verbaId, verbaData.process_id);
       }
-
-      logger.success(
-        `Lançamento atualizado com sucesso: ${updatedLancamento.decisaoVinculada}`,
-        'VerbasService.updateLancamento',
-        {
-          lancamentoId: updatedLancamento.id,
-          verbaId,
-          decisaoVinculada: updatedLancamento.decisaoVinculada,
-          changedFields: Object.keys(updates)
-        }
-      );
 
       return updatedLancamento;
     } catch (error) {
@@ -674,11 +548,6 @@ export class VerbasService {
    */
   static async removeLancamento(verbaId: string, lancamentoId: string): Promise<boolean> {
     try {
-      logger.info(
-        `Removendo lançamento: ${lancamentoId} da verba: ${verbaId}`,
-        'VerbasService.removeLancamento'
-      );
-
       const verba = await this.getById(verbaId);
 
       if (!verba) {
@@ -712,17 +581,6 @@ export class VerbasService {
         if (error) {
           throw new Error(`Erro ao remover verba: ${error.message}`);
         }
-
-        logger.success(
-          `Verba "${verba.tipoVerba}" removida (último lançamento)`,
-          'VerbasService.removeLancamento',
-          {
-            verbaId,
-            lancamentoId,
-            tipoVerba: verba.tipoVerba,
-            decisaoVinculada: lancamento.decisaoVinculada
-          }
-        );
       } else {
         const { error } = await supabase
           .from('verba_lancamentos')
@@ -735,17 +593,6 @@ export class VerbasService {
         }
 
         await this.touchVerbaUpdatedAt(verbaId, verba.processId);
-
-        logger.success(
-          `Lançamento removido da verba "${verba.tipoVerba}"`,
-          'VerbasService.removeLancamento',
-          {
-            verbaId,
-            lancamentoId,
-            tipoVerba: verba.tipoVerba,
-            decisaoVinculada: lancamento.decisaoVinculada
-          }
-        );
       }
 
       return true;
@@ -769,8 +616,6 @@ export class VerbasService {
    */
   static async removeVerba(verbaId: string): Promise<boolean> {
     try {
-      logger.info(`Removendo verba completa: ${verbaId}`, 'VerbasService.removeVerba');
-
       // Primeiro, busca a verba para logging
       const verba = await this.getById(verbaId);
       if (!verba) {
@@ -785,16 +630,6 @@ export class VerbasService {
       if (error) {
         throw new Error(`Erro ao remover verba: ${error.message}`);
       }
-
-      logger.success(
-        `Verba "${verba.tipoVerba}" e todos seus lançamentos removidos`,
-        'VerbasService.removeVerba',
-        {
-          verbaId,
-          tipoVerba: verba.tipoVerba,
-          lancamentosCount: verba.lancamentos.length
-        }
-      );
 
       return true;
     } catch (error) {
@@ -823,12 +658,6 @@ export class VerbasService {
     recentes: number;
   }> {
     try {
-      logger.info(
-        `Calculando estatísticas das verbas${processId ? ` para processo: ${processId}` : ''}`,
-        'VerbasService.getStats',
-        { processId }
-      );
-
       // Monta a query para verbas
       let verbaQuery = supabase.from('verbas').select('tipo_verba, created_at');
       if (processId) {
@@ -886,12 +715,6 @@ export class VerbasService {
         recentes: verbas.filter(v => new Date(v.created_at) >= oneWeekAgo).length
       };
 
-      logger.success(
-        'Estatísticas de verbas calculadas com sucesso',
-        'VerbasService.getStats',
-        { processId, stats }
-      );
-
       return stats;
     } catch (error) {
       logger.errorWithException(
@@ -913,11 +736,6 @@ export class VerbasService {
    */
   static async toggleCheckCalculista(lancamentoId: string, checked: boolean): Promise<VerbaLancamento> {
     try {
-      logger.info(
-        `Alternando check calculista: ${lancamentoId} -> ${checked}`,
-        'VerbasService.toggleCheckCalculista'
-      );
-
       const updateData: Record<string, unknown> = {
         check_calculista: checked,
         check_calculista_at: checked ? new Date().toISOString() : null
@@ -941,11 +759,6 @@ export class VerbasService {
 
       const updatedLancamento = this.recordToLancamento(data);
 
-      logger.success(
-        `Check calculista atualizado: ${lancamentoId} -> ${checked}`,
-        'VerbasService.toggleCheckCalculista'
-      );
-
       return updatedLancamento;
     } catch (error) {
       logger.errorWithException(
@@ -966,11 +779,6 @@ export class VerbasService {
    */
   static async toggleCheckRevisor(lancamentoId: string, checked: boolean): Promise<VerbaLancamento> {
     try {
-      logger.info(
-        `Alternando check revisor: ${lancamentoId} -> ${checked}`,
-        'VerbasService.toggleCheckRevisor'
-      );
-
       if (checked) {
         const { data: currentData } = await supabase
           .from('verba_lancamentos')
@@ -999,11 +807,6 @@ export class VerbasService {
 
       const updatedLancamento = this.recordToLancamento(data);
 
-      logger.success(
-        `Check revisor atualizado: ${lancamentoId} -> ${checked}`,
-        'VerbasService.toggleCheckRevisor'
-      );
-
       return updatedLancamento;
     } catch (error) {
       logger.errorWithException(
@@ -1023,11 +826,6 @@ export class VerbasService {
    */
   static async getChecklistStats(processId: string): Promise<ChecklistStats> {
     try {
-      logger.info(
-        `Calculando estatísticas de checklist para processo: ${processId}`,
-        'VerbasService.getChecklistStats'
-      );
-
       const { data, error } = await supabase
         .from('verba_lancamentos')
         .select(`
@@ -1055,12 +853,6 @@ export class VerbasService {
         concluidos,
         percentualConcluido
       };
-
-      logger.success(
-        'Estatísticas de checklist calculadas',
-        'VerbasService.getChecklistStats',
-        { processId, stats }
-      );
 
       return stats;
     } catch (error) {
@@ -1101,12 +893,6 @@ export class VerbasService {
       if (error) {
         throw new Error(`Erro ao atualizar status do processo: ${error.message}`);
       }
-
-      logger.success(
-        `Status de verbas do processo atualizado: ${newStatus}`,
-        'VerbasService.updateProcessVerbaStatus',
-        { processId, newStatus, stats }
-      );
 
       return newStatus;
     } catch (error) {

@@ -66,12 +66,6 @@ const DecisionEditModal: React.FC<DecisionEditModalProps> = ({
         observacoes: decision.observacoes || ''
       });
       setErrors({}); // Limpa erros ao carregar nova decisão
-      
-      logger.info(
-        `Modal de edição aberto para decisão: ${decision.idDecisao}`,
-        'DecisionEditModal - useEffect',
-        { decisionId: decision.id, tipo: decision.tipoDecisao }
-      );
     }
   }, [decision, isOpen]);
 
@@ -120,14 +114,9 @@ const DecisionEditModal: React.FC<DecisionEditModalProps> = ({
 
     if (validateForm()) {
       setIsSaving(true);
-      
+
       try {
         await onSave(decision.id, formData);
-        logger.success(
-          `Decisão "${formData.idDecisao}" editada com sucesso`,
-          'DecisionEditModal - handleSave',
-          { decisionId: decision.id }
-        );
       } catch (error) {
         logger.errorWithException(
           'Falha ao salvar alterações na decisão',
@@ -146,12 +135,6 @@ const DecisionEditModal: React.FC<DecisionEditModalProps> = ({
       onClose();
       return;
     }
-
-    logger.info(
-      'Modal de edição fechado',
-      'DecisionEditModal - handleClose',
-      { decisionId: decision?.id }
-    );
 
     onClose();
   };

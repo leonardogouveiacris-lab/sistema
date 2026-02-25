@@ -136,8 +136,6 @@ export class DocumentosService {
    */
   static async getAll(): Promise<Documento[]> {
     try {
-      logger.info('Buscando todos os documentos...', 'DocumentosService.getAll');
-
       if (!supabase) {
         logger.warn('Supabase não configurado, retornando array vazio', 'DocumentosService.getAll');
         return [];
@@ -153,12 +151,6 @@ export class DocumentosService {
       }
 
       const documentos = (data || []).map(this.recordToDocumento);
-
-      logger.success(
-        `${documentos.length} documentos carregados com sucesso`,
-        'DocumentosService.getAll',
-        { count: documentos.length }
-      );
 
       return documentos;
     } catch (error) {
@@ -188,8 +180,6 @@ export class DocumentosService {
    */
   static async getById(id: string): Promise<Documento | null> {
     try {
-      logger.info(`Buscando documento por ID: ${id}`, 'DocumentosService.getById');
-
       const { data, error } = await supabase
         .from('lancamentos_documentos')
         .select('*')
@@ -206,12 +196,6 @@ export class DocumentosService {
       }
 
       const documento = this.recordToDocumento(data);
-
-      logger.success(
-        `Documento encontrado: ${documento.tipoDocumento}`,
-        'DocumentosService.getById',
-        { id, tipoDocumento: documento.tipoDocumento }
-      );
 
       return documento;
     } catch (error) {
@@ -233,12 +217,6 @@ export class DocumentosService {
    */
   static async getByProcessId(processId: string): Promise<Documento[]> {
     try {
-      logger.info(
-        `Buscando documentos do processo: ${processId}`,
-        'DocumentosService.getByProcessId',
-        { processId }
-      );
-
       const { data, error } = await supabase
         .from('lancamentos_documentos')
         .select('*')
@@ -250,12 +228,6 @@ export class DocumentosService {
       }
 
       const documentos = (data || []).map(this.recordToDocumento);
-
-      logger.success(
-        `${documentos.length} documentos encontrados para o processo`,
-        'DocumentosService.getByProcessId',
-        { processId, count: documentos.length }
-      );
 
       return documentos;
     } catch (error) {
@@ -285,16 +257,6 @@ export class DocumentosService {
       if (!newDocumento.processId || !newDocumento.processId.trim()) {
         throw new Error('ID do processo é obrigatório e não pode estar vazio');
       }
-
-      logger.info(
-        `Criando novo documento: ${newDocumento.tipoDocumento}`,
-        'DocumentosService.create',
-        {
-          tipoDocumento: newDocumento.tipoDocumento,
-          processId: newDocumento.processId,
-          hasPaginaVinculada: !!newDocumento.paginaVinculada
-        }
-      );
 
       if (!supabase) {
         throw new Error('Supabase não configurado. Verifique as variáveis de ambiente.');
@@ -336,16 +298,6 @@ export class DocumentosService {
 
       const createdDocumento = this.recordToDocumento(data);
 
-      logger.success(
-        `Documento criado com sucesso: ${createdDocumento.tipoDocumento}`,
-        'DocumentosService.create',
-        {
-          id: createdDocumento.id,
-          tipoDocumento: createdDocumento.tipoDocumento,
-          processId: createdDocumento.processId
-        }
-      );
-
       return createdDocumento;
     } catch (error) {
       logger.errorWithException(
@@ -368,12 +320,6 @@ export class DocumentosService {
    */
   static async update(id: string, updates: Partial<NewDocumento>): Promise<Documento> {
     try {
-      logger.info(
-        `Atualizando documento: ${id}`,
-        'DocumentosService.update',
-        { id, updates: Object.keys(updates) }
-      );
-
       const updateData = this.updatesToRecord(updates);
 
       const { data, error } = await supabase
@@ -392,16 +338,6 @@ export class DocumentosService {
       }
 
       const updatedDocumento = this.recordToDocumento(data);
-
-      logger.success(
-        `Documento atualizado com sucesso: ${updatedDocumento.tipoDocumento}`,
-        'DocumentosService.update',
-        {
-          id: updatedDocumento.id,
-          tipoDocumento: updatedDocumento.tipoDocumento,
-          changedFields: Object.keys(updates)
-        }
-      );
 
       return updatedDocumento;
     } catch (error) {
@@ -424,8 +360,6 @@ export class DocumentosService {
    */
   static async delete(id: string): Promise<boolean> {
     try {
-      logger.info(`Removendo documento: ${id}`, 'DocumentosService.delete');
-
       const existingDocumento = await this.getById(id);
       if (!existingDocumento) {
         throw new Error(`Documento com ID ${id} não encontrado`);
@@ -439,16 +373,6 @@ export class DocumentosService {
       if (error) {
         throw new Error(`Erro ao remover documento: ${error.message}`);
       }
-
-      logger.success(
-        `Documento removido com sucesso: ${existingDocumento.tipoDocumento}`,
-        'DocumentosService.delete',
-        {
-          id,
-          tipoDocumento: existingDocumento.tipoDocumento,
-          processId: existingDocumento.processId
-        }
-      );
 
       return true;
     } catch (error) {
@@ -478,12 +402,6 @@ export class DocumentosService {
         return processId ? await this.getByProcessId(processId) : await this.getAll();
       }
 
-      logger.info(
-        `Pesquisando documentos por: "${searchTerm}"${processId ? ` no processo: ${processId}` : ''}`,
-        'DocumentosService.search',
-        { searchTerm, processId }
-      );
-
       const sanitized = searchTerm.replace(/[%_,().*]/g, '');
       let query = supabase
         .from('lancamentos_documentos')
@@ -501,12 +419,6 @@ export class DocumentosService {
       }
 
       const documentos = (data || []).map(this.recordToDocumento);
-
-      logger.success(
-        `Pesquisa concluída: ${documentos.length} documentos encontrados`,
-        'DocumentosService.search',
-        { searchTerm, processId, count: documentos.length }
-      );
 
       return documentos;
     } catch (error) {
@@ -534,12 +446,6 @@ export class DocumentosService {
     recentes: number;
   }> {
     try {
-      logger.info(
-        `Calculando estatísticas dos documentos${processId ? ` para processo: ${processId}` : ''}`,
-        'DocumentosService.getStats',
-        { processId }
-      );
-
       let query = supabase.from('lancamentos_documentos').select('tipo_documento, pagina_vinculada, created_at');
 
       if (processId) {
@@ -565,12 +471,6 @@ export class DocumentosService {
         comPaginaVinculada: documentos.filter(d => d.pagina_vinculada !== null).length,
         recentes: documentos.filter(d => new Date(d.created_at) >= oneWeekAgo).length
       };
-
-      logger.success(
-        'Estatísticas de documentos calculadas com sucesso',
-        'DocumentosService.getStats',
-        { processId, stats }
-      );
 
       return stats;
     } catch (error) {

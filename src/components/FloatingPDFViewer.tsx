@@ -559,17 +559,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     pdfDebugEventLastLogAtRef.current.set(throttleKey, now);
-
-    const { page, currentPage, mode, reason, ...extra } = payload;
-
-    logger.debug('PDF diagnostic event', 'FloatingPDFViewer.debug', {
-      event,
-      page: page ?? null,
-      currentPage: currentPage ?? null,
-      mode: mode ?? null,
-      reason: reason ?? 'n/a',
-      ...extra
-    });
   }, []);
 
 
@@ -730,27 +719,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     return Number(sorted[index].toFixed(2));
   }, []);
 
-  const logNavigationLatencySummary = useCallback((flowId: string, source: string) => {
-    const firstUsefulScrollSamples = navigationMetricsSamplesRef.current.firstUsefulScrollMs;
-    const stabilizedSamples = navigationMetricsSamplesRef.current.targetStabilizedMs;
-
-    logger.info('Métricas agregadas de latência de navegação', 'FloatingPDFViewer.navigationMetrics', {
-      flowId,
-      source,
-      sampleSize: {
-        firstUsefulScroll: firstUsefulScrollSamples.length,
-        targetStabilized: stabilizedSamples.length
-      },
-      firstUsefulScrollMs: {
-        p50: getPercentile(firstUsefulScrollSamples, 50),
-        p95: getPercentile(firstUsefulScrollSamples, 95)
-      },
-      targetStabilizedMs: {
-        p50: getPercentile(stabilizedSamples, 50),
-        p95: getPercentile(stabilizedSamples, 95)
-      }
-    });
-  }, [getPercentile]);
+  const logNavigationLatencySummary = useCallback((_flowId: string, _source: string) => {
+    // Metrics logging disabled
+  }, []);
 
   useEffect(() => {
     const originalWarn = console.warn;

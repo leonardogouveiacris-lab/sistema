@@ -76,7 +76,6 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
           setCombinedOptions(result.all);
         }
       } catch (err) {
-        logger.error(`Erro ao carregar valores combinados: ${err}`, 'CustomDropdown.loadCombinedValues');
         if (isMounted) {
           setCombinedOptions(options || []);
         }
@@ -213,7 +212,7 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
       }
       setCombinedOptions(result.all);
     } catch (err) {
-      logger.error(`Erro ao recarregar valores: ${err}`, 'CustomDropdown.reloadCombinedValues');
+      // Error handling
     }
   }, [enumType, options, processId, getCombinedValues, getValuesFromDatabase]);
 
@@ -224,13 +223,9 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
     setIsCreatingCustom(true);
 
     try {
-      logger.info(`Criando novo valor customizado: "${newValue}" para ${enumType}`, 'CustomDropdown.handleCreateCustomValue');
-
       const result = await addCustomValue(enumType, newValue, processId);
 
       if (result.success) {
-        logger.success(`Valor criado com sucesso: "${result.normalizedValue}"`, 'CustomDropdown.handleCreateCustomValue');
-
         setInputValue(result.normalizedValue);
         onChange(result.normalizedValue);
         setCustomInput('');
@@ -245,8 +240,6 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
             logger.error(`Erro ao executar callback onValueCreated: ${callbackError}`, 'CustomDropdown.handleCreateCustomValue');
           }
         }
-      } else {
-        logger.error(`Falha ao criar valor: ${result.message}`, 'CustomDropdown.handleCreateCustomValue');
       }
     } catch (error) {
       logger.errorWithException(

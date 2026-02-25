@@ -32,32 +32,13 @@ export async function extractBookmarksWithDocumentInfo(
   documentInfo: DocumentInfo
 ): Promise<PDFBookmark[]> {
   try {
-    logger.info(
-      `Iniciando extração de bookmarks do documento "${documentInfo.documentName}" (índice ${documentInfo.documentIndex}, offset ${documentInfo.pageOffset})`,
-      'pdfBookmarkExtractor.extractBookmarksWithDocumentInfo'
-    );
-
     const outline = await pdfDocument.getOutline();
 
     if (!outline || outline.length === 0) {
-      logger.info(
-        `Documento "${documentInfo.documentName}" não possui bookmarks`,
-        'pdfBookmarkExtractor.extractBookmarksWithDocumentInfo'
-      );
       return [];
     }
 
-    logger.info(
-      `Encontrados ${outline.length} bookmarks de primeiro nível no documento "${documentInfo.documentName}"`,
-      'pdfBookmarkExtractor.extractBookmarksWithDocumentInfo'
-    );
-
     const bookmarks = await processBookmarkItems(outline, pdfDocument, documentInfo);
-
-    logger.success(
-      `Extração de bookmarks do documento "${documentInfo.documentName}" concluída: ${bookmarks.length} items processados`,
-      'pdfBookmarkExtractor.extractBookmarksWithDocumentInfo'
-    );
 
     return bookmarks;
   } catch (error) {
@@ -318,11 +299,6 @@ export function mergeBookmarksFromMultipleDocuments(
       cumulativeOffset += pageCount;
     }
   }
-
-  logger.info(
-    `Bookmarks mesclados de ${bookmarksByDocument.size} documento(s): ${countTotalBookmarks(mergedBookmarks)} bookmarks totais`,
-    'pdfBookmarkExtractor.mergeBookmarksFromMultipleDocuments'
-  );
 
   return mergedBookmarks;
 }

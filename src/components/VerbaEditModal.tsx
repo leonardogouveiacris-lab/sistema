@@ -105,17 +105,11 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
         fundamentacao: lancamento.fundamentacao || '',
         comentariosCalculistas: lancamento.comentariosCalculistas || ''
       });
-      setErrors({}); // Limpa erros ao carregar novo lançamento
+      setErrors({});
       setIsRenamingTipo(false);
       setNewTipoName('');
-      
-      logger.info(
-        `Modal de edição aberto para lançamento: ${lancamento.decisaoVinculada} da verba ${verba.tipoVerba}`,
-        'VerbaEditModal - useEffect',
-        { verbaId: verba.id, lancamentoId: lancamento.id, tipo: verba.tipoVerba }
-      );
     }
-  }, [lancamento, verba, isOpen]); // Remove carregarTipos da dependência
+  }, [lancamento, verba, isOpen]);
 
   /**
    * Valida se todos os campos obrigatórios estão preenchidos
@@ -155,13 +149,7 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
   const handleStartRenameTipo = useCallback(() => {
     setIsRenamingTipo(true);
     setNewTipoName(verba.tipoVerba);
-    
-    logger.info(
-      `Iniciando renomeação do tipo: "${verba.tipoVerba}"`,
-      'VerbaEditModal - handleStartRenameTipo',
-      { currentType: verba.tipoVerba, verbaId: verba.id }
-    );
-  }, [verba.tipoVerba, verba.id]);
+  }, [verba.tipoVerba]);
 
   /**
    * Handler para cancelar renomeação de tipo
@@ -169,8 +157,6 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
   const handleCancelRenameTipo = useCallback(() => {
     setIsRenamingTipo(false);
     setNewTipoName('');
-    
-    logger.info('Renomeação de tipo cancelada', 'VerbaEditModal - handleCancelRenameTipo');
   }, []);
 
   /**
@@ -178,19 +164,11 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
    */
   const handleExecuteRenameTipo = useCallback(async () => {
     try {
-      logger.info(
-        `🔄 MODAL EDIÇÃO: Iniciando renomeação: "${verba.tipoVerba}" → "${newTipoName}"`,
-        'VerbaEditModal.handleExecuteRenameTipo',
-        { oldType: verba.tipoVerba, newType: newTipoName, processId: verba.processId }
-      );
-
       if (!newTipoName.trim() || newTipoName.trim() === verba.tipoVerba) {
-        logger.warn('MODAL EDIÇÃO: Renomeação cancelada - nome igual ou vazio', 'VerbaEditModal.handleExecuteRenameTipo');
         handleCancelRenameTipo();
         return;
       }
 
-      // Normaliza o novo nome para padrão Title Case
       const normalizedNewName = newTipoName.trim()
         .split(' ')
         .map(word => {
@@ -198,93 +176,41 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
           return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
         })
         .join(' ');
-         
-      // Validação do novo nome
+
       const validation = validarTipo(normalizedNewName);
       if (!validation.isValid) {
-        logger.warn(
-          `MODAL EDIÇÃO: Validação falhou para: "${normalizedNewName}"`,
-          'VerbaEditModal.handleExecuteRenameTipo',
-          { errorMessage: validation.errorMessage }
-        );
         toast.error(validation.errorMessage || 'Nome do tipo invalido');
         return;
       }
 
       setIsSaving(true);
-      
-      // Executa renomeação através do hook simplificado
-      logger.info(
-        `💾 MODAL EDIÇÃO: Executando renomeação via hook`,
-        'VerbaEditModal.handleExecuteRenameTipo',
-        { oldType: verba.tipoVerba, newType: normalizedNewName, processId: verba.processId }
-      );
-      
-      const result = await renomearTipo(verba.tipoVerba, normalizedNewName, verba.processId);
-      
-      if (result.success) {
-        // IMPORTANTE: Força refresh das verbas para mostrar nomes atualizados
-        window.dispatchEvent(new CustomEvent('verbas-updated'));
-        
-        // Força refresh direto das verbas via callback do App.tsx
-        if (onForceRefreshVerbas) {
-          logger.info(
-            `🔄 MODAL EDIÇÃO: Forçando refresh das verbas após rename`,
-            'VerbaEditModal.handleExecuteRenameTipo',
-            { oldType: verba.tipoVerba, newType: normalizedNewName }
-          );
-          
-          await onForceRefreshVerbas();
-          
-          // Aguarda um tick para UI processar
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-          logger.success(
-            `✅ MODAL EDIÇÃO: Refresh forçado concluído`,
-            'VerbaEditModal.handleExecuteRenameTipo'
-          );
-        }
-        
-        // Feedback de sucesso
-        toast.success(`Tipo renomeado com sucesso! ${result.verbasAfetadas} verbas atualizadas.`);
-        
-        await carregarTipos(verba.processId);
-        
-        onClose();
-        
-        logger.success(
-          `✅ MODAL EDIÇÃO: Renomeação concluída via modal de edição`,
-          'VerbaEditModal.handleExecuteRenameTipo',
-          { oldType: verba.tipoVerba, newType: normalizedNewName, result }
-        );
-      } else {
-        // Erro na operação
-        logger.warn(
-          `⚠️ MODAL EDIÇÃO: Renomeação falhou: ${result.message}`,
-          'VerbaEditModal.handleExecuteRenameTipo',
-          { oldType: verba.tipoVerba, newType: normalizedNewName, result }
-        );
 
+      const result = await renomearTipo(verba.tipoVerba, normalizedNewName, verba.processId);
+
+      if (result.success) {
+        window.dispatchEvent(new CustomEvent('verbas-updated'));
+
+        if (onForceRefreshVerbas) {
+          await onForceRefreshVerbas();
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
+        toast.success(`Tipo renomeado com sucesso! ${result.verbasAfetadas} verbas atualizadas.`);
+        await carregarTipos(verba.processId);
+        onClose();
+      } else {
         toast.error(`Erro na renomeacao: ${result.message}`);
       }
-      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-
-      logger.errorWithException(
-        `💥 MODAL EDIÇÃO: Erro crítico ao executar renomeação: "${verba.tipoVerba}" → "${newTipoName}"`,
-        error as Error,
-        'VerbaEditModal - handleExecuteRenameTipo',
-        { oldType: verba.tipoVerba, newType: newTipoName }
-      );
-
+      logger.error(`Erro ao renomear tipo: ${errorMessage}`, 'VerbaEditModal.handleExecuteRenameTipo');
       toast.error(`Erro critico na renomeacao: ${errorMessage}`);
     } finally {
       setIsSaving(false);
       setIsRenamingTipo(false);
       setNewTipoName('');
     }
-  }, [newTipoName, verba.tipoVerba, verba.processId, validarTipo, renomearTipo, carregarTipos, onClose, handleCancelRenameTipo]);
+  }, [newTipoName, verba.tipoVerba, verba.processId, validarTipo, renomearTipo, carregarTipos, onClose, handleCancelRenameTipo, onForceRefreshVerbas, toast]);
 
   /**
    * Processa o salvamento das alterações
@@ -293,36 +219,19 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
   const handleSave = useCallback(async () => {
     if (validateForm()) {
       setIsSaving(true);
-      
       try {
         await onSave(formData);
-        logger.success(
-          `Lançamento "${formData.decisaoVinculada}" editado com sucesso`,
-          'VerbaEditModal - handleSave',
-          { verbaId: verba.id, lancamentoId: lancamento.id }
-        );
       } catch (error) {
-        logger.errorWithException(
-          'Falha ao salvar alterações no lançamento',
-          error as Error,
-          'VerbaEditModal - handleSave',
-          { verbaId: verba.id, lancamentoId: lancamento.id, formData }
-        );
+        logger.error('Falha ao salvar alterações no lançamento', 'VerbaEditModal.handleSave');
       } finally {
         setIsSaving(false);
       }
     }
-  }, [formData, validateForm, onSave, verba, lancamento]);
+  }, [formData, validateForm, onSave]);
 
   const handleClose = useCallback(() => {
-    logger.info(
-      'Modal de edição de lançamento fechado',
-      'VerbaEditModal - handleClose',
-      { verbaId: verba.id, lancamentoId: lancamento.id }
-    );
-
     onClose();
-  }, [verba, lancamento, onClose]);
+  }, [onClose]);
 
   /**
    * Handler para abrir modal de texto expandido

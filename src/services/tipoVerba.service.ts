@@ -74,19 +74,8 @@ export class TipoVerbaService {
       // Verifica cache primeiro
       if (this.cache.has(cacheKey)) {
         const cached = this.cache.get(cacheKey)!;
-        logger.info(
-          `Tipos carregados do cache: ${cached.length} tipos`,
-          'TipoVerbaService.getTiposDistintos',
-          { cacheKey, count: cached.length }
-        );
         return cached;
       }
-
-      logger.info(
-        `Buscando tipos distintos ${processId ? `para processo ${processId}` : 'globalmente'}`,
-        'TipoVerbaService.getTiposDistintos',
-        { processId }
-      );
 
       // Verifica se Supabase está disponível
       if (!supabase) {
@@ -151,19 +140,6 @@ export class TipoVerbaService {
       // Atualiza cache
       this.cache.set(cacheKey, tiposUnicos);
 
-      logger.success(
-        `${tiposUnicos.length} tipos únicos encontrados`,
-        'TipoVerbaService.getTiposDistintos',
-        { 
-          processId, 
-          tiposUsados: tiposUsados.length,
-          tiposGlobais: tiposGlobais.length,
-          tiposDoProcesso: tiposDoProcesso.length,
-          tiposUnicos: tiposUnicos.length,
-          primeiros5: tiposUnicos.slice(0, 5)
-        }
-      );
-
       return tiposUnicos;
 
     } catch (error) {
@@ -195,12 +171,6 @@ export class TipoVerbaService {
     try {
       // Normaliza o tipo usando utilitário especializado
       const tipoNormalizado = TipoVerbaNormalizer.normalize(tipo);
-      
-      logger.info(
-        `Criando tipo personalizado: "${tipoNormalizado}"`,
-        'TipoVerbaService.criarTipo',
-        { tipoOriginal: tipo, tipoNormalizado, processId }
-      );
 
       // Validação usando utilitário especializado
       const validacao = TipoVerbaNormalizer.validate(tipoNormalizado);
@@ -247,12 +217,6 @@ export class TipoVerbaService {
       if (error) {
         if (error.code === '23505') {
           // Duplicata - isso não é realmente um erro
-          logger.info(
-            `Tipo "${tipoNormalizado}" já estava registrado (condição de corrida)`,
-            'TipoVerbaService.criarTipo',
-            { tipoNormalizado, processId }
-          );
-
           return {
             success: true,
             message: `Tipo "${tipoNormalizado}" já estava registrado`,
@@ -273,12 +237,6 @@ export class TipoVerbaService {
         tipo: tipoNormalizado,
         wasAlreadyPresent: false
       };
-
-      logger.success(
-        `Tipo personalizado criado: "${tipoNormalizado}"`,
-        'TipoVerbaService.criarTipo',
-        { resultado, processId }
-      );
 
       return resultado;
 
@@ -334,12 +292,6 @@ export class TipoVerbaService {
   static async obterEstatisticas(tipo: string): Promise<TipoStats> {
     try {
       const tipoNormalizado = TipoVerbaNormalizer.normalize(tipo);
-
-      logger.info(
-        `Calculando estatísticas para tipo: "${tipoNormalizado}"`,
-        'TipoVerbaService.obterEstatisticas',
-        { tipoOriginal: tipo, tipoNormalizado }
-      );
 
       // Verifica se Supabase está disponível
       if (!supabase) {
@@ -413,12 +365,6 @@ export class TipoVerbaService {
         ultimaOcorrencia
       };
 
-      logger.success(
-        `Estatísticas calculadas para "${tipoNormalizado}"`,
-        'TipoVerbaService.obterEstatisticas',
-        { estatisticas }
-      );
-
       return estatisticas;
 
     } catch (error) {
@@ -460,12 +406,6 @@ export class TipoVerbaService {
   static forcarRecarregamento(processId?: string): void {
     const cacheKey = processId || this.GLOBAL_CACHE_KEY;
     this.cache.delete(cacheKey);
-    
-    logger.info(
-      `Cache invalidado para: ${cacheKey}`,
-      'TipoVerbaService.forcarRecarregamento',
-      { processId }
-    );
   }
 
   /**
@@ -473,7 +413,6 @@ export class TipoVerbaService {
    */
   static limparCache(): void {
     this.cache.clear();
-    logger.info('Todo cache de tipos limpo', 'TipoVerbaService.limparCache');
   }
 
   /**
@@ -506,12 +445,6 @@ export class TipoVerbaService {
       }
 
       const estaUsado = (data || []).length > 0;
-
-      logger.info(
-        `Verificação de uso: "${tipoNormalizado}" = ${estaUsado}`,
-        'TipoVerbaService.estaEmUso',
-        { tipo: tipoNormalizado, processId, estaUsado }
-      );
 
       return estaUsado;
 

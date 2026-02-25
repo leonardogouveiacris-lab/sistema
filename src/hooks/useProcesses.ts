@@ -69,40 +69,20 @@ export const useProcesses = () => {
    */
   const loadProcesses = useCallback(async (): Promise<void> => {
     try {
-      logger.info('Iniciando carregamento de processos do Supabase...', 'useProcesses - loadProcesses');
       setError(null);
-      
-      // Busca todos os processos através do serviço
       const data = await ProcessesService.getAll();
-      
-      // Atualiza o estado com os dados carregados
       setProcesses(data);
-      
-      logger.success(
-        `${data.length} processos carregados do Supabase com sucesso`,
-        'useProcesses - loadProcesses',
-        { processCount: data.length }
-      );
-      
     } catch (error) {
-      // Trata especificamente erros de conectividade
       if (error instanceof Error && error.message.includes('Failed to fetch')) {
         setError('Erro de conectividade com Supabase. Verifique sua conexão de rede.');
         setProcesses([]);
-        logger.warn('Falha de conectividade ao carregar processos', 'useProcesses - loadProcesses');
         return;
       }
-      
-      // Em caso de erro, limpa os processos e define mensagem de erro
+
       const errorMessage = error instanceof Error ? error.message : 'Erro ao carregar processos';
       setError(errorMessage);
-      setProcesses([]); // Limpa lista em caso de erro
-      
-      logger.errorWithException(
-        'Falha ao carregar processos do Supabase',
-        error as Error,
-        'useProcesses - loadProcesses'
-      );
+      setProcesses([]);
+      logger.error(errorMessage, 'useProcesses.loadProcesses');
     }
   }, []);
 
@@ -114,54 +94,36 @@ export const useProcesses = () => {
    */
   useEffect(() => {
     const initializeData = async () => {
-      // Timeout de segurança para evitar loading infinito
       const timeoutId = setTimeout(() => {
-        logger.warn('Timeout na inicialização do useProcesses', 'useProcesses - initialization');
         setIsLoading(false);
         setError('Timeout ao carregar processos. Tente recarregar a página.');
-      }, 15000); // 15 segundos de timeout
+      }, 15000);
 
       try {
-        logger.info('Inicializando hook useProcesses...', 'useProcesses - initialization');
-
-        // Testa conectividade com Supabase
         const connected = await testSupabaseConnection();
         setIsConnected(connected);
 
         if (connected) {
-          // Se conectado, carrega os processos
           await loadProcesses();
         } else {
-          // Se não conectado, verifica se é problema de configuração ou conectividade
           if (!isSupabaseAvailable) {
             setError('Supabase não está configurado. Configure as variáveis de ambiente.');
           } else {
             setError('Não foi possível conectar ao Supabase. Verifique suas credenciais e conexão de rede.');
           }
-          // Define lista vazia para permitir navegação da UI
           setProcesses([]);
-          logger.warn('Supabase não disponível durante inicialização', 'useProcesses - initialization');
         }
-
       } catch (error) {
-        // Trata erros específicos de conectividade
         if (error instanceof Error && error.message.includes('Failed to fetch')) {
           setError('Erro de conectividade com Supabase. Verifique sua conexão de rede.');
           setIsConnected(false);
           setProcesses([]);
-          logger.warn('Falha de conectividade durante inicialização', 'useProcesses - initialization');
         } else {
-          // Erro crítico na inicialização
           setError('Erro crítico na inicialização do sistema');
           setProcesses([]);
-          logger.errorWithException(
-            'Erro crítico na inicialização do hook useProcesses',
-            error as Error,
-            'useProcesses - initialization'
-          );
+          logger.error('Erro crítico na inicialização', 'useProcesses.initialization');
         }
       } finally {
-        // Limpa o timeout e sempre para o loading
         clearTimeout(timeoutId);
         setIsLoading(false);
       }
@@ -179,12 +141,11 @@ export const useProcesses = () => {
       clearTimeout(refreshTimeoutRef.current);
     }
     refreshTimeoutRef.current = setTimeout(async () => {
-      logger.info('Realtime: Refreshing processes due to external change', 'useProcesses');
       try {
         const data = await ProcessesService.getAll();
         setProcesses(data);
-      } catch (err) {
-        logger.error('Realtime: Failed to refresh processes', 'useProcesses');
+      } catch (_err) {
+        // Silent fail for realtime refresh
       }
     }, 300);
   }, []);
@@ -205,54 +166,22 @@ export const useProcesses = () => {
 
   const addProcess = useCallback(async (newProcess: NewProcess): Promise<boolean> => {
     try {
-      logger.info(
-        `Iniciando criação de processo: ${newProcess.numeroProcesso}`,
-        'useProcesses - addProcess',
-        { numeroProcesso: newProcess.numeroProcesso, reclamante: newProcess.reclamante }
-      );
-
-      // Validação prévia dos dados usando utilitário centralizado
       const validation = ValidationUtils.validateNewProcess(newProcess);
       if (!validation.isValid) {
-        const errorMessage = `Dados inválidos: ${Object.values(validation.errors).join(', ')}`;
-        setError(errorMessage);
-        logger.warn('Validação de processo falhou', 'useProcesses - addProcess', { errors: validation.errors });
+        setError(`Dados inválidos: ${Object.values(validation.errors).join(', ')}`);
         return false;
       }
 
       isLocalUpdate.current = true;
-      const createdProcess = await ProcessesService.create(newProcess);
-      
-      // Recarregamento completo para garantir sincronização
+      await ProcessesService.create(newProcess);
       await loadProcesses();
-      
-      // Limpa erro e sinaliza sucesso
       setError(null);
 
-      logger.success(
-        `Processo "${createdProcess.numeroProcesso}" criado com sucesso no Supabase`,
-        'useProcesses - addProcess',
-        { 
-          processId: createdProcess.id, 
-          numeroProcesso: createdProcess.numeroProcesso,
-          reclamante: createdProcess.reclamante 
-        }
-      );
-      
       return true;
-      
     } catch (error) {
-      // Tratamento de erro com mensagem amigável
       const errorMessage = error instanceof Error ? error.message : 'Erro ao salvar processo no Supabase';
       setError(errorMessage);
-      
-      logger.errorWithException(
-        'Falha ao criar processo no Supabase',
-        error as Error,
-        'useProcesses - addProcess',
-        { newProcess }
-      );
-      
+      logger.error(errorMessage, 'useProcesses.addProcess');
       return false;
     }
   }, [loadProcesses]);
@@ -271,68 +200,33 @@ export const useProcesses = () => {
    * @returns Promise<boolean> - true se atualizado com sucesso
    */
   const updateProcess = useCallback(async (
-    id: string, 
+    id: string,
     updatedData: Partial<NewProcess>
   ): Promise<boolean> => {
     try {
-      logger.info(
-        `Iniciando atualização de processo: ${id}`,
-        'useProcesses - updateProcess',
-        { processId: id, fieldsToUpdate: Object.keys(updatedData) }
-      );
-
-      // Verifica se o processo existe no estado atual
       const existingProcess = processes.find(p => p.id === id);
       if (!existingProcess) {
-        const errorMessage = `Processo com ID ${id} não encontrado no estado atual`;
-        setError(errorMessage);
-        logger.warn('Processo não encontrado para atualização', 'useProcesses - updateProcess', { id });
+        setError(`Processo com ID ${id} não encontrado no estado atual`);
         return false;
       }
-      
-      // Validação dos dados combinados (existentes + atualizações)
+
       const tempProcess = { ...existingProcess, ...updatedData };
       const validation = ValidationUtils.validateNewProcess(tempProcess);
       if (!validation.isValid) {
-        const errorMessage = `Dados inválidos: ${Object.values(validation.errors).join(', ')}`;
-        setError(errorMessage);
-        logger.warn('Validação de atualização falhou', 'useProcesses - updateProcess', { errors: validation.errors });
+        setError(`Dados inválidos: ${Object.values(validation.errors).join(', ')}`);
         return false;
       }
 
       isLocalUpdate.current = true;
-      const updatedProcess = await ProcessesService.update(id, updatedData);
-      
-      // Recarregamento completo para sincronizar com outras possíveis mudanças
+      await ProcessesService.update(id, updatedData);
       await loadProcesses();
-      
-      // Limpa erro e sinaliza sucesso
       setError(null);
-      
-      logger.success(
-        `Processo "${updatedProcess.numeroProcesso}" atualizado com sucesso no Supabase`,
-        'useProcesses - updateProcess',
-        { 
-          processId: id, 
-          numeroProcesso: updatedProcess.numeroProcesso,
-          changedFields: Object.keys(updatedData) 
-        }
-      );
-      
+
       return true;
-      
     } catch (error) {
-      // Tratamento de erro específico
       const errorMessage = error instanceof Error ? error.message : 'Erro ao atualizar processo no Supabase';
       setError(errorMessage);
-      
-      logger.errorWithException(
-        'Falha ao atualizar processo no Supabase',
-        error as Error,
-        'useProcesses - updateProcess',
-        { id, updatedData }
-      );
-      
+      logger.error(errorMessage, 'useProcesses.updateProcess');
       return false;
     }
   }, [processes, loadProcesses]);
@@ -353,50 +247,22 @@ export const useProcesses = () => {
    */
   const removeProcess = useCallback(async (id: string): Promise<boolean> => {
     try {
-      logger.info(`Iniciando remoção de processo: ${id}`, 'useProcesses - removeProcess');
-
-      // Busca informações do processo para logging (antes da remoção)
       const processToRemove = processes.find(p => p.id === id);
       if (!processToRemove) {
-        const errorMessage = `Processo com ID ${id} não encontrado no estado atual`;
-        setError(errorMessage);
-        logger.warn('Processo não encontrado para remoção', 'useProcesses - removeProcess', { id });
+        setError(`Processo com ID ${id} não encontrado no estado atual`);
         return false;
       }
 
       isLocalUpdate.current = true;
       await ProcessesService.delete(id);
-      
-      // Recarregamento completo para refletir todas as mudanças (incluindo CASCADE)
       await loadProcesses();
-      
-      // Limpa erro e sinaliza sucesso
       setError(null);
-      
-      logger.success(
-        `Processo "${processToRemove.numeroProcesso}" e todos dados relacionados removidos do Supabase`,
-        'useProcesses - removeProcess',
-        { 
-          processId: id, 
-          numeroProcesso: processToRemove.numeroProcesso,
-          reclamante: processToRemove.reclamante
-        }
-      );
-      
+
       return true;
-      
     } catch (error) {
-      // Tratamento de erro com contexto
       const errorMessage = error instanceof Error ? error.message : 'Erro ao remover processo do Supabase';
       setError(errorMessage);
-      
-      logger.errorWithException(
-        'Falha ao remover processo do Supabase',
-        error as Error,
-        'useProcesses - removeProcess',
-        { id }
-      );
-      
+      logger.error(errorMessage, 'useProcesses.removeProcess');
       return false;
     }
   }, [processes, loadProcesses]);
@@ -413,17 +279,7 @@ export const useProcesses = () => {
    * @returns Process encontrado ou undefined se não existir
    */
   const getProcessById = useCallback((id: string): Process | undefined => {
-    const process = processes.find(p => p.id === id);
-    
-    if (process) {
-      logger.info(
-        `Processo encontrado no estado local: ${process.numeroProcesso}`,
-        'useProcesses - getProcessById',
-        { processId: id }
-      );
-    }
-    
-    return process;
+    return processes.find(p => p.id === id);
   }, [processes]);
 
   /**
@@ -437,45 +293,19 @@ export const useProcesses = () => {
    */
   const searchProcesses = useCallback(async (searchTerm: string): Promise<Process[]> => {
     try {
-      logger.info(
-        `Executando busca de processos: "${searchTerm}"`,
-        'useProcesses - searchProcesses',
-        { searchTerm, connectedToSupabase: isConnected }
-      );
-      
-      // Se não há termo de busca, retorna lista atual
       if (!searchTerm.trim()) {
-        logger.info('Termo de busca vazio, retornando lista completa', 'useProcesses - searchProcesses');
         return processes;
       }
-      
-      // Sempre usa busca do Supabase para resultados mais eficientes
+
       setError(null);
-      const results = await ProcessesService.search(searchTerm);
-      
-      logger.success(
-        `Busca concluída: ${results.length} processos encontrados para "${searchTerm}"`,
-        'useProcesses - searchProcesses',
-        { searchTerm, resultsCount: results.length }
-      );
-      
-      return results;
-      
+      return await ProcessesService.search(searchTerm);
     } catch (error) {
-      // Em caso de erro, define mensagem e retorna array vazio
       const errorMessage = error instanceof Error ? error.message : 'Erro na busca de processos';
       setError(errorMessage);
-      
-      logger.errorWithException(
-        'Falha na busca de processos via Supabase',
-        error as Error,
-        'useProcesses - searchProcesses',
-        { searchTerm }
-      );
-      
-      return []; // Retorna lista vazia em caso de erro
+      logger.error(errorMessage, 'useProcesses.searchProcesses');
+      return [];
     }
-  }, [processes, isConnected]);
+  }, [processes]);
 
   // ===== OPERAÇÕES DE BACKUP =====
 
@@ -491,36 +321,18 @@ export const useProcesses = () => {
    */
   const importBackup = useCallback(async (backupData: Process[]): Promise<boolean> => {
     try {
-      logger.info(
-        `Iniciando importação de backup: ${backupData.length} processos`,
-        'useProcesses - importBackup',
-        { totalProcesses: backupData.length }
-      );
-
-      // Validação básica do formato do backup
       if (!Array.isArray(backupData)) {
-        const errorMessage = 'Formato de backup inválido - deve ser um array de processos';
-        setError(errorMessage);
-        logger.warn('Formato de backup inválido', 'useProcesses - importBackup', { dataType: typeof backupData });
+        setError('Formato de backup inválido - deve ser um array de processos');
         return false;
       }
 
       if (backupData.length === 0) {
-        const errorMessage = 'Backup está vazio - nenhum processo para importar';
-        setError(errorMessage);
-        logger.warn('Backup vazio fornecido', 'useProcesses - importBackup');
+        setError('Backup está vazio - nenhum processo para importar');
         return false;
       }
 
-      // Contadores para relatório de importação
-      const importedProcesses: Process[] = [];
-      const skippedProcesses: string[] = [];
-      
-      // Processa cada processo do backup individualmente
       for (let i = 0; i < backupData.length; i++) {
         const processData = backupData[i];
-        
-        // Converte para formato NewProcess (remove campos gerados automaticamente)
         const newProcessData: NewProcess = {
           numeroProcesso: processData.numeroProcesso,
           reclamante: processData.reclamante,
@@ -528,76 +340,28 @@ export const useProcesses = () => {
           observacoesGerais: processData.observacoesGerais || ''
         };
 
-        // Validação individual de cada processo
         const validation = ValidationUtils.validateNewProcess(newProcessData);
         if (!validation.isValid) {
-          const errorMessage = `Processo ${i + 1} (${processData.numeroProcesso}) inválido: ${Object.values(validation.errors).join(', ')}`;
-          setError(errorMessage);
-          logger.warn('Processo inválido no backup', 'useProcesses - importBackup', { 
-            index: i, 
-            numeroProcesso: processData.numeroProcesso, 
-            errors: validation.errors 
-          });
+          setError(`Processo ${i + 1} (${processData.numeroProcesso}) inválido: ${Object.values(validation.errors).join(', ')}`);
           return false;
         }
 
-        // Tentativa de criação no Supabase
         try {
-          const createdProcess = await ProcessesService.create(newProcessData);
-          importedProcesses.push(createdProcess);
-          
-          logger.info(
-            `Processo importado: ${createdProcess.numeroProcesso}`,
-            'useProcesses - importBackup',
-            { index: i, processId: createdProcess.id }
-          );
-          
+          await ProcessesService.create(newProcessData);
         } catch (error) {
-          // Ignora processos duplicados (número já existe)
-          if (error instanceof Error && error.message.includes('já existe')) {
-            skippedProcesses.push(newProcessData.numeroProcesso);
-            logger.info(
-              `Processo duplicado ignorado: ${newProcessData.numeroProcesso}`,
-              'useProcesses - importBackup',
-              { index: i, numeroProcesso: newProcessData.numeroProcesso }
-            );
-          } else {
-            // Para outros tipos de erro, propaga a exceção
+          if (!(error instanceof Error && error.message.includes('já existe'))) {
             throw error;
           }
         }
       }
 
-      // Recarregamento completo após importação para sincronizar
       await loadProcesses();
       setError(null);
-      
-      // Log consolidado do resultado da importação
-      logger.success(
-        `Importação de backup concluída com sucesso`,
-        'useProcesses - importBackup',
-        { 
-          totalInBackup: backupData.length,
-          imported: importedProcesses.length, 
-          skipped: skippedProcesses.length,
-          skippedNumbers: skippedProcesses
-        }
-      );
-      
       return true;
-      
     } catch (error) {
-      // Erro geral da importação
       const errorMessage = error instanceof Error ? error.message : 'Erro na importação de backup';
       setError(errorMessage);
-      
-      logger.errorWithException(
-        'Falha crítica na importação de backup',
-        error as Error,
-        'useProcesses - importBackup',
-        { backupDataLength: backupData.length }
-      );
-      
+      logger.error(errorMessage, 'useProcesses.importBackup');
       return false;
     }
   }, [loadProcesses]);
@@ -611,23 +375,13 @@ export const useProcesses = () => {
    * @returns string - JSON formatado com dados do backup
    */
   const exportBackup = useCallback(() => {
-    // Estrutura completa do backup com metadados
     const backupData = {
-      version: '1.0',                          // Versão do formato de backup
-      source: 'supabase',                      // Fonte dos dados
-      timestamp: new Date().toISOString(),     // Timestamp da exportação
-      processCount: processes.length,          // Quantidade de processos
-      processes: processes                     // Dados dos processos
+      version: '1.0',
+      source: 'supabase',
+      timestamp: new Date().toISOString(),
+      processCount: processes.length,
+      processes: processes
     };
-
-    // Log da operação de exportação
-    logger.success(
-      `Backup de processos exportado: ${processes.length} processos`,
-      'useProcesses - exportBackup',
-      { processCount: processes.length, backupSize: JSON.stringify(backupData).length }
-    );
-    
-    // Retorna JSON formatado para download
     return JSON.stringify(backupData, null, 2);
   }, [processes]);
 
@@ -642,13 +396,6 @@ export const useProcesses = () => {
    * @returns ProcessStats - Objeto com estatísticas calculadas
    */
   const stats = useMemo((): ProcessStats => {
-    logger.info(
-      'Calculando estatísticas dos processos',
-      'useProcesses - stats',
-      { totalProcesses: processes.length }
-    );
-
-    // Se não há processos, retorna estatísticas zeradas
     if (processes.length === 0) {
       return {
         total: 0,
@@ -660,15 +407,13 @@ export const useProcesses = () => {
         }
       };
     }
-    
-    // Cálculo das datas de referência para os períodos
+
     const now = new Date();
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
 
-    // Cálculo das estatísticas por período
-    const statsCalculadas = {
+    return {
       total: processes.length,
       recentes: processes.filter(p => p.dataCriacao >= oneWeekAgo).length,
       porPeriodo: {
@@ -677,14 +422,6 @@ export const useProcesses = () => {
         ultimo_ano: processes.filter(p => p.dataCriacao >= oneYearAgo).length
       }
     };
-
-    logger.success(
-      'Estatísticas calculadas',
-      'useProcesses - stats',
-      statsCalculadas
-    );
-
-    return statsCalculadas;
   }, [processes]);
 
   // ===== UTILITÁRIOS =====
@@ -698,13 +435,9 @@ export const useProcesses = () => {
    * @returns Promise<void> - Atualiza o estado interno
    */
   const refreshProcesses = useCallback(async () => {
-    logger.info('Recarregamento manual de processos solicitado', 'useProcesses - refreshProcesses');
-    
     setIsLoading(true);
     await loadProcesses();
     setIsLoading(false);
-    
-    logger.success('Recarregamento manual de processos concluído', 'useProcesses - refreshProcesses');
   }, [loadProcesses]);
 
   /**
@@ -717,37 +450,20 @@ export const useProcesses = () => {
    */
   const retestConnection = useCallback(async (): Promise<boolean> => {
     try {
-      logger.info('Retestando conectividade com Supabase...', 'useProcesses - retestConnection');
-      
       const connected = await testSupabaseConnection();
       setIsConnected(connected);
-      
+
       if (connected) {
-        // Se reconectou, carrega os processos
         await loadProcesses();
       } else {
         setError('Não foi possível conectar ao Supabase');
       }
-      
-      logger.info(
-        `Teste de reconexão ${connected ? 'bem-sucedido' : 'falhou'}`,
-        'useProcesses - retestConnection',
-        { connected }
-      );
-      
+
       return connected;
-      
     } catch (error) {
       setIsConnected(false);
-      const errorMessage = 'Erro ao testar conexão com Supabase';
-      setError(errorMessage);
-      
-      logger.errorWithException(
-        'Falha no teste de reconexão',
-        error as Error,
-        'useProcesses - retestConnection'
-      );
-      
+      setError('Erro ao testar conexão com Supabase');
+      logger.error('Falha no teste de reconexão', 'useProcesses.retestConnection');
       return false;
     }
   }, [loadProcesses]);
