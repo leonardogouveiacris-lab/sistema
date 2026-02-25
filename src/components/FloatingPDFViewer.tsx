@@ -2067,9 +2067,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const candidateBeforeFinalGuardConsolidation = guardedCenterPage;
     if (shouldApplyMonotonicDirectionClamp) {
       if (scrollDirection === 'up') {
-        guardedCenterPage = Math.min(guardedCenterPage, effectiveCurrentPage);
+        guardedCenterPage = Math.min(guardedCenterPage, stablePage);
       } else if (scrollDirection === 'down') {
-        guardedCenterPage = Math.max(guardedCenterPage, effectiveCurrentPage);
+        guardedCenterPage = Math.max(guardedCenterPage, stablePage);
       }
     }
 
