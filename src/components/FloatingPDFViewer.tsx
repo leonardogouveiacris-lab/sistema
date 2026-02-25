@@ -6022,6 +6022,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     });
   }, [state.selectedText, toast]);
 
+  const handleCloseSelection = useCallback(() => {
+    clearSelectionOverlay();
+    clearSelection();
+  }, [clearSelectionOverlay, clearSelection]);
+
   /**
    * Create highlight from selected text
    */
@@ -7548,7 +7553,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         onHighlight={selectionCommentsDomain.onCreateHighlight}
         onInsertFundamentacao={() => handleInsertInField('fundamentacao')}
         onInsertComentarios={() => handleInsertInField(getCommentFieldForCurrentMode())}
-        onCloseSelection={clearSelection}
+        onCloseSelection={handleCloseSelection}
         containerRef={scrollContainerRef}
         formMode={state.formMode}
         totalPages={state.totalPages}
