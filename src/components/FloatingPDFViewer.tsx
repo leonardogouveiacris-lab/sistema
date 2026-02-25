@@ -98,11 +98,14 @@ const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO = 0.12;
 const ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS = 120;
 const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 140;
-const UPWARD_SCROLL_MICRO_DELTA_PX = 14;
-const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 24;
-const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.03;
-const UPWARD_VIEWPORT_EXIT_INTERSECTION_PX = 8;
-const UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO = 0.01;
+const DIRECTIONAL_STABILITY_MICRO_DELTA_VIEWPORT_RATIO = 0.024;
+const DIRECTIONAL_STABILITY_MICRO_DELTA_PAGE_RATIO = 0.018;
+const DIRECTIONAL_STABILITY_GUARD_INTERSECTION_VIEWPORT_RATIO = 0.045;
+const DIRECTIONAL_STABILITY_GUARD_INTERSECTION_PAGE_RATIO = 0.02;
+const DIRECTIONAL_STABILITY_GUARD_VISIBLE_RATIO = 0.03;
+const DIRECTIONAL_VIEWPORT_EXIT_INTERSECTION_VIEWPORT_RATIO = 0.015;
+const DIRECTIONAL_VIEWPORT_EXIT_INTERSECTION_PAGE_RATIO = 0.007;
+const DIRECTIONAL_VIEWPORT_EXIT_VISIBLE_RATIO = 0.01;
 const LANDSCAPE_BOUNDARY_CURRENT_RATIO_THRESHOLD = 0.38;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
@@ -934,6 +937,36 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
   }, []);
 
+  const getDirectionalStabilityThresholds = useCallback((currentPage: number, viewportHeight: number, zoom: number) => {
+    const pageHeight = Math.max(1, getPageHeight(currentPage));
+    const safeViewportHeight = Math.max(1, viewportHeight);
+    const safeZoom = Math.max(0.5, zoom);
+    const zoomCompensation = 1 / safeZoom;
+
+    return {
+      pageHeight,
+      safeViewportHeight,
+      zoomCompensation,
+      microScrollDeltaPx: Math.max(
+        1,
+        (safeViewportHeight * DIRECTIONAL_STABILITY_MICRO_DELTA_VIEWPORT_RATIO +
+          pageHeight * DIRECTIONAL_STABILITY_MICRO_DELTA_PAGE_RATIO) * zoomCompensation
+      ),
+      guardMinIntersectionPx: Math.max(
+        1,
+        (safeViewportHeight * DIRECTIONAL_STABILITY_GUARD_INTERSECTION_VIEWPORT_RATIO +
+          pageHeight * DIRECTIONAL_STABILITY_GUARD_INTERSECTION_PAGE_RATIO) * zoomCompensation
+      ),
+      guardMinVisibleRatio: DIRECTIONAL_STABILITY_GUARD_VISIBLE_RATIO,
+      viewportExitIntersectionPx: Math.max(
+        1,
+        (safeViewportHeight * DIRECTIONAL_VIEWPORT_EXIT_INTERSECTION_VIEWPORT_RATIO +
+          pageHeight * DIRECTIONAL_VIEWPORT_EXIT_INTERSECTION_PAGE_RATIO) * zoomCompensation
+      ),
+      viewportExitVisibleRatio: DIRECTIONAL_VIEWPORT_EXIT_VISIBLE_RATIO
+    };
+  }, [getPageHeight]);
+
   /**
    * Calcula quais paginas estao visiveis baseado no scrollTop do container
    * Esta funcao e chamada durante o scroll e usa as dimensoes das paginas para determinar
@@ -1744,14 +1777,42 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const originalCenterPage = centerPage;
-    const baseReferencePage = Math.max(1, Math.min(state.totalPages, state.currentPage));
-    const upwardReferencePage = Math.max(1, Math.min(state.totalPages, state.currentPage - 1));
-    const directionalReferencePage = scrollDirection === 'up' ? upwardReferencePage : baseReferencePage;
-    const directionalReferenceHeightPx = Math.max(1, getPageHeight(directionalReferencePage));
-    const zoomNormalizedScrollStep = Math.max(
-      1,
-      Math.round((scrollDelta * Math.max(state.zoom, 0.5)) / Math.max(1, directionalReferenceHeightPx * 0.65))
-    );
+    const previousScrollTop = options?.previousScrollTop ?? scrollTop;
+
+    const getFractionalPagePositionFromScrollTop = (scrollTopValue: number): number => {
+      if (state.totalPages <= 0 || cumulativePageTops.length === 0 || cumulativePageBottoms.length === 0) {
+        return 1;
+      }
+
+      const boundedIndex = Math.max(
+        0,
+        Math.min(
+          state.totalPages - 1,
+          findFirstIndexByBottom(cumulativePageBottoms, Math.max(0, scrollTopValue))
+        )
+      );
+      const pageTop = cumulativePageTops[boundedIndex] ?? 0;
+      const pageBottom = cumulativePageBottoms[boundedIndex] ?? pageTop + 1;
+      const pageHeight = Math.max(1, pageBottom - pageTop);
+      const normalizedOffsetInPage = Math.max(0, Math.min(1, (scrollTopValue - pageTop) / pageHeight));
+
+      return Math.max(1, Math.min(state.totalPages, boundedIndex + 1 + normalizedOffsetInPage));
+    };
+
+    const fractionalPageBefore = getFractionalPagePositionFromScrollTop(previousScrollTop);
+    const fractionalPageAfter = getFractionalPagePositionFromScrollTop(scrollTop);
+    const targetPageByOffset = Math.max(1, Math.min(state.totalPages, Math.round(fractionalPageAfter)));
+
+    const traversedScrollTopStart = Math.min(previousScrollTop, scrollTop);
+    const traversedScrollTopEnd = Math.max(previousScrollTop, scrollTop);
+    const traversedStartIndex = Math.max(0, Math.min(state.totalPages - 1, findFirstIndexByBottom(cumulativePageBottoms, traversedScrollTopStart)));
+    const traversedEndIndex = Math.max(0, Math.min(state.totalPages - 1, findLastIndexByTop(cumulativePageTops, traversedScrollTopEnd)));
+    const traversedMinPage = Math.min(traversedStartIndex, traversedEndIndex) + 1;
+    const traversedMaxPage = Math.max(traversedStartIndex, traversedEndIndex) + 1;
+
+    const traversedTopBoundaryPx = cumulativePageTops[Math.min(traversedStartIndex, traversedEndIndex)] ?? 0;
+    const traversedBottomBoundaryPx = cumulativePageBottoms[Math.max(traversedStartIndex, traversedEndIndex)] ?? traversedTopBoundaryPx;
+    const traveledDistancePx = Math.max(0, traversedScrollTopEnd - traversedScrollTopStart);
 
     const shouldNormalizeZoomScrollStep =
       !hasReliableInterpolatedProgress &&
@@ -1763,21 +1824,25 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const zoomStepCap = state.zoom < 1 ? 1 : 2;
     const maxStepFromCurrentPage = Math.max(1, Math.min(zoomStepCap, zoomNormalizedScrollStep));
     if (shouldNormalizeZoomScrollStep && centerPage !== state.currentPage) {
-      const maxAllowedPageByDirection = scrollDirection === 'up'
-        ? state.currentPage - maxStepFromCurrentPage
-        : scrollDirection === 'down'
-          ? state.currentPage + maxStepFromCurrentPage
-          : state.currentPage;
+      const isAgainstDirection =
+        (scrollDirection === 'up' && centerPage > state.currentPage) ||
+        (scrollDirection === 'down' && centerPage < state.currentPage);
 
-      if (scrollDirection === 'up') {
-        centerPage = Math.max(centerPage, maxAllowedPageByDirection);
-      } else if (scrollDirection === 'down') {
-        centerPage = Math.min(centerPage, maxAllowedPageByDirection);
-      } else {
-        const stepDelta = centerPage - state.currentPage;
-        if (Math.abs(stepDelta) > maxStepFromCurrentPage) {
-          centerPage = state.currentPage + (stepDelta > 0 ? maxStepFromCurrentPage : -maxStepFromCurrentPage);
+      if (isAgainstDirection) {
+        centerPage = state.currentPage;
+      }
+
+      centerPage = Math.max(traversedMinPage, Math.min(traversedMaxPage, centerPage));
+
+      if (scrollDirection === 'up' || scrollDirection === 'down') {
+        const targetConstrainedByTraversal = Math.max(traversedMinPage, Math.min(traversedMaxPage, targetPageByOffset));
+        const divergenceFromOffset = centerPage - targetConstrainedByTraversal;
+
+        if (divergenceFromOffset !== 0) {
+          centerPage = targetConstrainedByTraversal;
         }
+      } else {
+        centerPage = Math.max(traversedMinPage, Math.min(traversedMaxPage, targetPageByOffset));
       }
     }
 
@@ -1809,31 +1874,48 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           proposedDelta,
           isAgainstDirection,
           shouldNormalizeZoomScrollStep,
-          zoom: state.zoom
+          zoom: state.zoom,
+          previousScrollTop,
+          scrollTop,
+          fractionalPageBefore,
+          fractionalPageAfter,
+          targetPageByOffset,
+          traversedTopBoundaryPx,
+          traversedBottomBoundaryPx,
+          traveledDistancePx,
+          traversedMinPage,
+          traversedMaxPage
         },
         { throttleMs: 800, throttleKey: 'directional-guard', force: true }
       );
     }
 
-    const isCurrentPageStillVisibleForUpwardGuard =
-      currentPageIntersectionPx >= UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX &&
-      currentPageVisibleRatio >= UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO;
+    const directionalStabilityThresholds = getDirectionalStabilityThresholds(
+      state.currentPage,
+      viewportHeight,
+      state.zoom
+    );
 
-    const shouldStabilizeUpwardMicroScroll =
+    const isCurrentPageStillVisibleForDirectionalGuard =
+      currentPageIntersectionPx >= directionalStabilityThresholds.guardMinIntersectionPx &&
+      currentPageVisibleRatio >= directionalStabilityThresholds.guardMinVisibleRatio;
+
+    const shouldStabilizeDirectionalMicroScroll =
       shouldNormalizeZoomScrollStep &&
-      scrollDirection === 'up' &&
-      scrollDelta <= UPWARD_SCROLL_MICRO_DELTA_PX &&
+      (scrollDirection === 'up' || scrollDirection === 'down') &&
+      scrollDelta <= directionalStabilityThresholds.microScrollDeltaPx &&
       centerPage !== state.currentPage &&
-      isCurrentPageStillVisibleForUpwardGuard;
+      isCurrentPageStillVisibleForDirectionalGuard;
 
-    const shouldStabilizeDirectionSettle =
+    const shouldStabilizeDirectionalSettle =
       isDirectionSettling &&
+      (scrollDirection === 'up' || scrollDirection === 'down') &&
       centerPage !== state.currentPage &&
-      isCurrentPageStillVisibleForUpwardGuard;
+      isCurrentPageStillVisibleForDirectionalGuard;
 
-    if (shouldStabilizeUpwardMicroScroll || shouldStabilizeDirectionSettle) {
+    if (shouldStabilizeDirectionalMicroScroll || shouldStabilizeDirectionalSettle) {
       logPdfDebugEvent(
-        'calculate_visible_pages_upward_stability_guard',
+        'calculate_visible_pages_directional_stability_guard',
         {
           mode: state.viewMode,
           currentPage: state.currentPage,
@@ -1843,20 +1925,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           signedScrollDelta,
           isDirectionSettling,
           timeSinceDirectionChange,
-          shouldStabilizeUpwardMicroScroll,
-          shouldStabilizeDirectionSettle,
+          shouldStabilizeDirectionalMicroScroll,
+          shouldStabilizeDirectionalSettle,
           currentPageIntersectionPx,
           currentPageVisibleRatio,
-          isCurrentPageStillVisibleForUpwardGuard,
+          isCurrentPageStillVisibleForDirectionalGuard,
+          directionalStabilityThresholds,
           zoom: state.zoom
         },
-        { throttleMs: 800, throttleKey: 'upward-stability-guard', force: true }
+        { throttleMs: 800, throttleKey: 'directional-stability-guard', force: true }
       );
 
       centerPage = state.currentPage;
-    } else if ((isDirectionSettling || scrollDirection === 'up') && centerPage !== state.currentPage) {
+    } else if ((isDirectionSettling || scrollDirection === 'up' || scrollDirection === 'down') && centerPage !== state.currentPage) {
       logPdfDebugEvent(
-        'calculate_visible_pages_upward_stability_guard_skipped',
+        'calculate_visible_pages_directional_stability_guard_skipped',
         {
           mode: state.viewMode,
           currentPage: state.currentPage,
@@ -1868,10 +1951,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           timeSinceDirectionChange,
           currentPageIntersectionPx,
           currentPageVisibleRatio,
-          isCurrentPageStillVisibleForUpwardGuard,
+          isCurrentPageStillVisibleForDirectionalGuard,
+          directionalStabilityThresholds,
           zoom: state.zoom
         },
-        { throttleMs: 1200, throttleKey: 'upward-stability-guard-skipped', force: true }
+        { throttleMs: 1200, throttleKey: 'directional-stability-guard-skipped', force: true }
       );
     }
 
@@ -1886,11 +1970,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         signedScrollDelta,
         scrollDirection,
         zoom: state.zoom,
-        directionalReferenceHeightPx,
-        directionalReferencePage,
-        zoomNormalizedScrollStep,
-        zoomStepCap,
-        maxStepFromCurrentPage,
+        previousScrollTop,
+        scrollTop,
+        fractionalPageBefore,
+        fractionalPageAfter,
+        targetPageByOffset,
+        traversedTopBoundaryPx,
+        traversedBottomBoundaryPx,
+        traveledDistancePx,
+        traversedMinPage,
+        traversedMaxPage,
         normalizedStepApplied: centerPage !== originalCenterPage,
         shouldNormalizeZoomScrollStep
       },
@@ -1900,8 +1989,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const isUpwardViewportExit =
       scrollDirection === 'up' &&
       centerPage < state.currentPage &&
-      currentPageIntersectionPx <= UPWARD_VIEWPORT_EXIT_INTERSECTION_PX &&
-      currentPageVisibleRatio <= UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO;
+      currentPageIntersectionPx <= directionalStabilityThresholds.viewportExitIntersectionPx &&
+      currentPageVisibleRatio <= directionalStabilityThresholds.viewportExitVisibleRatio;
 
     if (isUpwardViewportExit && centerPage < state.currentPage - 1) {
       centerPage = state.currentPage - 1;
@@ -2107,6 +2196,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     cumulativePageBottoms,
     cumulativePageTops,
     getCurrentDocument,
+    getDirectionalStabilityThresholds,
     getDocumentByGlobalPage,
     getPageHeight,
     getPageWidth,
@@ -2118,6 +2208,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     state.currentPage,
     state.documents,
     state.highlightedPage,
+    state.isRotating,
     state.isSearchOpen,
     state.totalPages,
     state.viewMode,
