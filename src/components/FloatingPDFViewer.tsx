@@ -106,14 +106,16 @@ const ACTIVE_PAGE_MIN_INTERSECTION_PX = 48;
 const ACTIVE_PAGE_MIN_VISIBLE_RATIO = 0.25;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO = 0.12;
-const ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS = 120;
-const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 140;
-const UPWARD_SCROLL_MICRO_DELTA_PX = 14;
-const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 24;
-const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.03;
-const UPWARD_VIEWPORT_EXIT_INTERSECTION_PX = 8;
-const UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO = 0.01;
-const LANDSCAPE_BOUNDARY_CURRENT_RATIO_THRESHOLD = 0.38;
+const ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS = 180;
+const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 200;
+const UPWARD_SCROLL_MICRO_DELTA_PX = 20;
+const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 40;
+const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.08;
+const UPWARD_VIEWPORT_EXIT_INTERSECTION_PX = 4;
+const UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO = 0.005;
+const LANDSCAPE_BOUNDARY_CURRENT_RATIO_THRESHOLD = 0.45;
+const UPWARD_ADJACENT_TRANSITION_STABLE_FRAMES = 3;
+const UPWARD_ADJACENT_TRANSITION_MIN_DURATION_MS = 150;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -274,6 +276,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const lastDetectedPageRef = useRef<number>(1);
   const lastDetectionTimeRef = useRef<number>(0);
   const activePageTransitionCandidateRef = useRef<{ page: number; startedAt: number; samples: number } | null>(null);
+  const upwardAdjacentTransitionRef = useRef<{ targetPage: number; startedAt: number; stableFrames: number } | null>(null);
   const lastScrollDirectionRef = useRef<'up' | 'down' | 'neutral'>('neutral');
   const scrollDirectionChangedAtRef = useRef<number>(0);
   const idleCallbackIdRef = useRef<number | null>(null);
@@ -2080,6 +2083,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     if (centerPage === effectiveCurrentPage) {
       activePageTransitionCandidateRef.current = null;
+      upwardAdjacentTransitionRef.current = null;
     }
 
     const shouldThrottleAdjacentDetection =
@@ -2100,6 +2104,41 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         'FloatingPDFViewer.calculateVisiblePagesFromScroll'
       );
       return;
+    }
+
+    const isUpwardAdjacentTransition =
+      scrollDirection === 'up' &&
+      centerPage === effectiveCurrentPage - 1 &&
+      !shouldForcePageUpdate &&
+      !hasPendingNavigationTarget &&
+      !isKeyboardNavLockActive;
+
+    if (isUpwardAdjacentTransition) {
+      const upwardCandidate = upwardAdjacentTransitionRef.current;
+      if (!upwardCandidate || upwardCandidate.targetPage !== centerPage) {
+        upwardAdjacentTransitionRef.current = {
+          targetPage: centerPage,
+          startedAt: now,
+          stableFrames: 1
+        };
+        return;
+      }
+
+      upwardCandidate.stableFrames += 1;
+      const candidateAgeMs = now - upwardCandidate.startedAt;
+
+      if (
+        upwardCandidate.stableFrames < UPWARD_ADJACENT_TRANSITION_STABLE_FRAMES ||
+        candidateAgeMs < UPWARD_ADJACENT_TRANSITION_MIN_DURATION_MS
+      ) {
+        return;
+      }
+
+      upwardAdjacentTransitionRef.current = null;
+    } else {
+      if (scrollDirection !== 'up' || centerPage !== effectiveCurrentPage - 1) {
+        upwardAdjacentTransitionRef.current = null;
+      }
     }
 
     const shouldDebounceVisualAdjacentTransition =
@@ -2133,26 +2172,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const candidateBeforeFinalClamp = centerPage;
-    if (scrollDirection === 'up') {
-      centerPage = Math.min(centerPage, effectiveCurrentPage);
-    }
-
-    if (centerPage !== candidateBeforeFinalClamp) {
-      logPdfDebugEvent(
-        'calculate_visible_pages_upward_final_monotonic_clamp',
-        {
-          mode: state.viewMode,
-          currentPage: effectiveCurrentPage,
-          centerPage,
-          candidateBeforeFinalClamp,
-          scrollDirection,
-          signedScrollDelta,
-          scrollDelta,
-          zoom: state.zoom
-        },
-        { throttleMs: 2000, throttleKey: 'upward-final-monotonic-clamp' }
-      );
-    }
 
     logPdfDebugEvent(
       'scroll_reconciliation_tick_decision',
