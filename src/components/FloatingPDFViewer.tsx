@@ -1770,22 +1770,24 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         centerPage = effectiveCurrentPage;
       }
 
-      logPdfDebugEvent(
-        'calculate_visible_pages_directional_guard',
-        {
-          mode: state.viewMode,
-          currentPage: effectiveCurrentPage,
-          centerPageBeforeDirectionGuard,
-          centerPageAfterDirectionGuard: centerPage,
-          scrollDirection,
-          signedScrollDelta,
-          proposedDelta,
-          isAgainstDirection,
-          shouldNormalizeZoomScrollStep,
-          zoom: state.zoom
-        },
-        { throttleMs: 800, throttleKey: 'directional-guard', force: true }
-      );
+      if (isAgainstDirection) {
+        logPdfDebugEvent(
+          'calculate_visible_pages_directional_guard',
+          {
+            mode: state.viewMode,
+            currentPage: effectiveCurrentPage,
+            centerPageBeforeDirectionGuard,
+            centerPageAfterDirectionGuard: centerPage,
+            scrollDirection,
+            signedScrollDelta,
+            proposedDelta,
+            isAgainstDirection,
+            shouldNormalizeZoomScrollStep,
+            zoom: state.zoom
+          },
+          { throttleMs: 2500, throttleKey: 'directional-guard' }
+        );
+      }
     }
 
     const isCurrentPageStillVisibleForUpwardGuard =
@@ -1823,52 +1825,36 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           isCurrentPageStillVisibleForUpwardGuard,
           zoom: state.zoom
         },
-        { throttleMs: 800, throttleKey: 'upward-stability-guard', force: true }
+        { throttleMs: 2500, throttleKey: 'upward-stability-guard' }
       );
 
       centerPage = effectiveCurrentPage;
-    } else if ((isDirectionSettling || scrollDirection === 'up') && centerPage !== effectiveCurrentPage) {
+    }
+
+    const normalizedStepApplied = centerPage !== originalCenterPage;
+    if (normalizedStepApplied && scrollDirection !== 'neutral') {
       logPdfDebugEvent(
-        'calculate_visible_pages_upward_stability_guard_skipped',
+        'calculate_visible_pages_zoom_normalization',
         {
           mode: state.viewMode,
           currentPage: effectiveCurrentPage,
           centerPage,
-          scrollDirection,
+          originalCenterPage,
           scrollDelta,
           signedScrollDelta,
-          isDirectionSettling,
-          timeSinceDirectionChange,
-          currentPageIntersectionPx,
-          currentPageVisibleRatio,
-          isCurrentPageStillVisibleForUpwardGuard,
-          zoom: state.zoom
+          scrollDirection,
+          zoom: state.zoom,
+          directionalReferenceHeightPx,
+          directionalReferencePage,
+          zoomNormalizedScrollStep,
+          zoomStepCap,
+          maxStepFromCurrentPage,
+          normalizedStepApplied,
+          shouldNormalizeZoomScrollStep
         },
-        { throttleMs: 1200, throttleKey: 'upward-stability-guard-skipped', force: true }
+        { throttleMs: 2500, throttleKey: 'zoom-normalization' }
       );
     }
-
-    logPdfDebugEvent(
-      'calculate_visible_pages_zoom_normalization',
-      {
-        mode: state.viewMode,
-        currentPage: effectiveCurrentPage,
-        centerPage,
-        originalCenterPage,
-        scrollDelta,
-        signedScrollDelta,
-        scrollDirection,
-        zoom: state.zoom,
-        directionalReferenceHeightPx,
-        directionalReferencePage,
-        zoomNormalizedScrollStep,
-        zoomStepCap,
-        maxStepFromCurrentPage,
-        normalizedStepApplied: centerPage !== originalCenterPage,
-        shouldNormalizeZoomScrollStep
-      },
-      { throttleMs: 800, throttleKey: 'zoom-normalization', force: true }
-    );
 
     const isUpwardViewportExit =
       scrollDirection === 'up' &&
@@ -1891,7 +1877,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           scrollDelta,
           zoom: state.zoom
         },
-        { throttleMs: 500, throttleKey: 'upward-exit-reconciliation', force: true }
+        { throttleMs: 2000, throttleKey: 'upward-exit-reconciliation' }
       );
     }
 
@@ -1929,7 +1915,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             scrollDelta,
             zoom: state.zoom
           },
-          { throttleMs: 500, throttleKey: 'monotonic-direction-clamp', force: true }
+          { throttleMs: 2000, throttleKey: 'monotonic-direction-clamp' }
         );
       }
     }
@@ -1981,7 +1967,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           scrollDelta,
           zoom: state.zoom
         },
-        { throttleMs: 500, throttleKey: 'landscape-boundary-reconciliation', force: true }
+        { throttleMs: 2000, throttleKey: 'landscape-boundary-reconciliation' }
       );
     }
 
@@ -2017,7 +2003,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             scrollDelta,
             zoom: state.zoom
           },
-          { throttleMs: 400, throttleKey: 'sequential-directional-clamp', force: true }
+          { throttleMs: 2000, throttleKey: 'sequential-directional-clamp' }
         );
       }
     }
@@ -2098,7 +2084,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           scrollDelta,
           zoom: state.zoom
         },
-        { throttleMs: 500, throttleKey: 'upward-final-monotonic-clamp', force: true }
+        { throttleMs: 2000, throttleKey: 'upward-final-monotonic-clamp' }
       );
     }
 
