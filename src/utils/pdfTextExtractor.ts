@@ -159,7 +159,9 @@ export async function extractAllPagesText(
     if (onProgress) {
       onProgress(pdfDocument.numPages, pdfDocument.numPages);
     }
-    persistToDatabase(persistedCache).catch(() => {});
+    persistToDatabase(persistedCache).catch((err) => {
+      logger.warn('Failed to persist cached text to database', 'pdfTextExtractor', { documentId }, err);
+    });
     return persistedCache;
   }
 
@@ -213,14 +215,20 @@ export async function extractAllPagesText(
   }
 
   textCache.set(documentId, cache);
-  cacheDocument(cache).catch(() => {});
+  cacheDocument(cache).catch((err) => {
+    logger.warn('Failed to cache document text to IndexedDB', 'pdfTextExtractor', { documentId }, err);
+  });
   if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
     window.requestIdleCallback(() => {
-      persistToDatabase(cache).catch(() => {});
+      persistToDatabase(cache).catch((err) => {
+        logger.warn('Failed to persist text to database (idle)', 'pdfTextExtractor', { documentId }, err);
+      });
     }, { timeout: 5000 });
   } else {
     setTimeout(() => {
-      persistToDatabase(cache).catch(() => {});
+      persistToDatabase(cache).catch((err) => {
+        logger.warn('Failed to persist text to database (timeout)', 'pdfTextExtractor', { documentId }, err);
+      });
     }, 1000);
   }
 

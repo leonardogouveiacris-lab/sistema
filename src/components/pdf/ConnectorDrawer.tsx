@@ -3,6 +3,7 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { ConnectorType, PDFCommentConnector } from '../../types/PDFComment';
 import * as PDFCommentsService from '../../services/pdfComments.service';
 import { generateFlowId } from '../../utils/flowId';
+import logger from '../../utils/logger';
 
 interface ConnectorDrawerProps {
   commentId: string;

@@ -2454,18 +2454,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     }
 
-    if (scrollDirection === 'up') {
-      console.log('[SCROLL_UP_DEBUG]', {
-        tick: now,
-        effectiveCurrentPage,
-        stablePage,
-        centerPageBeforeGuards,
-        guardedCenterPage,
-        isInCooldown,
-        timeSinceLastPageChange
-      });
-    }
-
     centerPage = Math.max(1, Math.min(state.totalPages, guardedCenterPage));
 
     const isUpwardLandscapeBoundaryTransition =
@@ -2512,20 +2500,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           },
           { throttleMs: 800, throttleKey: 'upward-landscape-transition-debounced' }
         );
-
-        if (scrollDirection === 'up') {
-          console.log('[SCROLL_UP_DEBUG]', {
-            tick: now,
-            effectiveCurrentPage,
-            stablePage,
-            candidatePage: centerPage,
-            isInCooldown,
-            timeSinceLastPageChange,
-            transitionBlockKey: 'upward_landscape_transition_debounced',
-            candidateSamples,
-            candidateAgeMs
-          });
-        }
 
         return;
       }
@@ -2605,19 +2579,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         },
         { throttleMs: 1200, throttleKey: 'cooldown-jump-block' }
       );
-
-      if (scrollDirection === 'up') {
-        console.log('[SCROLL_UP_DEBUG]', {
-          tick: now,
-          effectiveCurrentPage,
-          stablePage,
-          candidatePage: centerPage,
-          isInCooldown,
-          timeSinceLastPageChange,
-          transitionBlockKey: 'cooldown_jump_gt_one_blocked',
-          jumpFromStablePage
-        });
-      }
 
       return;
     }

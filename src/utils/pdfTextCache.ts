@@ -81,7 +81,8 @@ export async function getCachedDocument(documentId: string): Promise<DocumentTex
         resolve(null);
       };
     });
-  } catch {
+  } catch (err) {
+    logger.error('Failed to access IndexedDB cache', 'pdfTextCache.getCachedDocument', undefined, err);
     return null;
   }
 }
@@ -141,8 +142,8 @@ export async function clearCache(): Promise<void> {
         resolve();
       };
     });
-  } catch {
-    logger.error('Failed to clear cache', 'pdfTextCache.clearCache');
+  } catch (err) {
+    logger.error('Failed to clear cache', 'pdfTextCache.clearCache', undefined, err);
   }
 }
 
