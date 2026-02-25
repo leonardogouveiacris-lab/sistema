@@ -32,12 +32,22 @@ export type NewProcessDocument = Omit<ProcessDocument, keyof BaseEntity | 'url'>
 export type UpdateProcessDocument = Partial<NewProcessDocument>;
 
 /**
+ * Metadados de arquivo para armazenamento em sessionStorage
+ */
+export interface FileMetadata {
+  name: string;
+  size: number;
+  type: string;
+  lastModified: number;
+}
+
+/**
  * Interface para dados temporários de documento antes do upload
  * Usado para armazenar documento em memória antes de salvar no Supabase
  */
 export interface TemporaryDocument {
   processId: string;        // ID do processo
-  file: File;              // Objeto File do navegador
+  file: FileMetadata;       // Metadados do arquivo para sessionStorage
   dataUrl: string;         // Data URL para preview (opcional)
 }
 

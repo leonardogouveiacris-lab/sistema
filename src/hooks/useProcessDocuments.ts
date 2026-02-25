@@ -8,7 +8,7 @@
  * - Gerenciar estados de loading e erro
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ProcessDocument, DocumentUploadResult } from '../types/ProcessDocument';
 import ProcessDocumentService from '../services/processDocument.service';
 import logger from '../utils/logger';
@@ -40,6 +40,15 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const progressResetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (progressResetTimeoutRef.current) {
+        clearTimeout(progressResetTimeoutRef.current);
+      }
+    };
+  }, []);
 
   /**
    * Carrega todos os documentos de um processo
@@ -144,7 +153,10 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
         );
 
         // Reseta progresso após 1 segundo
-        setTimeout(() => setUploadProgress(0), 1000);
+        if (progressResetTimeoutRef.current) {
+          clearTimeout(progressResetTimeoutRef.current);
+        }
+        progressResetTimeoutRef.current = setTimeout(() => setUploadProgress(0), 1000);
       } else {
         setError(result.error || 'Erro ao fazer upload');
         setUploadProgress(0);

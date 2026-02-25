@@ -362,23 +362,31 @@ export class TipoVerbaService {
         throw new Error(`Erro ao buscar verbas: ${verbasError.message}`);
       }
 
-      const verbasEncontradas = verbas || [];
+      type VerbaComLancamentos = {
+        id: string;
+        process_id: string;
+        created_at: string;
+        updated_at: string;
+        verba_lancamentos: Array<{ id: string; created_at: string; updated_at: string }> | null;
+      };
+
+      const verbasEncontradas = (verbas || []) as VerbaComLancamentos[];
       const processosUnicos = new Set(verbasEncontradas.map(v => v.process_id));
-      
+
       // Conta total de lançamentos
       const totalLancamentos = verbasEncontradas.reduce((total, verba) => {
-        return total + ((verba as any).verba_lancamentos?.length || 0);
+        return total + (verba.verba_lancamentos?.length || 0);
       }, 0);
 
       // Calcula datas das verbas
       const datasCriacao = verbasEncontradas.map(v => new Date(v.created_at));
       const datasAtualizacao = verbasEncontradas.map(v => new Date(v.updated_at));
-      
+
       // Calcula datas dos lançamentos
       const datasLancamentos: Date[] = [];
-      verbasEncontradas.forEach((verba: any) => {
+      verbasEncontradas.forEach((verba) => {
         if (verba.verba_lancamentos) {
-          verba.verba_lancamentos.forEach((lancamento: any) => {
+          verba.verba_lancamentos.forEach((lancamento) => {
             datasLancamentos.push(new Date(lancamento.created_at));
             datasLancamentos.push(new Date(lancamento.updated_at));
           });

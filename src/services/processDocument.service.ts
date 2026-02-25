@@ -378,7 +378,8 @@ export const uploadDocument = async (
     let errorMessage = 'Erro ao fazer upload do documento. Tente novamente.';
 
     if (error && typeof error === 'object') {
-      const err = error as any;
+      type StorageError = { statusCode?: string; message?: string; code?: string };
+      const err = error as StorageError;
 
       // Erros de storage
       if (err.statusCode === '403' || err.message?.includes('permission') || err.message?.includes('policy')) {
@@ -564,7 +565,7 @@ export const saveTemporaryDocument = (processId: string, file: File): void => {
           size: file.size,
           type: file.type,
           lastModified: file.lastModified
-        } as any,
+        },
         dataUrl: reader.result as string
       };
 
