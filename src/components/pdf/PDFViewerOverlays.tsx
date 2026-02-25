@@ -25,11 +25,12 @@ interface PDFViewerOverlaysProps {
     globalEnd: number;
     pageCount: number;
   }[];
+  isSelecting?: boolean;
 }
 
 const PDFViewerOverlays: React.FC<PDFViewerOverlaysProps> = (props) => (
   <>
-    {props.selectedText && props.selectionPosition && (
+    {props.selectedText && props.selectionPosition && !props.isSelecting && (
       <TextSelectionPopup
         selectedText={props.selectedText}
         position={props.selectionPosition}

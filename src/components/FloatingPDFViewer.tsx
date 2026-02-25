@@ -7556,6 +7556,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         onClosePageExtractionModal={closePageExtractionModal}
         extractionTargetName={extractionTarget?.document.displayName || extractionTarget?.document.fileName || 'documento.pdf'}
         extractionSourceDocuments={extractionSourceDocuments}
+        isSelecting={selectionMode === 'native-drag'}
       />
     </>
   );
