@@ -1,10 +1,12 @@
 /**
  * Formatador de dados para exportação HTML
- * Otimizado para reutilizar funções compartilhadas e melhor performance
+ * Otimizado para reutilizar funções compartilhadas e melhor performance.
+ * Limitação: gera string HTML estática; evite usar com conteúdo não sanitizado
+ * quando houver risco de injeção de marcação.
  */
 
 import { Process } from '../types/Process';
-import { Verba } from '../types/Verba';
+import { Verba, VerbaLancamento } from '../types/Verba';
 import { Decision } from '../types/Decision';
 import { DocumentoLancamento } from '../types/DocumentoLancamento';
 import HTMLTemplate from './htmlTemplate';
@@ -20,6 +22,11 @@ import {
  * Classe responsável por formatar dados em HTML
  * Otimizada para reduzir código duplicado
  */
+type LancamentoResumo = Pick<
+  VerbaLancamento,
+  'decisaoVinculada' | 'situacao' | 'fundamentacao' | 'comentariosCalculistas' | 'paginaVinculada' | 'dataCriacao'
+>;
+
 class HTMLFormatter {
 
   static formatDate = formatarData;
@@ -69,7 +76,7 @@ class HTMLFormatter {
    * @param index - Índice do lançamento na lista
    * @returns HTML formatado do lançamento
    */
-  static generateLancamentoHTML(lancamento: any, index: number): string {
+  static generateLancamentoHTML(lancamento: LancamentoResumo, index: number): string {
     return `
       <div class="lancamento-item border-l-4 border-l-gray-300 pl-4 py-3 bg-white rounded-r-lg">
         <div class="flex items-start justify-between mb-2">
@@ -120,7 +127,7 @@ class HTMLFormatter {
    * Gera resumo de situações para exibição
    * Otimizado com função compartilhada
    */
-  static generateResumoSituacoes(lancamentos: any[]): string {
+  static generateResumoSituacoes(lancamentos: LancamentoResumo[]): string {
     const resumo = calcularResumoSituacoes(lancamentos);
     return formatarResumoSituacoes(resumo);
   }
@@ -129,7 +136,7 @@ class HTMLFormatter {
    * Verifica se uma verba tem mudança de situação entre lançamentos
    * Otimizado com função compartilhada
    */
-  static hasMudancaSituacao(lancamentos: any[]): boolean {
+  static hasMudancaSituacao(lancamentos: LancamentoResumo[]): boolean {
     return hasMudancaSituacao(lancamentos);
   }
 

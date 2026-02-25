@@ -1,8 +1,31 @@
+import type { PDFBookmark } from '../types/PDFBookmark';
+
 /**
  * Performance utilities for optimizing React components
  *
- * Provides debounce, throttle, and other performance optimization helpers
+ * Provides debounce, throttle, and other performance optimization helpers.
+ * Limitação: estes utilitários priorizam simplicidade local; evite para cenários
+ * de sincronização entre abas/dispositivos ou consistência forte de dados.
  */
+
+type AnyFunction = (...args: unknown[]) => unknown;
+type PrimitiveMemoizeKeyPart = string | number | boolean | null | undefined;
+export type MemoizeKey = PrimitiveMemoizeKeyPart | readonly PrimitiveMemoizeKeyPart[];
+
+interface BookmarkCacheData {
+  bookmarks: PDFBookmark[];
+  timestamp: number;
+  version: string;
+}
+
+function isBookmarkCacheData(value: unknown): value is BookmarkCacheData {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<BookmarkCacheData>;
+  return typeof candidate.timestamp === 'number' && Array.isArray(candidate.bookmarks);
+}
 
 /**
  * Debounces a function to prevent excessive calls
@@ -12,7 +35,7 @@
  * @param delay - Delay in milliseconds
  * @returns Debounced function
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends AnyFunction>(
   fn: T,
   delay: number
 ): (...args: Parameters<T>) => void {
@@ -38,7 +61,7 @@ export function debounce<T extends (...args: any[]) => any>(
  * @param limit - Minimum time between calls in milliseconds
  * @returns Throttled function
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends AnyFunction>(
   fn: T,
   limit: number
 ): (...args: Parameters<T>) => void {
@@ -67,18 +90,43 @@ export function throttle<T extends (...args: any[]) => any>(
  * Creates a memoized version of a function that caches results based on arguments
  * Useful for expensive computations that are called repeatedly with the same arguments
  *
+ * Limitação: use para funções puras/determinísticas; evite quando houver dependência
+ * de hora, I/O, estado global mutável ou efeitos colaterais.
  * @param fn - Function to memoize
- * @param keyFn - Optional function to generate cache key from arguments
+ * @param keyFn - Recomendado para args não-primitivos; sem ele o cache só é seguro para args primitivos
  * @returns Memoized function
  */
-export function memoize<T extends (...args: any[]) => any>(
+export function memoize<T extends AnyFunction>(
   fn: T,
-  keyFn?: (...args: Parameters<T>) => string
+  keyFn?: (...args: Parameters<T>) => MemoizeKey
 ): T {
   const cache = new Map<string, ReturnType<T>>();
 
+  const normalizeMemoizeKey = (key: MemoizeKey): string =>
+    Array.isArray(key) ? key.map(part => String(part)).join('|') : String(key);
+
+  const buildDefaultKey = (args: Parameters<T>): string | null => {
+    const hasOnlyPrimitives = args.every(
+      arg => arg === null || ['string', 'number', 'boolean', 'undefined'].includes(typeof arg)
+    );
+
+    if (!hasOnlyPrimitives) {
+      return null;
+    }
+
+    try {
+      return JSON.stringify(args);
+    } catch {
+      return null;
+    }
+  };
+
   return ((...args: Parameters<T>): ReturnType<T> => {
-    const key = keyFn ? keyFn(...args) : JSON.stringify(args);
+    const key = keyFn ? normalizeMemoizeKey(keyFn(...args)) : buildDefaultKey(args);
+
+    if (!key) {
+      return fn(...args) as ReturnType<T>;
+    }
 
     if (cache.has(key)) {
       return cache.get(key)!;
@@ -118,7 +166,7 @@ export function runWhenIdle(
  * @param fn - Function to batch
  * @returns Batched function
  */
-export function batchOnAnimationFrame<T extends (...args: any[]) => any>(
+export function batchOnAnimationFrame<T extends AnyFunction>(
   fn: T
 ): (...args: Parameters<T>) => void {
   let rafId: number | null = null;
@@ -151,14 +199,15 @@ export function generatePDFCacheKey(url: string, numPages: number, documentId?: 
 
 /**
  * Saves bookmarks to localStorage with a cache key
+ * Limitação: cache local para aceleração; evite para persistência oficial/sensível.
  *
  * @param cacheKey - Unique cache key for the document
  * @param bookmarks - Bookmarks to cache
  * @returns True if saved successfully, false otherwise
  */
-export function saveBookmarksToCache(cacheKey: string, bookmarks: any[]): boolean {
+export function saveBookmarksToCache(cacheKey: string, bookmarks: PDFBookmark[]): boolean {
   try {
-    const cacheData = {
+    const cacheData: BookmarkCacheData = {
       bookmarks,
       timestamp: Date.now(),
       version: '1.0'
@@ -172,6 +221,7 @@ export function saveBookmarksToCache(cacheKey: string, bookmarks: any[]): boolea
 
 /**
  * Loads bookmarks from localStorage cache
+ * Limitação: use apenas como cache best-effort; dados inválidos são descartados silenciosamente.
  *
  * @param cacheKey - Unique cache key for the document
  * @param maxAgeMs - Maximum age of cache in milliseconds (default: 7 days)
@@ -180,15 +230,19 @@ export function saveBookmarksToCache(cacheKey: string, bookmarks: any[]): boolea
 export function loadBookmarksFromCache(
   cacheKey: string,
   maxAgeMs: number = 7 * 24 * 60 * 60 * 1000
-): any[] | null {
+): PDFBookmark[] | null {
   try {
     const cached = localStorage.getItem(cacheKey);
     if (!cached) return null;
 
-    const cacheData = JSON.parse(cached);
+    const cacheData: unknown = JSON.parse(cached);
+    if (!isBookmarkCacheData(cacheData)) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+
     const age = Date.now() - cacheData.timestamp;
 
-    // Check if cache is still valid
     if (age > maxAgeMs) {
       localStorage.removeItem(cacheKey);
       return null;
@@ -223,7 +277,6 @@ export function clearOldBookmarkCaches(maxAgeMs: number = 30 * 24 * 60 * 60 * 10
             }
           }
         } catch {
-          // Invalid cache entry, remove it
           localStorage.removeItem(key);
         }
       }
