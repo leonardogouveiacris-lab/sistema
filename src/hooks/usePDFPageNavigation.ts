@@ -1,6 +1,10 @@
 import { useCallback } from 'react';
 import type { UsePDFPageNavigationParams } from '../types/FloatingPDFViewerContracts';
 
+/**
+ * Frequência de navegação: protegida por keyboardNavLockDurationMs para evitar trocas de página em cascata
+ * durante key-repeat, preservando previsibilidade de UX e reduzindo trabalho de renderização.
+ */
 export function usePDFPageNavigation({
   viewMode,
   currentPage,

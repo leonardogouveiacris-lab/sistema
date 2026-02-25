@@ -8,6 +8,10 @@ interface UsePDFScrollSyncParams {
   scrollContainerElement: HTMLDivElement | null;
 }
 
+/**
+ * Frequência de sincronização de scroll: o processamento pesado/visibilidade é delegado ao viewer
+ * (batch em requestAnimationFrame + throttle) para manter fluidez e limitar commits por frame.
+ */
 export function usePDFScrollSync({
   registerScrollContainer,
   setScrollContainerElement,

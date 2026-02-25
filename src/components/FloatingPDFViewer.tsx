@@ -51,7 +51,9 @@ import {
   generatePDFCacheKey,
   saveBookmarksToCache,
   loadBookmarksFromCache,
-  clearOldBookmarkCaches
+  clearOldBookmarkCaches,
+  batchOnAnimationFrame,
+  throttle
 } from '../utils/performance';
 import type { DocumentInfo } from '../utils/pdfBookmarkExtractor';
 import { countTotalBookmarks, mergeBookmarksFromMultipleDocuments } from '../utils/pdfBookmarkExtractor';
@@ -118,6 +120,7 @@ const RECENT_NAVIGATION_WINDOW_MS = 2200;
 const TEXT_SELECTION_STALE_RESET_MS = 2500;
 const DRAG_SCROLL_BLOCK_WINDOW_MS = 400;
 const POINTER_DOWN_SAFETY_RESET_MS = 450;
+const SCROLL_VISIBILITY_THROTTLE_MS = 50;
 const TEXT_SELECTION_SAFETY_RESET_MS = 450;
 const EMPTY_VISIBLE_PAGES_SCROLL_FRAME_THRESHOLD = 4;
 const SCROLL_ACTIVITY_IDLE_TIMEOUT_MS = 160;
@@ -2335,7 +2338,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   /**
    * Effect para detectar paginas visiveis durante scroll
-   * Usa throttle para performance - atualiza a cada 50ms durante scroll
+   * Frequência: callback de scroll/visibilidade em lote no animation frame + throttle de 50ms.
+   * Motivo: manter feedback visual fluido (60fps) reduzindo cálculos e commits excessivos em bursts de scroll.
    */
   useEffect(() => {
     if (state.viewMode !== 'continuous' || !scrollContainerElement) return;
@@ -2438,7 +2442,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       });
     };
 
-    const handleScroll = () => {
+    const handleScrollCore = () => {
       const now = Date.now();
       isUserScrollingRef.current = true;
       if (scrollIdleTimeoutRef.current) {
@@ -2532,6 +2536,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       scheduleScrollReconciliation(scrollSnapshot);
     };
+
+    const scheduleScrollWithAnimationFrame = batchOnAnimationFrame(handleScrollCore);
+    const handleScroll = throttle(scheduleScrollWithAnimationFrame, SCROLL_VISIBILITY_THROTTLE_MS);
 
     const scheduleInitialScrollRecalculation = () => {
       let hasRun = false;
