@@ -1738,64 +1738,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       dynamicZoomWindowBaseUnits + dynamicZoomWindowVelocityBoostUnits
     );
     const maxStepFromCurrentPage = Math.max(1, Math.min(Math.ceil(dynamicZoomWindowUnits), zoomNormalizedScrollStep));
-
-    const clampPage = (page: number) => Math.max(1, Math.min(state.totalPages, page));
-    const previousScrollTop = typeof options?.previousScrollTop === 'number'
-      ? options.previousScrollTop
-      : undefined;
-    const traversedTopBoundaryPx = Math.min(previousScrollTop ?? scrollTop, scrollTop);
-    const traversedBottomBoundaryPx = Math.max(previousScrollTop ?? scrollTop, scrollTop);
-    const traveledDistancePx = Math.abs((previousScrollTop ?? scrollTop) - scrollTop);
-
-    const deriveFractionalPage = (position: number) => {
-      const rawIndex = findFirstIndexByBottom(cumulativePageBottoms, position);
-      const clampedIndex = Math.max(0, Math.min(state.totalPages - 1, rawIndex));
-      const pageTop = cumulativePageTops[clampedIndex] ?? 0;
-      const pageBottom = cumulativePageBottoms[clampedIndex] ?? pageTop + 1;
-      const pageHeight = Math.max(1, pageBottom - pageTop);
-      const progress = Math.max(0, Math.min(1, (position - pageTop) / pageHeight));
-      return Math.max(1, Math.min(state.totalPages, clampedIndex + 1 + progress));
-    };
-
-    const fractionalPageBefore = deriveFractionalPage(previousScrollTop ?? scrollTop);
-    const fractionalPageAfter = deriveFractionalPage(scrollTop);
-
-    const safeCurrentPage = clampPage(state.currentPage);
-    let traversedMinPage = safeCurrentPage;
-    let traversedMaxPage = safeCurrentPage;
-
-    if (previousScrollTop !== undefined) {
-      const previousScrollIndex = findFirstIndexByBottom(cumulativePageBottoms, previousScrollTop);
-      const currentScrollIndex = findFirstIndexByBottom(cumulativePageBottoms, scrollTop);
-      const previousPageByScroll = clampPage(previousScrollIndex + 1);
-      const currentPageByScroll = clampPage(currentScrollIndex + 1);
-
-      traversedMinPage = Math.min(previousPageByScroll, currentPageByScroll);
-      traversedMaxPage = Math.max(previousPageByScroll, currentPageByScroll);
-    }
-
-    if (!Number.isFinite(traversedMinPage)) {
-      traversedMinPage = safeCurrentPage;
-    }
-
-    if (!Number.isFinite(traversedMaxPage)) {
-      traversedMaxPage = safeCurrentPage;
-    }
-
-    if (traversedMinPage > traversedMaxPage) {
-      [traversedMinPage, traversedMaxPage] = [traversedMaxPage, traversedMinPage];
-    }
-
-    const targetPageByOffset = clampPage(
-      state.currentPage + (
-        scrollDirection === 'up'
-          ? -maxStepFromCurrentPage
-          : scrollDirection === 'down'
-            ? maxStepFromCurrentPage
-            : 0
-      )
-    );
-
     if (shouldNormalizeZoomScrollStep && centerPage !== state.currentPage) {
       const isAgainstDirection =
         (scrollDirection === 'up' && centerPage > state.currentPage) ||
@@ -1946,13 +1888,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         dynamicZoomWindowUnits,
         maxStepFromCurrentPage,
         normalizedStepApplied: centerPage !== originalCenterPage,
-        shouldNormalizeZoomScrollStep,
-        ...(Number.isFinite(traversedMinPage) && Number.isFinite(traversedMaxPage)
-          ? {
-              traversedMinPage,
-              traversedMaxPage
-            }
-          : {})
+        shouldNormalizeZoomScrollStep
       },
       { throttleMs: 800, throttleKey: 'zoom-normalization', force: true }
     );
