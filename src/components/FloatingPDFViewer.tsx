@@ -114,8 +114,6 @@ const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.08;
 const UPWARD_VIEWPORT_EXIT_INTERSECTION_PX = 4;
 const UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO = 0.005;
 const LANDSCAPE_BOUNDARY_CURRENT_RATIO_THRESHOLD = 0.45;
-const UPWARD_ADJACENT_TRANSITION_STABLE_FRAMES = 3;
-const UPWARD_ADJACENT_TRANSITION_MIN_DURATION_MS = 150;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -276,7 +274,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const lastDetectedPageRef = useRef<number>(1);
   const lastDetectionTimeRef = useRef<number>(0);
   const activePageTransitionCandidateRef = useRef<{ page: number; startedAt: number; samples: number } | null>(null);
-  const upwardAdjacentTransitionRef = useRef<{ targetPage: number; startedAt: number; stableFrames: number } | null>(null);
   const lastScrollDirectionRef = useRef<'up' | 'down' | 'neutral'>('neutral');
   const scrollDirectionChangedAtRef = useRef<number>(0);
   const idleCallbackIdRef = useRef<number | null>(null);
@@ -2083,7 +2080,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     if (centerPage === effectiveCurrentPage) {
       activePageTransitionCandidateRef.current = null;
-      upwardAdjacentTransitionRef.current = null;
     }
 
     const shouldThrottleAdjacentDetection =
@@ -2104,44 +2100,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         'FloatingPDFViewer.calculateVisiblePagesFromScroll'
       );
       return;
-    }
-
-    const isUpwardTransition =
-      scrollDirection === 'up' &&
-      centerPage < effectiveCurrentPage &&
-      !shouldForcePageUpdate &&
-      !hasPendingNavigationTarget &&
-      !isKeyboardNavLockActive;
-
-    if (isUpwardTransition) {
-      const targetAdjacentPage = effectiveCurrentPage - 1;
-      const upwardCandidate = upwardAdjacentTransitionRef.current;
-
-      if (!upwardCandidate || upwardCandidate.targetPage !== targetAdjacentPage) {
-        upwardAdjacentTransitionRef.current = {
-          targetPage: targetAdjacentPage,
-          startedAt: now,
-          stableFrames: 1
-        };
-        return;
-      }
-
-      upwardCandidate.stableFrames += 1;
-      const candidateAgeMs = now - upwardCandidate.startedAt;
-
-      if (
-        upwardCandidate.stableFrames < UPWARD_ADJACENT_TRANSITION_STABLE_FRAMES ||
-        candidateAgeMs < UPWARD_ADJACENT_TRANSITION_MIN_DURATION_MS
-      ) {
-        return;
-      }
-
-      centerPage = targetAdjacentPage;
-      upwardAdjacentTransitionRef.current = null;
-    } else {
-      if (scrollDirection !== 'up' || centerPage >= effectiveCurrentPage) {
-        upwardAdjacentTransitionRef.current = null;
-      }
     }
 
     const shouldDebounceVisualAdjacentTransition =
