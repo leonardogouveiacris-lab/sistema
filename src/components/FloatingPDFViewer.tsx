@@ -118,6 +118,9 @@ const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 40;
 const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.08;
 const UPWARD_VIEWPORT_EXIT_INTERSECTION_PX = 4;
 const UPWARD_VIEWPORT_EXIT_VISIBLE_RATIO = 0.005;
+const DOWNWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO;
+const DOWNWARD_SETTLING_EXTRA_TRANSITION_SAMPLES = 1;
+const DOWNWARD_SETTLING_EXTRA_TRANSITION_AGE_MS = SCROLL_DIRECTION_CHANGE_SETTLE_MS;
 const LANDSCAPE_BOUNDARY_CURRENT_RATIO_THRESHOLD = 0.45;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
@@ -2125,6 +2128,40 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       guardedCenterPage = effectiveCurrentPage;
     }
 
+    const isCurrentPageStillVisibleForDownwardGuard =
+      currentPageVisibleRatio >= DOWNWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO;
+
+    const shouldStabilizeDownwardDirectionSettle =
+      isDirectionSettling &&
+      scrollDirection === 'down' &&
+      guardedCenterPage !== effectiveCurrentPage &&
+      isCurrentPageStillVisibleForDownwardGuard;
+
+    if (shouldStabilizeDownwardDirectionSettle) {
+      logPdfDebugEvent(
+        'downward_stability_guard',
+        {
+          mode: state.viewMode,
+          currentPage: effectiveCurrentPage,
+          centerPageBeforeStabilityGuard: guardedCenterPage,
+          scrollDirection,
+          scrollDelta,
+          signedScrollDelta,
+          isDirectionSettling,
+          timeSinceDirectionChange,
+          shouldStabilizeUpwardMicroScroll,
+          shouldStabilizeDirectionSettle,
+          currentPageIntersectionPx,
+          currentPageVisibleRatio,
+          isCurrentPageStillVisibleForUpwardGuard,
+          zoom: state.zoom
+        },
+        { throttleMs: 2500, throttleKey: 'downward-stability-guard' }
+      );
+
+      guardedCenterPage = effectiveCurrentPage;
+    }
+
     const isUpwardViewportExit =
       scrollDirection === 'up' &&
       guardedCenterPage < effectiveCurrentPage &&
@@ -2232,6 +2269,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       minSamples: number,
       minAgeMs: number
     ) => {
+      const isDownwardCommit = scrollDirection === 'down' && candidatePage > effectiveCurrentPage;
+      const isDownwardSettlingCommit = isDownwardCommit && isDirectionSettling;
+      const requiredSamples = isDownwardSettlingCommit
+        ? minSamples + DOWNWARD_SETTLING_EXTRA_TRANSITION_SAMPLES
+        : minSamples;
+      const requiredAgeMs = isDownwardSettlingCommit
+        ? minAgeMs + DOWNWARD_SETTLING_EXTRA_TRANSITION_AGE_MS
+        : minAgeMs;
       const candidate = activePageTransitionCandidateRef.current;
 
       if (!candidate || candidate.page !== candidatePage) {
@@ -2242,20 +2287,26 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         };
 
         return {
-          accepted: minSamples <= 1 && minAgeMs <= 0,
+          accepted: requiredSamples <= 1 && requiredAgeMs <= 0,
           candidateAgeMs: 0,
-          candidateSamples: 1
+          candidateSamples: 1,
+          requiredSamples,
+          requiredAgeMs,
+          isDownwardSettlingCommit
         };
       }
 
       candidate.samples += 1;
       const candidateAgeMs = now - candidate.startedAt;
-      const accepted = candidate.samples >= minSamples || candidateAgeMs >= minAgeMs;
+      const accepted = candidate.samples >= requiredSamples || candidateAgeMs >= requiredAgeMs;
 
       return {
         accepted,
         candidateAgeMs,
-        candidateSamples: candidate.samples
+        candidateSamples: candidate.samples,
+        requiredSamples,
+        requiredAgeMs,
+        isDownwardSettlingCommit
       };
     };
     const shouldApplySequentialDirectionalClamp =
@@ -2327,7 +2378,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       centerPage < effectiveCurrentPage;
 
     if (isUpwardLandscapeBoundaryTransition && centerPage !== effectiveCurrentPage) {
-      const { accepted, candidateAgeMs, candidateSamples } = updateTransitionCandidate(
+      const {
+        accepted,
+        candidateAgeMs,
+        candidateSamples,
+        requiredSamples,
+        requiredAgeMs
+      } = updateTransitionCandidate(
         centerPage,
         UPWARD_LANDSCAPE_TRANSITION_MIN_SAMPLES,
         UPWARD_LANDSCAPE_TRANSITION_MIN_AGE_MS
@@ -2345,8 +2402,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             isLandscapeBoundary,
             candidateSamples,
             candidateAgeMs,
-            requiredSamples: UPWARD_LANDSCAPE_TRANSITION_MIN_SAMPLES,
-            requiredAgeMs: UPWARD_LANDSCAPE_TRANSITION_MIN_AGE_MS,
+            requiredSamples,
+            requiredAgeMs,
             timeSinceLastPageChange,
             isInCooldown,
             shouldForcePageUpdate,
