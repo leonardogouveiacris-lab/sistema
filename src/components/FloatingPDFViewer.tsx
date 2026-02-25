@@ -311,6 +311,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const keyboardNavCooldownUntilRef = useRef<number>(0);
   const keyboardNavStableFramesRef = useRef<number>(0);
   const currentPageRef = useRef<number>(state.currentPage);
+  const stablePageRef = useRef<number>(state.currentPage);
   const calculateVisiblePagesFromScrollRef = useRef<(options?: CalculateVisiblePagesFromScrollOptions) => void>(() => {});
   const scrollReconciliationTickIdRef = useRef<number>(0);
   const pendingScrollSnapshotRef = useRef<ScrollReconciliationSnapshot | null>(null);
@@ -751,6 +752,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   useEffect(() => {
     if (isModeSwitchingRef.current && state.currentPage !== pageBeforeModeSwitchRef.current) {
+      stablePageRef.current = pageBeforeModeSwitchRef.current;
       goToPage(pageBeforeModeSwitchRef.current);
     }
   }, [state.viewMode, state.currentPage, goToPage]);
@@ -1999,20 +2001,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       );
     }
 
+    const stablePage = stablePageRef.current;
     const shouldApplySequentialDirectionalClamp =
       !shouldForcePageUpdate &&
       !hasPendingNavigationTarget &&
       !isKeyboardNavLockActive &&
       !hasRecentKeyboardNavigation &&
-      scrollDirection !== 'neutral' &&
-      guardedCenterPage !== effectiveCurrentPage;
+      scrollDirection !== 'neutral';
 
     if (shouldApplySequentialDirectionalClamp) {
       const originalSequentialCandidate = guardedCenterPage;
-      if (scrollDirection === 'up' && guardedCenterPage < effectiveCurrentPage - 1) {
-        guardedCenterPage = effectiveCurrentPage - 1;
-      } else if (scrollDirection === 'down' && guardedCenterPage > effectiveCurrentPage + 1) {
-        guardedCenterPage = effectiveCurrentPage + 1;
+      if (scrollDirection === 'up' && guardedCenterPage < stablePage - 1) {
+        guardedCenterPage = stablePage - 1;
+      } else if (scrollDirection === 'down' && guardedCenterPage > stablePage + 1) {
+        guardedCenterPage = stablePage + 1;
       }
 
       if (guardedCenterPage !== originalSequentialCandidate) {
@@ -2021,6 +2023,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           {
             mode: state.viewMode,
             currentPage: effectiveCurrentPage,
+            stablePage,
             centerPage: guardedCenterPage,
             originalSequentialCandidate,
             scrollDirection,
@@ -2040,6 +2043,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       console.log('[SCROLL_UP_DEBUG]', {
         tick: Date.now(),
         effectiveCurrentPage,
+        stablePage,
         centerPageBeforeGuards,
         guardedCenterPage,
         shouldApplySequentialDirectionalClamp,
@@ -2048,8 +2052,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           hasPendingNavigationTarget,
           isKeyboardNavLockActive,
           hasRecentKeyboardNavigation,
-          scrollDirection,
-          guardedCenterPageDiffFromCurrent: guardedCenterPage - effectiveCurrentPage
+          scrollDirection
         },
         shouldApplyMonotonicDirectionClamp,
         signedScrollDelta,
@@ -2182,6 +2185,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       activePageTransitionCandidateRef.current = null;
       lastDetectedPageRef.current = centerPage;
       lastDetectionTimeRef.current = now;
+      const pageChangeIsSequential = Math.abs(centerPage - stablePageRef.current) <= 1;
+      if (pageChangeIsSequential || allowLargeJump) {
+        stablePageRef.current = centerPage;
+      }
       goToPage(centerPage);
     }
   }, [
@@ -2229,6 +2236,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     navigationFirstRenderCapturedRef.current.delete(navigationFlowId);
     lastDetectedPageRef.current = targetPage;
     lastDetectionTimeRef.current = startedAt;
+    stablePageRef.current = targetPage;
 
     setForceRenderPages((prev) => {
       const next = new Set(prev);
@@ -4664,6 +4672,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       lastDetectedPageRef.current = reconciledPage;
       lastDetectionTimeRef.current = now;
+      stablePageRef.current = reconciledPage;
       currentPageVisibleDivergenceStartedAtRef.current = null;
       currentPageVisibleDivergenceLastLogAtRef.current = now;
       releaseProgrammaticScroll('current-page-visible-divergence-correction');
@@ -6103,6 +6112,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       lastDetectedPageRef.current = effectiveTargetPageDetected;
       lastDetectionTimeRef.current = Date.now();
+      stablePageRef.current = effectiveTargetPageDetected;
       if (effectiveTargetPageDetected !== currentPageBeforeSync) {
         goToPage(effectiveTargetPageDetected);
       }
@@ -6135,6 +6145,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         );
 
         if (effectiveReconciledPage !== currentPageRef.current) {
+          stablePageRef.current = effectiveReconciledPage;
           goToPage(effectiveReconciledPage);
         }
 
