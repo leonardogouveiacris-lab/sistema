@@ -1046,14 +1046,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       programmaticScrollSafetyTimeoutRef.current = null;
     }
 
-    if (isProgrammaticScrollRef.current) {
-      logger.info(
-        'Programmatic scroll liberado',
-        'FloatingPDFViewer.programmaticScroll',
-        { reason }
-      );
-    }
-
     isProgrammaticScrollRef.current = false;
 
     if (reason === 'zoom-reconciliation') {
@@ -1885,13 +1877,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           const elapsedMs = now - pendingNavigationTarget.startedAt;
           navigationStabilizedCapturedRef.current.add(pendingNavigationTarget.flowId);
           navigationMetricsSamplesRef.current.targetStabilizedMs.push(elapsedMs);
-          logger.info('Página alvo estabilizada no centro/visível', 'FloatingPDFViewer.calculateVisiblePagesFromScroll', {
-            flowId: pendingNavigationTarget.flowId,
-            source: pendingNavigationTarget.source,
-            targetPage,
-            elapsedMs,
-            marker: 'target-stabilized'
-          });
           logNavigationLatencySummary(pendingNavigationTarget.flowId, pendingNavigationTarget.source);
         }
 
@@ -2697,12 +2682,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const startedAt = Date.now();
     const navigationFlowId = flowId || generateFlowId();
-    logger.info('Programmatic page navigation click/start', 'FloatingPDFViewer.startProgrammaticPageNavigation', {
-      flowId: navigationFlowId,
-      source,
-      targetPage,
-      syncCurrentPage
-    });
     markProgrammaticScroll('state-change');
     pendingNavigationTargetRef.current = { page: targetPage, source, startedAt, flowId: navigationFlowId };
     navigationFirstScrollCapturedRef.current.delete(navigationFlowId);
@@ -2752,11 +2731,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       lastAppliedTargetPage = targetPage;
       lastAppliedTargetScrollTop = targetScrollTop;
       fallbackAttempted = true;
-      logger.info(
-        `Fallback scroll para pagina ${targetPage} via cumulativePageTops: scrollTop=${targetScrollTop}`,
-        'FloatingPDFViewer.startProgrammaticPageNavigation',
-        { flowId: navigationFlowId, source, targetPage, marker: 'fallback-applied', elapsedMs: Date.now() - startedAt }
-      );
     };
 
     const scrollToTargetPage = () => {
@@ -2766,13 +2740,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           lastAppliedTargetPage = targetPage;
           lastAppliedTargetScrollTop = scrollContainerRef.current.scrollTop;
         }
-        logger.info('Elemento da página alvo encontrado para navegação programática', 'FloatingPDFViewer.startProgrammaticPageNavigation', {
-          flowId: navigationFlowId,
-          source,
-          targetPage,
-          marker: 'page-element-found',
-          elapsedMs: Date.now() - startedAt
-        });
         pageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
         setTimeout(() => {
           releaseProgrammaticScroll('state-change');
@@ -3021,13 +2988,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const elapsedMs = Date.now() - pendingTarget.startedAt;
         navigationFirstScrollCapturedRef.current.add(pendingTarget.flowId);
         navigationMetricsSamplesRef.current.firstUsefulScrollMs.push(elapsedMs);
-        logger.info('Primeiro scroll útil após navegação programática', 'FloatingPDFViewer.handleScrollEffect', {
-          flowId: pendingTarget.flowId,
-          source: pendingTarget.source,
-          targetPage: pendingTarget.page,
-          elapsedMs,
-          marker: 'first-useful-scroll'
-        });
 
         if (elapsedMs > NAVIGATION_INITIAL_RESPONSE_ALERT_MS) {
           logger.warn('Latência inicial percebida acima do threshold', 'FloatingPDFViewer.handleScrollEffect', {
@@ -3102,11 +3062,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
-    logger.info(
-      'Scroll listener instalado no container do PDF',
-      'FloatingPDFViewer.handleScrollEffect',
-      { viewMode: state.viewMode }
-    );
     scheduleInitialScrollRecalculation();
 
     return () => {
@@ -4276,19 +4231,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       .join('|');
 
     if (mergedBookmarksFingerprintRef.current === fingerprint) {
-      logger.info(
-        'PDFViewerContext.setBookmarks ignorado por fingerprint inalterado',
-        'FloatingPDFViewer.bookmarksMerge'
-      );
       return;
     }
 
     mergedBookmarksFingerprintRef.current = fingerprint;
-    logger.info(
-      'PDFViewerContext.setBookmarks executado após mudança de fingerprint',
-      'FloatingPDFViewer.bookmarksMerge',
-      { fingerprint }
-    );
     setBookmarks(mergedBookmarks);
   }, [documentBookmarks, setBookmarks, state.documents.length]);
 
@@ -6336,18 +6282,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const source = state.isSearchOpen ? 'search' : 'highlight';
     const shouldSyncCurrentPage = state.currentPage !== state.highlightedPage;
-
-    logger.info(
-      'Acionando fluxo deduplicado de navegação por highlight',
-      'FloatingPDFViewer.highlightedPageEffect',
-      {
-        highlightedPage: state.highlightedPage,
-        currentPage: effectiveCurrentPage,
-        source,
-        deduplicatedNavigationPath: true,
-        shouldSyncCurrentPage
-      }
-    );
 
     startProgrammaticPageNavigation(state.highlightedPage, source, shouldSyncCurrentPage, state.highlightNavigationFlowId || undefined);
   }, [
