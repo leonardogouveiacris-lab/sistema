@@ -1695,42 +1695,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const originalCenterPage = centerPage;
-    const previousScrollTop = options?.previousScrollTop ?? scrollTop;
-
-    const getFractionalPagePositionFromScrollTop = (scrollTopValue: number): number => {
-      if (state.totalPages <= 0 || cumulativePageTops.length === 0 || cumulativePageBottoms.length === 0) {
-        return 1;
-      }
-
-      const boundedIndex = Math.max(
-        0,
-        Math.min(
-          state.totalPages - 1,
-          findFirstIndexByBottom(cumulativePageBottoms, Math.max(0, scrollTopValue))
-        )
-      );
-      const pageTop = cumulativePageTops[boundedIndex] ?? 0;
-      const pageBottom = cumulativePageBottoms[boundedIndex] ?? pageTop + 1;
-      const pageHeight = Math.max(1, pageBottom - pageTop);
-      const normalizedOffsetInPage = Math.max(0, Math.min(1, (scrollTopValue - pageTop) / pageHeight));
-
-      return Math.max(1, Math.min(state.totalPages, boundedIndex + 1 + normalizedOffsetInPage));
-    };
-
-    const fractionalPageBefore = getFractionalPagePositionFromScrollTop(previousScrollTop);
-    const fractionalPageAfter = getFractionalPagePositionFromScrollTop(scrollTop);
-    const targetPageByOffset = Math.max(1, Math.min(state.totalPages, Math.round(fractionalPageAfter)));
-
-    const traversedScrollTopStart = Math.min(previousScrollTop, scrollTop);
-    const traversedScrollTopEnd = Math.max(previousScrollTop, scrollTop);
-    const traversedStartIndex = Math.max(0, Math.min(state.totalPages - 1, findFirstIndexByBottom(cumulativePageBottoms, traversedScrollTopStart)));
-    const traversedEndIndex = Math.max(0, Math.min(state.totalPages - 1, findLastIndexByTop(cumulativePageTops, traversedScrollTopEnd)));
-    const traversedMinPage = Math.min(traversedStartIndex, traversedEndIndex) + 1;
-    const traversedMaxPage = Math.max(traversedStartIndex, traversedEndIndex) + 1;
-
-    const traversedTopBoundaryPx = cumulativePageTops[Math.min(traversedStartIndex, traversedEndIndex)] ?? 0;
-    const traversedBottomBoundaryPx = cumulativePageBottoms[Math.max(traversedStartIndex, traversedEndIndex)] ?? traversedTopBoundaryPx;
-    const traveledDistancePx = Math.max(0, traversedScrollTopEnd - traversedScrollTopStart);
+    const baseReferencePage = Math.max(1, Math.min(state.totalPages, state.currentPage));
+    const upwardReferencePage = Math.max(1, Math.min(state.totalPages, state.currentPage - 1));
+    const directionalReferencePage = scrollDirection === 'up' ? upwardReferencePage : baseReferencePage;
+    const directionalReferenceHeightPx = Math.max(1, getPageHeight(directionalReferencePage));
+    const zoomNormalizedScrollStep = Math.max(
+      1,
+      Math.round((scrollDelta * Math.max(state.zoom, 0.5)) / Math.max(1, directionalReferenceHeightPx * 0.65))
+    );
 
     const shouldNormalizeZoomScrollStep =
       !shouldForcePageUpdate &&
@@ -1738,26 +1710,24 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       !isKeyboardNavLockActive &&
       !hasRecentKeyboardNavigation;
 
+    let zoomStepCap = state.zoom < 1 ? 1 : 2;
+    let maxStepFromCurrentPage = Math.max(1, Math.min(zoomStepCap, zoomNormalizedScrollStep));
     if (shouldNormalizeZoomScrollStep && centerPage !== state.currentPage) {
-      const isAgainstDirection =
-        (scrollDirection === 'up' && centerPage > state.currentPage) ||
-        (scrollDirection === 'down' && centerPage < state.currentPage);
+      const maxAllowedPageByDirection = scrollDirection === 'up'
+        ? state.currentPage - maxStepFromCurrentPage
+        : scrollDirection === 'down'
+          ? state.currentPage + maxStepFromCurrentPage
+          : state.currentPage;
 
-      if (isAgainstDirection) {
-        centerPage = state.currentPage;
-      }
-
-      centerPage = Math.max(traversedMinPage, Math.min(traversedMaxPage, centerPage));
-
-      if (scrollDirection === 'up' || scrollDirection === 'down') {
-        const targetConstrainedByTraversal = Math.max(traversedMinPage, Math.min(traversedMaxPage, targetPageByOffset));
-        const divergenceFromOffset = centerPage - targetConstrainedByTraversal;
-
-        if (divergenceFromOffset !== 0) {
-          centerPage = targetConstrainedByTraversal;
-        }
+      if (scrollDirection === 'up') {
+        centerPage = Math.max(centerPage, maxAllowedPageByDirection);
+      } else if (scrollDirection === 'down') {
+        centerPage = Math.min(centerPage, maxAllowedPageByDirection);
       } else {
-        centerPage = Math.max(traversedMinPage, Math.min(traversedMaxPage, targetPageByOffset));
+        const stepDelta = centerPage - state.currentPage;
+        if (Math.abs(stepDelta) > maxStepFromCurrentPage) {
+          centerPage = state.currentPage + (stepDelta > 0 ? maxStepFromCurrentPage : -maxStepFromCurrentPage);
+        }
       }
     }
 
@@ -1789,17 +1759,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           proposedDelta,
           isAgainstDirection,
           shouldNormalizeZoomScrollStep,
-          zoom: state.zoom,
-          previousScrollTop,
-          scrollTop,
-          fractionalPageBefore,
-          fractionalPageAfter,
-          targetPageByOffset,
-          traversedTopBoundaryPx,
-          traversedBottomBoundaryPx,
-          traveledDistancePx,
-          traversedMinPage,
-          traversedMaxPage
+          zoom: state.zoom
         },
         { throttleMs: 800, throttleKey: 'directional-guard', force: true }
       );
@@ -1809,9 +1769,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       currentPageIntersectionPx >= UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX &&
       currentPageVisibleRatio >= UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO;
 
-    const shouldStabilizeDirectionalMicroScroll =
+    const shouldStabilizeUpwardMicroScroll =
       shouldNormalizeZoomScrollStep &&
-      (scrollDirection === 'up' || scrollDirection === 'down') &&
+      scrollDirection === 'up' &&
       scrollDelta <= UPWARD_SCROLL_MICRO_DELTA_PX &&
       centerPage !== state.currentPage &&
       isCurrentPageStillVisibleForUpwardGuard;
@@ -1821,7 +1781,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       centerPage !== state.currentPage &&
       isCurrentPageStillVisibleForUpwardGuard;
 
-    if (shouldStabilizeDirectionalMicroScroll || shouldStabilizeDirectionSettle) {
+    if (shouldStabilizeUpwardMicroScroll || shouldStabilizeDirectionSettle) {
       logPdfDebugEvent(
         'calculate_visible_pages_upward_stability_guard',
         {
@@ -1833,7 +1793,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           signedScrollDelta,
           isDirectionSettling,
           timeSinceDirectionChange,
-          shouldStabilizeDirectionalMicroScroll,
+          shouldStabilizeUpwardMicroScroll,
           shouldStabilizeDirectionSettle,
           currentPageIntersectionPx,
           currentPageVisibleRatio,
@@ -1844,7 +1804,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       );
 
       centerPage = state.currentPage;
-      } else if ((isDirectionSettling || scrollDirection === 'up' || scrollDirection === 'down') && centerPage !== state.currentPage) {
+    } else if ((isDirectionSettling || scrollDirection === 'up') && centerPage !== state.currentPage) {
       logPdfDebugEvent(
         'calculate_visible_pages_upward_stability_guard_skipped',
         {
@@ -1876,16 +1836,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         signedScrollDelta,
         scrollDirection,
         zoom: state.zoom,
-        previousScrollTop,
-        scrollTop,
-        fractionalPageBefore,
-        fractionalPageAfter,
-        targetPageByOffset,
-        traversedTopBoundaryPx,
-        traversedBottomBoundaryPx,
-        traveledDistancePx,
-        traversedMinPage,
-        traversedMaxPage,
+        directionalReferenceHeightPx,
+        directionalReferencePage,
+        zoomNormalizedScrollStep,
+        zoomStepCap,
+        maxStepFromCurrentPage,
         normalizedStepApplied: centerPage !== originalCenterPage,
         shouldNormalizeZoomScrollStep
       },
