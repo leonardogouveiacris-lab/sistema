@@ -104,10 +104,10 @@ const ZOOM_POST_BLOCK_SMALL_DIVERGENCE_PAGES = 2;
 const ZOOM_ANCHOR_SMALL_DRIFT_TOLERANCE_PAGES = 1;
 const ACTIVE_PAGE_MIN_INTERSECTION_PX = 48;
 const ACTIVE_PAGE_MIN_VISIBLE_RATIO = 0.25;
-const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
-const ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO = 0.12;
 const ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS = 120;
 const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 140;
+const PAGE_BOUNDARY_HYSTERESIS_BASE_RATIO = 0.16;
+const PAGE_BOUNDARY_HYSTERESIS_LANDSCAPE_FACTOR = 1.35;
 const UPWARD_SCROLL_MICRO_DELTA_PX = 14;
 const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 24;
 const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.03;
@@ -164,6 +164,16 @@ type ScrollReconciliationSnapshot = {
   scrollDirection: ScrollDirection;
   timestamp: number;
   reconciliationSource: 'scroll' | 'raf' | 'timeout';
+};
+
+type PageGeometrySnapshot = {
+  page: number;
+  top: number;
+  bottom: number;
+  height: number;
+  center: number;
+  orientation: 'portrait' | 'landscape';
+  zoom: number;
 };
 
 type CalculateVisiblePagesFromScrollOptions = {
@@ -314,6 +324,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const calculateVisiblePagesFromScrollRef = useRef<(options?: CalculateVisiblePagesFromScrollOptions) => void>(() => {});
   const scrollReconciliationTickIdRef = useRef<number>(0);
   const pendingScrollSnapshotRef = useRef<ScrollReconciliationSnapshot | null>(null);
+  const latestScheduledScrollTickIdRef = useRef<number>(0);
+  const lastAppliedReconciliationTickIdRef = useRef<number>(0);
   const deriveVisibleRangeFromContainerRef = useRef<() => ({ start: number; end: number } | null)>(() => null);
   const estimateCenterPageFromScrollRef = useRef<(scrollTop: number, viewportHeight: number) => number>(() => 1);
   const markInteractionStartRef = useRef<() => void>(() => {});
@@ -988,6 +1000,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     const now = options?.scrollSnapshot?.timestamp ?? Date.now();
     const ignoreZoomLock = options?.ignoreZoomLock === true;
+    const incomingTickId = options?.scrollSnapshot?.tickId ?? null;
+
+    if (incomingTickId !== null && incomingTickId < lastAppliedReconciliationTickIdRef.current) {
+      return;
+    }
+
+    if (incomingTickId !== null) {
+      lastAppliedReconciliationTickIdRef.current = incomingTickId;
+    }
 
     if (state.isRotating || isModeSwitchingRef.current) {
       return;
@@ -1123,6 +1144,22 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     let domCurrentPageIntersectionPx = -1;
     let domCurrentPageVisibleRatio = 0;
 
+    const geometrySnapshotByPage = new Map<number, PageGeometrySnapshot>();
+    const buildGeometrySnapshot = (pageNum: number, pageTop: number, pageBottom: number, measuredHeight?: number): PageGeometrySnapshot => {
+      const fallbackHeight = Math.max(1, pageBottom - pageTop);
+      const height = Math.max(1, measuredHeight ?? fallbackHeight);
+      const width = Math.max(1, getPageWidth(pageNum));
+      return {
+        page: pageNum,
+        top: pageTop,
+        bottom: pageBottom,
+        height,
+        center: pageTop + height / 2,
+        orientation: width > height ? 'landscape' : 'portrait',
+        zoom: effectiveZoom
+      };
+    };
+
     mountedPagesInWindow.forEach((pageNum) => {
       const pageElement = pageRefs.current.get(pageNum);
       if (!pageElement) {
@@ -1130,6 +1167,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       const pageRect = pageElement.getBoundingClientRect();
+      const normalizedTop = scrollTop + (pageRect.top - containerRect.top);
+      const normalizedBottom = scrollTop + (pageRect.bottom - containerRect.top);
+      geometrySnapshotByPage.set(pageNum, buildGeometrySnapshot(pageNum, normalizedTop, normalizedBottom, pageRect.height));
       const bufferedIntersectionPx = Math.max(0, Math.min(pageRect.bottom, containerRect.bottom + buffer) - Math.max(pageRect.top, containerRect.top - buffer));
       if (bufferedIntersectionPx > 0) {
         visiblePages.add(pageNum);
@@ -1174,6 +1214,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     });
 
+    const ensureSnapshotForPage = (pageNum: number) => {
+      if (pageNum < 1 || pageNum > state.totalPages || geometrySnapshotByPage.has(pageNum)) {
+        return;
+      }
+      const pageIndex = pageNum - 1;
+      const top = cumulativePageTops[pageIndex];
+      const bottom = cumulativePageBottoms[pageIndex];
+      if (typeof top !== 'number' || typeof bottom !== 'number') {
+        return;
+      }
+      geometrySnapshotByPage.set(pageNum, buildGeometrySnapshot(pageNum, top, bottom));
+    };
+
+    ensureSnapshotForPage(effectiveCurrentPage);
+    ensureSnapshotForPage(effectiveCurrentPage - 1);
+    ensureSnapshotForPage(effectiveCurrentPage + 1);
+
     if (visibleStartIndex <= visibleEndIndex) {
       visibleStartPageRef.current = visibleStartIndex + 1;
       visibleEndPageRef.current = visibleEndIndex + 1;
@@ -1197,6 +1254,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const pageTop = cumulativePageTops[pageIndex];
         const pageBottom = cumulativePageBottoms[pageIndex];
         const pageHeight = Math.max(1, pageBottom - pageTop);
+        geometrySnapshotByPage.set(pageNum, buildGeometrySnapshot(pageNum, pageTop, pageBottom, pageHeight));
         const visibleIntersectionPx = Math.max(0, Math.min(pageBottom, viewportEnd) - Math.max(pageTop, viewportStart));
         if (visibleIntersectionPx > 0) {
           visiblePages.add(pageNum);
@@ -1260,24 +1318,37 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         centerPage = effectiveCurrentPage;
       }
 
+      const currentGeometrySnapshot = geometrySnapshotByPage.get(effectiveCurrentPage);
       const shouldApplyScrollHysteresis =
         !isProgrammaticScrollRef.current &&
         !hasPendingNavigationTarget &&
         effectiveCurrentPage >= visibleStartPageRef.current &&
-        effectiveCurrentPage <= visibleEndPageRef.current;
+        effectiveCurrentPage <= visibleEndPageRef.current &&
+        Boolean(currentGeometrySnapshot);
 
-      if (shouldApplyScrollHysteresis && centerPage !== effectiveCurrentPage && currentPageIntersectionPx > 0) {
-        const switchDeltaPx = maxVisibleIntersection - currentPageIntersectionPx;
-        const switchDeltaRatio = maxVisibleRatio - currentPageVisibleRatio;
-        const minSwitchDeltaPx = Math.max(
-          18,
+      if (shouldApplyScrollHysteresis && currentGeometrySnapshot) {
+        const currentBoundaryPage = scrollDirection === 'up'
+          ? Math.max(1, effectiveCurrentPage - 1)
+          : Math.min(state.totalPages, effectiveCurrentPage + 1);
+        const candidateGeometrySnapshot = geometrySnapshotByPage.get(currentBoundaryPage);
+        const isLandscapeCurrent = currentGeometrySnapshot.orientation === 'landscape';
+        const hysteresisRatioBase = PAGE_BOUNDARY_HYSTERESIS_BASE_RATIO * zoomNormalizationFactor;
+        const hysteresisRatio = Math.max(
+          0.08,
           Math.min(
-            ACTIVE_PAGE_SWITCH_MIN_DELTA_PX * zoomNormalizationFactor,
-            effectiveCurrentPageHeightPx * Math.max(0.07, Math.min(0.18, viewportToPageRatio * 0.12)),
-            viewportHeight * Math.max(0.11, Math.min(0.2, viewportToPageRatio * 0.15))
+            0.32,
+            hysteresisRatioBase * (isLandscapeCurrent ? PAGE_BOUNDARY_HYSTERESIS_LANDSCAPE_FACTOR : 1)
           )
         );
-        if (switchDeltaPx < minSwitchDeltaPx && switchDeltaRatio < ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO) {
+        const hysteresisPx = currentGeometrySnapshot.height * hysteresisRatio;
+        const forwardBoundary = currentGeometrySnapshot.bottom + hysteresisPx;
+        const backwardBoundary = currentGeometrySnapshot.top - hysteresisPx;
+
+        if (scrollDirection === 'down' && candidateGeometrySnapshot && viewportCenter >= forwardBoundary) {
+          centerPage = candidateGeometrySnapshot.page;
+        } else if (scrollDirection === 'up' && candidateGeometrySnapshot && viewportCenter <= backwardBoundary) {
+          centerPage = candidateGeometrySnapshot.page;
+        } else {
           centerPage = effectiveCurrentPage;
         }
       }
@@ -1766,7 +1837,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const baseReferencePage = Math.max(1, Math.min(state.totalPages, effectiveCurrentPage));
     const upwardReferencePage = Math.max(1, Math.min(state.totalPages, effectiveCurrentPage - 1));
     const directionalReferencePage = scrollDirection === 'up' ? upwardReferencePage : baseReferencePage;
-    const directionalReferenceHeightPx = Math.max(1, getPageHeight(directionalReferencePage));
+    const currentPageGeometry = geometrySnapshotByPage.get(effectiveCurrentPage)
+      ?? buildGeometrySnapshot(effectiveCurrentPage, cumulativePageTops[effectiveCurrentPage - 1], cumulativePageBottoms[effectiveCurrentPage - 1]);
+    const directionalReferenceGeometry = geometrySnapshotByPage.get(directionalReferencePage)
+      ?? buildGeometrySnapshot(directionalReferencePage, cumulativePageTops[directionalReferencePage - 1], cumulativePageBottoms[directionalReferencePage - 1]);
+    const directionalReferenceHeightPx = Math.max(1, directionalReferenceGeometry.height);
     const zoomNormalizedScrollStep = Math.max(
       1,
       Math.round((scrollDelta * Math.max(state.zoom, 0.5)) / Math.max(1, directionalReferenceHeightPx * 0.65))
@@ -1848,14 +1923,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       8,
       Math.min(
         UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX * zoomNormalizationFactor,
-        effectiveCurrentPageHeightPx * Math.max(0.018, Math.min(0.06, viewportToPageRatio * 0.035))
+        currentPageGeometry.height * Math.max(0.018, Math.min(0.06, viewportToPageRatio * 0.035))
       )
     );
     const upwardViewportExitIntersectionPx = Math.max(
       4,
       Math.min(
         UPWARD_VIEWPORT_EXIT_INTERSECTION_PX * zoomNormalizationFactor,
-        effectiveCurrentPageHeightPx * Math.max(0.004, Math.min(0.02, viewportToPageRatio * 0.012))
+        currentPageGeometry.height * Math.max(0.004, Math.min(0.02, viewportToPageRatio * 0.012))
       )
     );
 
@@ -1927,16 +2002,21 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       );
     }
 
-    const currentPageWidth = getPageWidth(effectiveCurrentPage);
-    const currentPageHeight = Math.max(1, getPageHeight(effectiveCurrentPage));
-    const currentPageIsLandscape = currentPageWidth > currentPageHeight;
+    const currentPageHeight = Math.max(1, currentPageGeometry.height);
+    const currentPageIsLandscape = currentPageGeometry.orientation === 'landscape';
     const adjacentUpPage = Math.max(1, effectiveCurrentPage - 1);
     const adjacentDownPage = Math.min(state.totalPages, effectiveCurrentPage + 1);
-    const adjacentUpIsLandscape = getPageWidth(adjacentUpPage) > getPageHeight(adjacentUpPage);
-    const adjacentDownIsLandscape = getPageWidth(adjacentDownPage) > getPageHeight(adjacentDownPage);
+    const adjacentUpSnapshot = geometrySnapshotByPage.get(adjacentUpPage)
+      ?? buildGeometrySnapshot(adjacentUpPage, cumulativePageTops[adjacentUpPage - 1], cumulativePageBottoms[adjacentUpPage - 1]);
+    const adjacentDownSnapshot = geometrySnapshotByPage.get(adjacentDownPage)
+      ?? buildGeometrySnapshot(adjacentDownPage, cumulativePageTops[adjacentDownPage - 1], cumulativePageBottoms[adjacentDownPage - 1]);
+    const adjacentUpIsLandscape = adjacentUpSnapshot.orientation === 'landscape';
+    const adjacentDownIsLandscape = adjacentDownSnapshot.orientation === 'landscape';
     const isLandscapeBoundary = currentPageIsLandscape || adjacentUpIsLandscape || adjacentDownIsLandscape;
     const candidatePageForBoundary = Math.max(1, Math.min(state.totalPages, guardedCenterPage));
-    const candidatePageHeight = Math.max(1, getPageHeight(candidatePageForBoundary));
+    const candidatePageSnapshot = geometrySnapshotByPage.get(candidatePageForBoundary)
+      ?? buildGeometrySnapshot(candidatePageForBoundary, cumulativePageTops[candidatePageForBoundary - 1], cumulativePageBottoms[candidatePageForBoundary - 1]);
+    const candidatePageHeight = Math.max(1, candidatePageSnapshot.height);
     const currentPageNormalizedVisibility = currentPageIntersectionPx / currentPageHeight;
     const candidatePageNormalizedVisibility = pageVisibilityRatioMap.get(candidatePageForBoundary) ?? 0;
     const averageBoundaryHeight = Math.max(1, (candidatePageHeight + currentPageHeight) / 2);
@@ -2137,6 +2217,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       centerPage = Math.min(centerPage, effectiveCurrentPage);
     }
 
+    const orientationCurrent = currentPageGeometry.orientation;
+    const orientationCandidate = (geometrySnapshotByPage.get(centerPage)
+      ?? buildGeometrySnapshot(centerPage, cumulativePageTops[centerPage - 1], cumulativePageBottoms[centerPage - 1])).orientation;
+
     if (centerPage !== candidateBeforeFinalClamp) {
       logPdfDebugEvent(
         'calculate_visible_pages_upward_final_monotonic_clamp',
@@ -2161,13 +2245,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         reconciliationSource: scrollSnapshot?.reconciliationSource ?? 'scroll',
         currentPageRef: currentPageRef.current,
         currentPageState: currentPageRef.current,
+        currentPageBefore: effectiveCurrentPage,
+        candidatePage: centerPageBeforeGuards,
+        candidateAfterClamp: centerPage,
         effectiveCurrentPage,
         centerPageBefore: centerPageBeforeGuards,
         centerPageBeforeFinalClamp: candidateBeforeFinalClamp,
         centerPageAfter: centerPage,
+        orientationCurrent,
+        orientationCandidate,
         zoom: state.zoom,
         pageHeightCurrent: currentPageHeight,
-        pageHeightCandidate: Math.max(1, getPageHeight(Math.max(1, Math.min(state.totalPages, centerPage)))),
+        pageHeightCandidate: Math.max(1, (geometrySnapshotByPage.get(Math.max(1, Math.min(state.totalPages, centerPage)))
+          ?? buildGeometrySnapshot(Math.max(1, Math.min(state.totalPages, centerPage)), cumulativePageTops[Math.max(1, Math.min(state.totalPages, centerPage)) - 1], cumulativePageBottoms[Math.max(1, Math.min(state.totalPages, centerPage)) - 1])).height),
         scrollDirection
       },
       { throttleMs: 500, throttleKey: 'scroll-reconciliation-tick-decision' }
@@ -2428,6 +2518,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
+      latestScheduledScrollTickIdRef.current = Math.max(latestScheduledScrollTickIdRef.current, snapshot.tickId);
       pendingScrollSnapshotRef.current = snapshot;
       if (scrollReconciliationRafRef.current !== null) {
         return;
@@ -2443,6 +2534,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
 
         if (isModeSwitchingRef.current || isRotatingRef.current) {
+          return;
+        }
+
+        if (snapshotToReconcile.tickId < latestScheduledScrollTickIdRef.current) {
           return;
         }
 
