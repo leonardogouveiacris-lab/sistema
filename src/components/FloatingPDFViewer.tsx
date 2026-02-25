@@ -107,6 +107,9 @@ const ACTIVE_PAGE_MIN_VISIBLE_RATIO = 0.25;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_PX = 96;
 const ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO = 0.12;
 const ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS = 180;
+const ACTIVE_PAGE_TRANSITION_MIN_SAMPLES = 2;
+const UPWARD_LANDSCAPE_TRANSITION_MIN_SAMPLES = 3;
+const UPWARD_LANDSCAPE_TRANSITION_MIN_AGE_MS = 150;
 const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 200;
 const UPWARD_SCROLL_MICRO_DELTA_PX = 20;
 const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 40;
@@ -2126,6 +2129,37 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const stablePage = stablePageRef.current;
     const timeSinceLastPageChange = now - lastPageChangeTimeRef.current;
     const isInCooldown = timeSinceLastPageChange < PAGE_CHANGE_COOLDOWN_MS;
+    const updateTransitionCandidate = (
+      candidatePage: number,
+      minSamples: number,
+      minAgeMs: number
+    ) => {
+      const candidate = activePageTransitionCandidateRef.current;
+
+      if (!candidate || candidate.page !== candidatePage) {
+        activePageTransitionCandidateRef.current = {
+          page: candidatePage,
+          startedAt: now,
+          samples: 1
+        };
+
+        return {
+          accepted: minSamples <= 1 && minAgeMs <= 0,
+          candidateAgeMs: 0,
+          candidateSamples: 1
+        };
+      }
+
+      candidate.samples += 1;
+      const candidateAgeMs = now - candidate.startedAt;
+      const accepted = candidate.samples >= minSamples || candidateAgeMs >= minAgeMs;
+
+      return {
+        accepted,
+        candidateAgeMs,
+        candidateSamples: candidate.samples
+      };
+    };
     const shouldApplySequentialDirectionalClamp =
       !shouldForcePageUpdate &&
       !hasPendingNavigationTarget &&
@@ -2188,6 +2222,63 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     centerPage = Math.max(1, Math.min(state.totalPages, guardedCenterPage));
 
+    const isUpwardLandscapeBoundaryTransition =
+      !shouldForcePageUpdate &&
+      scrollDirection === 'up' &&
+      isLandscapeBoundary &&
+      centerPage < effectiveCurrentPage;
+
+    if (isUpwardLandscapeBoundaryTransition && centerPage !== effectiveCurrentPage) {
+      const { accepted, candidateAgeMs, candidateSamples } = updateTransitionCandidate(
+        centerPage,
+        UPWARD_LANDSCAPE_TRANSITION_MIN_SAMPLES,
+        UPWARD_LANDSCAPE_TRANSITION_MIN_AGE_MS
+      );
+
+      if (!accepted) {
+        logPdfDebugEvent(
+          'upward_landscape_transition_debounced',
+          {
+            mode: state.viewMode,
+            currentPage: effectiveCurrentPage,
+            stablePage,
+            candidatePage: centerPage,
+            scrollDirection,
+            isLandscapeBoundary,
+            candidateSamples,
+            candidateAgeMs,
+            requiredSamples: UPWARD_LANDSCAPE_TRANSITION_MIN_SAMPLES,
+            requiredAgeMs: UPWARD_LANDSCAPE_TRANSITION_MIN_AGE_MS,
+            timeSinceLastPageChange,
+            isInCooldown,
+            shouldForcePageUpdate,
+            currentPageVisibleRatio,
+            currentPageIntersectionPx,
+            signedScrollDelta,
+            scrollDelta,
+            zoom: state.zoom
+          },
+          { throttleMs: 800, throttleKey: 'upward-landscape-transition-debounced' }
+        );
+
+        if (scrollDirection === 'up') {
+          console.log('[SCROLL_UP_DEBUG]', {
+            tick: now,
+            effectiveCurrentPage,
+            stablePage,
+            candidatePage: centerPage,
+            isInCooldown,
+            timeSinceLastPageChange,
+            transitionBlockKey: 'upward_landscape_transition_debounced',
+            candidateSamples,
+            candidateAgeMs
+          });
+        }
+
+        return;
+      }
+    }
+
     const normalizedStepApplied = centerPage !== originalCenterPage;
     if (normalizedStepApplied && scrollDirection !== 'neutral') {
       logPdfDebugEvent(
@@ -2218,6 +2309,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const timeSinceLastDetection = now - lastDetectionTimeRef.current;
     const pageDifference = Math.abs(centerPage - lastDetectedPageRef.current);
     const jumpFromCurrentPage = Math.abs(centerPage - effectiveCurrentPage);
+    const jumpFromStablePage = Math.abs(centerPage - stablePage);
 
     if (centerPage === effectiveCurrentPage) {
       activePageTransitionCandidateRef.current = null;
@@ -2235,6 +2327,43 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
+    if (!shouldForcePageUpdate && isInCooldown && jumpFromStablePage > 1) {
+      logPdfDebugEvent(
+        'calculate_visible_pages_cooldown_jump_block',
+        {
+          mode: state.viewMode,
+          currentPage: effectiveCurrentPage,
+          stablePage,
+          candidatePage: centerPage,
+          jumpFromStablePage,
+          jumpFromCurrentPage,
+          scrollDirection,
+          isLandscapeBoundary,
+          isUpwardViewportExit,
+          timeSinceLastPageChange,
+          cooldownMs: PAGE_CHANGE_COOLDOWN_MS,
+          shouldForcePageUpdate,
+          zoom: state.zoom
+        },
+        { throttleMs: 1200, throttleKey: 'cooldown-jump-block' }
+      );
+
+      if (scrollDirection === 'up') {
+        console.log('[SCROLL_UP_DEBUG]', {
+          tick: now,
+          effectiveCurrentPage,
+          stablePage,
+          candidatePage: centerPage,
+          isInCooldown,
+          timeSinceLastPageChange,
+          transitionBlockKey: 'cooldown_jump_gt_one_blocked',
+          jumpFromStablePage
+        });
+      }
+
+      return;
+    }
+
     if (!shouldForcePageUpdate && jumpFromCurrentPage > MAX_PAGE_JUMP && !allowLargeJump) {
       logger.warn(
         `Bloqueado pulo de pagina invalido: ${effectiveCurrentPage} -> ${centerPage} (${jumpFromCurrentPage} paginas)`,
@@ -2249,24 +2378,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       !isKeyboardNavLockActive &&
       !hasRecentKeyboardNavigation &&
       !isUpwardViewportExit &&
-      !isLandscapeBoundary &&
-      scrollDirection === 'neutral' &&
+      (!isLandscapeBoundary || scrollDirection !== 'up') &&
       jumpFromCurrentPage === 1;
 
     if (shouldDebounceVisualAdjacentTransition && centerPage !== effectiveCurrentPage) {
-      const candidate = activePageTransitionCandidateRef.current;
-      if (!candidate || candidate.page !== centerPage) {
-        activePageTransitionCandidateRef.current = {
-          page: centerPage,
-          startedAt: now,
-          samples: 1
-        };
-        return;
-      }
-
-      candidate.samples += 1;
-      const candidateAgeMs = now - candidate.startedAt;
-      if (candidateAgeMs < ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS && candidate.samples < 2) {
+      const minSamples = scrollDirection === 'neutral'
+        ? ACTIVE_PAGE_TRANSITION_MIN_SAMPLES
+        : ACTIVE_PAGE_TRANSITION_MIN_SAMPLES + 1;
+      const { accepted } = updateTransitionCandidate(
+        centerPage,
+        minSamples,
+        ACTIVE_PAGE_TRANSITION_DEBOUNCE_MS
+      );
+      if (!accepted) {
         return;
       }
     } else {
