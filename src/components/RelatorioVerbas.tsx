@@ -23,8 +23,7 @@ import {
   verificarMudancaSituacao,
   formatarData,
   formatarDataCurta,
-  filtrarPorProcesso,
-  VerbaAgrupada
+  filtrarPorProcesso
 } from '../utils';
 
 const ITEMS_PER_SECTION = 10;
@@ -65,7 +64,6 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
 
   const [visibleDecisionsCount, setVisibleDecisionsCount] = useState(ITEMS_PER_SECTION);
   const [visibleDocumentosCount, setVisibleDocumentosCount] = useState(ITEMS_PER_SECTION);
-  const [visibleVerbasCount, setVisibleVerbasCount] = useState(ITEMS_PER_SECTION);
 
   const processId = selectedProcess?.id;
 
@@ -97,12 +95,11 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
   }, [documentosDoProcesso, visibleDocumentosCount]);
 
   const visibleVerbas = useMemo(() => {
-    return verbasAgrupadas.slice(0, visibleVerbasCount);
-  }, [verbasAgrupadas, visibleVerbasCount]);
+    return verbasAgrupadas;
+  }, [verbasAgrupadas]);
 
   const hasMoreDecisions = decisionsDoProcesso.length > visibleDecisionsCount;
   const hasMoreDocumentos = documentosDoProcesso.length > visibleDocumentosCount;
-  const hasMoreVerbas = verbasAgrupadas.length > visibleVerbasCount;
 
   const estatisticas = useMemo(() => {
     if (!selectedProcess) {
@@ -183,14 +180,12 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
 
       setVisibleDecisionsCount(decisionsDoProcesso.length);
       setVisibleDocumentosCount(documentosDoProcesso.length);
-      setVisibleVerbasCount(verbasAgrupadas.length);
     };
 
     const handleAfterPrint = () => {
       setExpandedVerbas(previousExpandedStateRef.current);
       setVisibleDecisionsCount(ITEMS_PER_SECTION);
       setVisibleDocumentosCount(ITEMS_PER_SECTION);
-      setVisibleVerbasCount(ITEMS_PER_SECTION);
     };
 
     window.addEventListener('beforeprint', handleBeforePrint);
@@ -435,17 +430,6 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
           })}
         </div>
 
-        {hasMoreVerbas && (
-          <div className="mt-4 text-center no-print">
-            <button
-              onClick={() => setVisibleVerbasCount(prev => prev + ITEMS_PER_SECTION)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              <ChevronDown size={16} />
-              <span>Carregar mais ({verbasAgrupadas.length - visibleVerbasCount} restantes)</span>
-            </button>
-          </div>
-        )}
       </section>
     );
   };
