@@ -4553,7 +4553,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           'Métrica: currentPage divergente do range visível por mais de 500ms',
           'FloatingPDFViewer.currentPageVisibleDivergence',
           {
-            currentPage: effectiveCurrentPage,
+            currentPage: state.currentPage,
             visibleStart: start,
             visibleEnd: end,
             distanceToVisibleRange,
@@ -4584,7 +4584,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         'Ação corretiva: reconciliação de currentPage após divergência prolongada',
         'FloatingPDFViewer.currentPageVisibleDivergenceCorrection',
         {
-          currentPage: effectiveCurrentPage,
+          currentPage: state.currentPage,
           reconciledPage,
           visibleStart: start,
           visibleEnd: end,
@@ -4921,7 +4921,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     logPdfDebugEvent('continuous-document-mount-window', {
       mode: state.viewMode,
-      currentPage: effectiveCurrentPage,
+      currentPage: state.currentPage,
       activeDocumentId: activeDocumentId ?? null,
       mountedDocsBefore: Array.from(previouslyMountedDocumentsRef.current),
       mountedDocsAfter,
@@ -5092,7 +5092,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     handleNextPage,
   } = usePDFPageNavigation({
     viewMode: state.viewMode,
-    currentPage: effectiveCurrentPage,
+    currentPage: state.currentPage,
     totalPages: state.totalPages,
     isRotating: state.isRotating,
     onNextPage: nextPage,
@@ -5501,7 +5501,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         color: state.selectedHighlightColor,
         textLength: state.selectedText.length,
         extractedPage: state.selectionPosition.pageNumber,
-        currentPage: effectiveCurrentPage,
+        currentPage: state.currentPage,
         documentId: targetDoc.id
       }
     );
@@ -5787,7 +5787,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       'FloatingPDFViewer.highlightedPageEffect',
       {
         highlightedPage: state.highlightedPage,
-        currentPage: effectiveCurrentPage,
+        currentPage: state.currentPage,
         source,
         deduplicatedNavigationPath: true,
         shouldSyncCurrentPage
