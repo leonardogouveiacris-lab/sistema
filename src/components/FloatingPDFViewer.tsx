@@ -87,7 +87,7 @@ const BOOKMARKS_IDLE_TIMEOUT_MS = 1000;
 const COMMENTS_BATCH_DELAY_MS = 120;
 const HEAVY_TASK_CONCURRENCY = 2;
 const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
-const CONTINUOUS_RENDER_BUDGET_PAGES = 12;
+const CONTINUOUS_RENDER_BUDGET_PAGES = 14;
 const CONTINUOUS_INACTIVE_DOCUMENT_RENDER_BUDGET_PAGES = 2;
 const DEBUG_CONTINUOUS_RENDER = false;
 const CONTINUOUS_PRELOAD_RADIUS = 2;
@@ -111,6 +111,8 @@ const ACTIVE_PAGE_TRANSITION_MIN_SAMPLES = 2;
 const UPWARD_LANDSCAPE_TRANSITION_MIN_SAMPLES = 3;
 const UPWARD_LANDSCAPE_TRANSITION_MIN_AGE_MS = 150;
 const SCROLL_DIRECTION_CHANGE_SETTLE_MS = 200;
+const CONTINUOUS_PAGE_CHANGE_PROTECTION_MS = 320;
+const CONTINUOUS_CENTER_PAGE_STABILIZATION_MS = 300;
 const UPWARD_SCROLL_MICRO_DELTA_PX = 20;
 const UPWARD_GUARD_MIN_CURRENT_INTERSECTION_PX = 40;
 const UPWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = 0.08;
@@ -291,6 +293,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [scrollContainerElement, setScrollContainerElement] = useState<HTMLDivElement | null>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const pageDomMutationAtRef = useRef<Map<number, number>>(new Map());
+  const renderChurnEventsRef = useRef<Array<{ timestamp: number; type: 'mount' | 'unmount'; page: number; msSincePageChange: number }>>([]);
+  const renderChurnLastLogAtRef = useRef<number>(0);
   const pageDetectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProgrammaticScrollRef = useRef(false);
   const programmaticScrollSafetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -334,6 +339,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const keyboardNavCooldownUntilRef = useRef<number>(0);
   const keyboardNavStableFramesRef = useRef<number>(0);
   const currentPageRef = useRef<number>(state.currentPage);
+  const previousStateCurrentPageRef = useRef<number>(state.currentPage);
   const stablePageRef = useRef<number>(state.currentPage);
   const lastPageChangeTimeRef = useRef<number>(0);
   const lastPageCommitRef = useRef<{ source: ActivePageCommitSource; priority: number; timestamp: number; page: number } | null>(null);
@@ -644,6 +650,27 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     return true;
   }, [goToPage, logPdfDebugEvent, state.totalPages]);
+
+  const trackPageDomLifecycleEvent = useCallback((page: number, type: 'mount' | 'unmount') => {
+    const now = Date.now();
+    pageDomMutationAtRef.current.set(page, now);
+
+    const msSincePageChange = lastPageChangeTimeRef.current > 0
+      ? now - lastPageChangeTimeRef.current
+      : Number.POSITIVE_INFINITY;
+
+    const nextEvents = renderChurnEventsRef.current
+      .filter(event => now - event.timestamp <= 5000);
+
+    nextEvents.push({
+      timestamp: now,
+      type,
+      page,
+      msSincePageChange
+    });
+
+    renderChurnEventsRef.current = nextEvents;
+  }, []);
 
   const startPhaseTimer = useCallback((phase: string) => {
     phaseTimersRef.current.set(phase, performance.now());
@@ -1239,6 +1266,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const pageVisibilityRatioMap = new Map<number, number>();
     const containerRect = container.getBoundingClientRect();
     let domBestCandidate: { page: number; intersectionPx: number; visibleRatio: number; distanceToCenter: number } | null = null;
+    let cumulativeBestCandidate: { page: number; intersectionPx: number; visibleRatio: number; distanceToCenter: number } | null = null;
     let domCurrentPageIntersectionPx = -1;
     let domCurrentPageVisibleRatio = 0;
 
@@ -1309,7 +1337,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       for (let pageIndex = visibleStartIndex; pageIndex <= visibleEndIndex; pageIndex++) {
         const pageNum = pageIndex + 1;
-        if (!isPageInContinuousWindow(pageNum) || mountedPagesInWindow.has(pageNum)) {
+        if (!isPageInContinuousWindow(pageNum)) {
           continue;
         }
 
@@ -1325,11 +1353,27 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const pageCenter = pageTop + (pageBottom - pageTop) / 2;
         const distanceToCenter = Math.abs(pageCenter - viewportCenter);
 
-        cumulativeDebugEntries.push({
-          page: pageNum,
-          visibleIntersectionPx,
-          visibleRatio
-        });
+        cumulativeDebugEntries.push({ page: pageNum, visibleIntersectionPx, visibleRatio });
+
+        if (
+          !cumulativeBestCandidate ||
+          visibleIntersectionPx > cumulativeBestCandidate.intersectionPx ||
+          (
+            visibleIntersectionPx === cumulativeBestCandidate.intersectionPx &&
+            (visibleRatio > cumulativeBestCandidate.visibleRatio || (visibleRatio === cumulativeBestCandidate.visibleRatio && distanceToCenter < cumulativeBestCandidate.distanceToCenter))
+          )
+        ) {
+          cumulativeBestCandidate = {
+            page: pageNum,
+            intersectionPx: visibleIntersectionPx,
+            visibleRatio,
+            distanceToCenter
+          };
+        }
+
+        if (mountedPagesInWindow.has(pageNum)) {
+          continue;
+        }
 
         if (pageNum === effectiveCurrentPage) {
           currentPageIntersectionPx = visibleIntersectionPx;
@@ -1350,7 +1394,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
       }
 
-      if (domBestCandidate) {
+      const domCandidateMutationAt = domBestCandidate
+        ? pageDomMutationAtRef.current.get(domBestCandidate.page)
+        : null;
+      const shouldPreferCumulativeForCenter = Boolean(
+        cumulativeBestCandidate &&
+        domBestCandidate &&
+        domCandidateMutationAt !== undefined &&
+        domCandidateMutationAt !== null &&
+        (now - domCandidateMutationAt) <= CONTINUOUS_CENTER_PAGE_STABILIZATION_MS
+      );
+
+      if (domBestCandidate && !shouldPreferCumulativeForCenter) {
         centerPage = domBestCandidate.page;
         maxVisibleIntersection = domBestCandidate.intersectionPx;
         maxVisibleRatio = domBestCandidate.visibleRatio;
@@ -1359,6 +1414,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           currentPageIntersectionPx = domCurrentPageIntersectionPx;
           currentPageVisibleRatio = domCurrentPageVisibleRatio;
         }
+      } else if (cumulativeBestCandidate) {
+        centerPage = cumulativeBestCandidate.page;
+        maxVisibleIntersection = cumulativeBestCandidate.intersectionPx;
+        maxVisibleRatio = cumulativeBestCandidate.visibleRatio;
+        minDistanceToCenter = cumulativeBestCandidate.distanceToCenter;
       }
 
       const visiblePagesInViewport = Array.from(visiblePages).filter((page) => {
@@ -1475,6 +1535,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const recencyQueue = scrollRenderCacheRecencyQueueRef.current;
       const pendingTargetPage = pendingNavigationTarget?.page;
       const protectedPages = new Set<number>();
+      const inPageChangeProtectionWindow = (now - lastPageChangeTimeRef.current) <= CONTINUOUS_PAGE_CHANGE_PROTECTION_MS;
+      const stablePage = stablePageRef.current;
 
       const protectPage = (page: number | null | undefined) => {
         if (!page || page < 1 || page > state.totalPages) {
@@ -1483,22 +1545,30 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         protectedPages.add(page);
       };
 
-      const protectPageWithNeighbors = (page: number | null | undefined) => {
+      const protectPageWithRadius = (page: number | null | undefined, radius: number) => {
         if (!page || page < 1 || page > state.totalPages) {
           return;
         }
 
-        protectPage(page);
-        if (page - 1 >= 1) protectPage(page - 1);
-        if (page + 1 <= state.totalPages) protectPage(page + 1);
+        for (let offset = -radius; offset <= radius; offset++) {
+          const candidatePage = page + offset;
+          if (candidatePage >= 1 && candidatePage <= state.totalPages) {
+            protectPage(candidatePage);
+          }
+        }
       };
 
-      protectPageWithNeighbors(effectiveCurrentPage);
-      protectPageWithNeighbors(centerPage);
-      protectPageWithNeighbors(pendingTargetPage);
+      protectPageWithRadius(effectiveCurrentPage, 2);
+      protectPageWithRadius(stablePage, 2);
+      protectPageWithRadius(centerPage, scrollDirection !== 'neutral' ? 2 : 1);
+      protectPageWithRadius(pendingTargetPage, 1);
+
+      const effectiveBudget = inPageChangeProtectionWindow
+        ? Math.max(budget, protectedPages.size)
+        : budget;
 
       const viewportMiddlePage = Math.round((visibleStartPageRef.current + visibleEndPageRef.current) / 2);
-      const additionalProtectionBudget = Math.max(0, Math.min(budget - protectedPages.size, 4));
+      const additionalProtectionBudget = Math.max(0, Math.min(effectiveBudget - protectedPages.size, 4));
       if (additionalProtectionBudget > 0) {
         Array.from(visiblePages)
           .filter((page) => page >= 1 && page <= state.totalPages)
@@ -1559,7 +1629,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return Math.abs(page - pendingTargetPage);
       };
 
-      while (nextSet.size > budget) {
+      while (nextSet.size > effectiveBudget) {
         const candidates = Array.from(nextSet).filter(page => !protectedPages.has(page));
         if (candidates.length === 0) {
           break;
@@ -1604,8 +1674,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         normalizeRecencyQueue();
       }
 
-      if (nextSet.size > budget) {
-        const reason = protectedPages.size > budget
+      if (nextSet.size > effectiveBudget) {
+        const reason = protectedPages.size > effectiveBudget
           ? 'paginas protegidas excedem o budget (visiveis + alvo pendente)'
           : 'nao foi possivel encontrar candidatos para eviccao apos fallback por distancia';
 
@@ -1614,6 +1684,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           {
             reason,
             budget,
+            effectiveBudget,
             cacheSize: nextSet.size,
             protectedPages: Array.from(protectedPages).sort((a, b) => a - b),
             pendingTargetPage,
@@ -1647,7 +1718,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           return a - b;
         });
 
-        const fallbackSet = new Set<number>(pagesByPriority.slice(0, budget));
+        const fallbackSet = new Set<number>(pagesByPriority.slice(0, effectiveBudget));
         nextSet.clear();
         fallbackSet.forEach(page => nextSet.add(page));
       }
@@ -1680,6 +1751,33 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       return nextSet;
     });
+
+    if (now - renderChurnLastLogAtRef.current >= 1000) {
+      renderChurnLastLogAtRef.current = now;
+      const recentEvents = renderChurnEventsRef.current.filter(event => now - event.timestamp <= 1000);
+      const mountsPerSecond = recentEvents.filter(event => event.type === 'mount').length;
+      const unmountsPerSecond = recentEvents.filter(event => event.type === 'unmount').length;
+      const nearPageChangeEvents = recentEvents.filter(
+        event => Number.isFinite(event.msSincePageChange) && event.msSincePageChange <= CONTINUOUS_PAGE_CHANGE_PROTECTION_MS
+      );
+
+      logPdfDebugEvent(
+        'continuous_render_churn',
+        {
+          currentPage: effectiveCurrentPage,
+          centerPage,
+          mountsPerSecond,
+          unmountsPerSecond,
+          churnPerSecond: mountsPerSecond + unmountsPerSecond,
+          pageChangeCorrelationPct: recentEvents.length > 0
+            ? Number(((nearPageChangeEvents.length / recentEvents.length) * 100).toFixed(1))
+            : 0,
+          pageChangeCorrelationCount: nearPageChangeEvents.length,
+          sampledEvents: recentEvents.length
+        },
+        { throttleMs: 0 }
+      );
+    }
 
     const centerPageDivergence = Math.abs(centerPage - effectiveCurrentPage);
     if (centerPageDivergence >= CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES) {
@@ -5898,6 +5996,18 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   ]);
 
   useEffect(() => {
+    if (stablePageRef.current !== state.currentPage) {
+      stablePageRef.current = state.currentPage;
+    }
+
+    const now = Date.now();
+    if (lastPageChangeTimeRef.current === 0 || state.currentPage !== previousStateCurrentPageRef.current) {
+      lastPageChangeTimeRef.current = now;
+    }
+    previousStateCurrentPageRef.current = state.currentPage;
+  }, [state.currentPage]);
+
+  useEffect(() => {
     scrollBasedVisiblePagesRef.current = scrollBasedVisiblePages;
   }, [scrollBasedVisiblePages]);
 
@@ -7167,10 +7277,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                   <div
                                     key={globalPageNum}
                                     ref={(el) => {
+                                      const wasMounted = pageRefs.current.has(globalPageNum);
                                       if (el) {
                                         pageRefs.current.set(globalPageNum, el);
+                                        if (!wasMounted) {
+                                          trackPageDomLifecycleEvent(globalPageNum, 'mount');
+                                        }
                                       } else {
                                         pageRefs.current.delete(globalPageNum);
+                                        if (wasMounted) {
+                                          trackPageDomLifecycleEvent(globalPageNum, 'unmount');
+                                        }
                                       }
                                     }}
                                     data-global-page={globalPageNum}
