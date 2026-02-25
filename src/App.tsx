@@ -37,6 +37,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<string>(AppTabs.LISTA_PROCESSOS);
   const [selectedProcess, setSelectedProcess] = useState<Process | null>(null);
   const [globalError, setGlobalError] = useState<string>('');
+  const [hasCompletedBootstrap, setHasCompletedBootstrap] = useState(false);
 
   const {
     processes,
@@ -79,9 +80,21 @@ function AppContent() {
     refreshDocumentos
   } = useDocumentos();
 
-  const isInitialLoading = useMemo(() =>
-    processesLoading && decisionsLoading && verbasLoading && documentosLoading,
+  const isAnyContextLoading = useMemo(() =>
+    processesLoading || decisionsLoading || verbasLoading || documentosLoading,
     [processesLoading, decisionsLoading, verbasLoading, documentosLoading]
+  );
+
+  useEffect(() => {
+    if (!hasCompletedBootstrap && !isAnyContextLoading) {
+      setHasCompletedBootstrap(true);
+    }
+  }, [hasCompletedBootstrap, isAnyContextLoading]);
+
+  // Loading global só fica ativo até o primeiro bootstrap concluir.
+  const isInitialLoading = useMemo(() =>
+    !hasCompletedBootstrap && isAnyContextLoading,
+    [hasCompletedBootstrap, isAnyContextLoading]
   );
 
   const systemError = useMemo(() =>
@@ -291,7 +304,8 @@ function AppContent() {
   }, [systemError, handleRetryConnection]);
 
   const renderContent = useCallback(() => {
-    if (isInitialLoading) {
+    // Em caso de erro, priorizamos o alerta em vez de bloquear a UI com loading cheio.
+    if (isInitialLoading && !systemError) {
       return (
         <div className="flex items-center justify-center py-16">
           <div className="text-center">
@@ -376,6 +390,7 @@ function AppContent() {
     verbas,
     documentos,
     isInitialLoading,
+    systemError,
     handleSaveProcess,
     handleImportBackup,
     handleSelectProcess,
@@ -394,7 +409,8 @@ function AppContent() {
         hasSelectedProcess={!!selectedProcess}
         selectedProcessNumber={selectedProcess?.numeroProcesso}
       />
-      {(processesLoading || decisionsLoading || verbasLoading) && !isInitialLoading && (
+      {/* Após bootstrap, mostramos loading discreto em segundo plano para recargas/reconexões. */}
+      {hasCompletedBootstrap && isAnyContextLoading && !systemError && (
         <div className="bg-blue-50 border-b border-blue-200 px-6 py-2">
           <div className="container mx-auto max-w-4xl flex items-center justify-center">
             <div className="flex items-center space-x-2 text-sm text-blue-700">
@@ -403,6 +419,7 @@ function AppContent() {
                 {processesLoading && 'Carregando processos... '}
                 {decisionsLoading && 'Carregando decisões... '}
                 {verbasLoading && 'Carregando verbas... '}
+                {documentosLoading && 'Carregando documentos... '}
               </span>
             </div>
           </div>
