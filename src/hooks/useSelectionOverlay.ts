@@ -464,9 +464,7 @@ export function useSelectionOverlay(
           clearSelection();
         }
       } else if (hasActiveSelectionRef.current && textLayer && !e.shiftKey) {
-        lastAppliedRangeRef.current = null;
-        lastValidRangeSignatureRef.current = null;
-        clearOverlay();
+        clearSelection();
       }
     };
 
