@@ -2106,18 +2106,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    const isUpwardAdjacentTransition =
+    const isUpwardTransition =
       scrollDirection === 'up' &&
-      centerPage === effectiveCurrentPage - 1 &&
+      centerPage < effectiveCurrentPage &&
       !shouldForcePageUpdate &&
       !hasPendingNavigationTarget &&
       !isKeyboardNavLockActive;
 
-    if (isUpwardAdjacentTransition) {
+    if (isUpwardTransition) {
+      const targetAdjacentPage = effectiveCurrentPage - 1;
       const upwardCandidate = upwardAdjacentTransitionRef.current;
-      if (!upwardCandidate || upwardCandidate.targetPage !== centerPage) {
+
+      if (!upwardCandidate || upwardCandidate.targetPage !== targetAdjacentPage) {
         upwardAdjacentTransitionRef.current = {
-          targetPage: centerPage,
+          targetPage: targetAdjacentPage,
           startedAt: now,
           stableFrames: 1
         };
@@ -2134,9 +2136,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
+      centerPage = targetAdjacentPage;
       upwardAdjacentTransitionRef.current = null;
     } else {
-      if (scrollDirection !== 'up' || centerPage !== effectiveCurrentPage - 1) {
+      if (scrollDirection !== 'up' || centerPage >= effectiveCurrentPage) {
         upwardAdjacentTransitionRef.current = null;
       }
     }
