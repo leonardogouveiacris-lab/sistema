@@ -121,6 +121,9 @@ const POINTER_DOWN_SAFETY_RESET_MS = 450;
 const TEXT_SELECTION_SAFETY_RESET_MS = 450;
 const EMPTY_VISIBLE_PAGES_SCROLL_FRAME_THRESHOLD = 4;
 const SCROLL_ACTIVITY_IDLE_TIMEOUT_MS = 160;
+const SCROLL_PROGRESS_SMOOTHING_ALPHA = 0.32;
+const SCROLL_PROGRESS_HYSTERESIS_BAND_PAGES = 0.22;
+const SCROLL_PROGRESS_RELIABLE_MAX_DELTA_PAGES = 1.75;
 const CURRENT_PAGE_VISIBLE_DIVERGENCE_THRESHOLD_PAGES = 3;
 const FORCED_RECONCILIATION_DIVERGENCE_DURATION_MS = 500;
 const PDF_DEBUG_THROTTLE_MS = 3000;
@@ -252,6 +255,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const emptyVisiblePagesScrollFramesRef = useRef<number>(0);
   const isUserScrollingRef = useRef<boolean>(false);
   const scrollIdleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollProgressRef = useRef<number>(state.currentPage);
+  const smoothedScrollProgressRef = useRef<number>(state.currentPage);
+  const scrollProgressReliableRef = useRef<boolean>(false);
+  const scrollProgressDiagnosticDeltaRef = useRef<number>(0);
+  const latestScrollMetricsRef = useRef<{ scrollTop: number; viewportHeight: number } | null>(null);
+  const scrollProgressRafRef = useRef<number | null>(null);
   const prevZoomRef = useRef<number>(state.zoom);
   const prevDisplayZoomRef = useRef<number>(state.displayZoom);
   const isZoomChangingRef = useRef(false);
@@ -1221,6 +1230,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           mode: state.viewMode,
           centerPage,
           currentPage: state.currentPage,
+          centerPageInterpolationDelta: scrollProgressDiagnosticDeltaRef.current,
           maxVisibleIntersection,
           maxVisibleRatio,
           currentPageIntersectionPx,
@@ -1250,6 +1260,45 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       centerPage = estimatedPage;
       visibleStartPageRef.current = Math.max(1, estimatedPage - 2);
       visibleEndPageRef.current = Math.min(state.totalPages, estimatedPage + 2);
+    }
+
+    const rawCenterPage = centerPage;
+    const hasReliableInterpolatedProgress =
+      !isProgrammaticScrollRef.current &&
+      scrollProgressReliableRef.current &&
+      Number.isFinite(smoothedScrollProgressRef.current);
+
+    if (hasReliableInterpolatedProgress) {
+      const interpolatedProgress = Math.min(
+        state.totalPages,
+        Math.max(1, smoothedScrollProgressRef.current)
+      );
+      const roundedInterpolatedCenter = Math.max(1, Math.min(state.totalPages, Math.round(interpolatedProgress)));
+      const distanceFromCurrentPage = interpolatedProgress - state.currentPage;
+      const hysteresisCenterPage = Math.abs(distanceFromCurrentPage) <= SCROLL_PROGRESS_HYSTERESIS_BAND_PAGES
+        ? state.currentPage
+        : roundedInterpolatedCenter;
+      centerPage = hysteresisCenterPage;
+    }
+
+    const centerPageInterpolationDelta = rawCenterPage - centerPage;
+    scrollProgressDiagnosticDeltaRef.current = centerPageInterpolationDelta;
+
+    if (hasReliableInterpolatedProgress) {
+      logPdfDebugEvent(
+        'calculate_visible_pages_interpolated_center_diagnostic',
+        {
+          mode: state.viewMode,
+          currentPage: state.currentPage,
+          rawCenterPage,
+          interpolatedCenterPage: centerPage,
+          centerPageInterpolationDelta,
+          rawScrollProgress: scrollProgressRef.current,
+          interpolatedScrollProgress: smoothedScrollProgressRef.current,
+          smoothingAlpha: SCROLL_PROGRESS_SMOOTHING_ALPHA
+        },
+        { throttleMs: 500, throttleKey: 'interpolated-center-diagnostic' }
+      );
     }
 
     const guaranteedStart = Math.max(1, centerPage - 2);
@@ -1705,13 +1754,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     );
 
     const shouldNormalizeZoomScrollStep =
+      !hasReliableInterpolatedProgress &&
       !shouldForcePageUpdate &&
       !hasPendingNavigationTarget &&
       !isKeyboardNavLockActive &&
       !hasRecentKeyboardNavigation;
 
-    let zoomStepCap = state.zoom < 1 ? 1 : 2;
-    let maxStepFromCurrentPage = Math.max(1, Math.min(zoomStepCap, zoomNormalizedScrollStep));
+    const zoomStepCap = state.zoom < 1 ? 1 : 2;
+    const maxStepFromCurrentPage = Math.max(1, Math.min(zoomStepCap, zoomNormalizedScrollStep));
     if (shouldNormalizeZoomScrollStep && centerPage !== state.currentPage) {
       const maxAllowedPageByDirection = scrollDirection === 'up'
         ? state.currentPage - maxStepFromCurrentPage
@@ -2210,6 +2260,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
   }, [cumulativePageBottoms, state.totalPages]);
 
+  const deriveFractionalScrollProgress = useCallback((scrollTop: number, viewportHeight: number) => {
+    if (state.totalPages === 0 || cumulativePageBottoms.length === 0 || cumulativePageTops.length === 0) {
+      return 1;
+    }
+
+    const viewportCenter = scrollTop + viewportHeight / 2;
+    const pageIndex = Math.max(
+      0,
+      Math.min(cumulativePageBottoms.length - 1, findFirstIndexByBottom(cumulativePageBottoms, viewportCenter))
+    );
+    const pageTop = cumulativePageTops[pageIndex] ?? 0;
+    const pageBottom = cumulativePageBottoms[pageIndex] ?? pageTop + 1;
+    const pageHeight = Math.max(1, pageBottom - pageTop);
+    const relativeOffset = (viewportCenter - pageTop) / pageHeight;
+    return Math.min(state.totalPages, Math.max(1, pageIndex + 1 + relativeOffset));
+  }, [cumulativePageBottoms, cumulativePageTops, state.totalPages]);
+
   useEffect(() => {
     markInteractionStartRef.current = markInteractionStart;
   }, [markInteractionStart]);
@@ -2395,6 +2462,52 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const previousScrollTop = lastScrollTopRef.current;
       const nextScrollTop = container.scrollTop;
       lastScrollTopRef.current = nextScrollTop;
+      latestScrollMetricsRef.current = {
+        scrollTop: nextScrollTop,
+        viewportHeight: container.clientHeight
+      };
+
+      if (scrollProgressRafRef.current === null) {
+        const updateScrollProgress = () => {
+          scrollProgressRafRef.current = null;
+          if (!scrollContainerRef.current || state.viewMode !== 'continuous') {
+            return;
+          }
+
+          const metrics = latestScrollMetricsRef.current;
+          if (!metrics) {
+            return;
+          }
+
+          if (isProgrammaticScrollRef.current) {
+            const frozenPage = Math.max(1, Math.min(totalPagesRef.current || 1, currentPageRef.current));
+            scrollProgressRef.current = frozenPage;
+            smoothedScrollProgressRef.current = frozenPage;
+            scrollProgressReliableRef.current = false;
+            return;
+          }
+
+          const rawProgress = deriveFractionalScrollProgress(metrics.scrollTop, metrics.viewportHeight);
+          if (!Number.isFinite(rawProgress)) {
+            scrollProgressReliableRef.current = false;
+            return;
+          }
+
+          const previousSmoothed = smoothedScrollProgressRef.current;
+          const deltaFromPrevious = Math.abs(rawProgress - previousSmoothed);
+          const shouldSnapToRaw = deltaFromPrevious > SCROLL_PROGRESS_RELIABLE_MAX_DELTA_PAGES;
+          const nextSmoothed = shouldSnapToRaw
+            ? rawProgress
+            : previousSmoothed + (rawProgress - previousSmoothed) * SCROLL_PROGRESS_SMOOTHING_ALPHA;
+
+          scrollProgressRef.current = rawProgress;
+          smoothedScrollProgressRef.current = Math.min(state.totalPages, Math.max(1, nextSmoothed));
+          scrollProgressReliableRef.current = true;
+        };
+
+        scrollProgressRafRef.current = requestAnimationFrame(updateScrollProgress);
+      }
+
       const pendingTarget = pendingNavigationTargetRef.current;
       if (pendingTarget && Math.abs(nextScrollTop - previousScrollTop) >= 1 && !navigationFirstScrollCapturedRef.current.has(pendingTarget.flowId)) {
         const elapsedMs = Date.now() - pendingTarget.startedAt;
@@ -2517,12 +2630,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         scrollIdleTimeoutRef.current = null;
       }
 
+      if (scrollProgressRafRef.current !== null) {
+        cancelAnimationFrame(scrollProgressRafRef.current);
+        scrollProgressRafRef.current = null;
+      }
+
       isUserScrollingRef.current = false;
       emptyVisiblePagesScrollFramesRef.current = 0;
       scrollFallbackVisibleRangeRef.current = null;
+      latestScrollMetricsRef.current = null;
+      scrollProgressReliableRef.current = false;
       setScrollFallbackVisibleRange(null);
     };
-  }, [scrollContainerElement, state.viewMode]);
+  }, [deriveFractionalScrollProgress, scrollContainerElement, state.viewMode, state.totalPages]);
 
   useEffect(() => {
     if (state.isSearchOpen) {
