@@ -7207,11 +7207,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                 <div className="flex flex-col items-center space-y-4">
               {state.documents.map((doc, docIndex) => {
                 const offset = memoizedDocumentOffsets.get(doc.id);
-                const shouldMountDocumentByWindow = state.viewMode === 'paginated'
-                  ? (currentPageInfo ? currentPageInfo.document.id === doc.id : docIndex === 0)
-                  : (documentsToMountInContinuous.size === 0
-                    ? docIndex === 0
-                    : documentsToMountInContinuous.has(docIndex));
+                const isInitialLoadPhase = documentPages.size < state.documents.length;
+                const shouldMountDocumentByWindow = isInitialLoadPhase
+                  ? true
+                  : state.viewMode === 'paginated'
+                    ? (currentPageInfo ? currentPageInfo.document.id === doc.id : docIndex === 0)
+                    : (documentsToMountInContinuous.size === 0
+                      ? docIndex === 0
+                      : documentsToMountInContinuous.has(docIndex));
                 const stabilizationUntil = documentMountStabilizationUntilRef.current.get(doc.id) ?? 0;
                 const shouldKeepMountedByStabilization = state.viewMode === 'continuous' && stabilizationUntil > Date.now();
                 const shouldMountDocument = shouldMountDocumentByWindow || shouldKeepMountedByStabilization;
