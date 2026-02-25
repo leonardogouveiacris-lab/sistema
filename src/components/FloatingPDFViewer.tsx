@@ -124,6 +124,11 @@ const DOWNWARD_GUARD_MIN_CURRENT_VISIBLE_RATIO = UPWARD_GUARD_MIN_CURRENT_VISIBL
 const DOWNWARD_SETTLING_EXTRA_TRANSITION_SAMPLES = 1;
 const DOWNWARD_SETTLING_EXTRA_TRANSITION_AGE_MS = SCROLL_DIRECTION_CHANGE_SETTLE_MS;
 const LANDSCAPE_BOUNDARY_CURRENT_RATIO_THRESHOLD = 0.45;
+const ORIENTATION_BOUNDARY_SWITCH_MIN_DELTA_RATIO = ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO + 0.06;
+const ORIENTATION_BOUNDARY_SWITCH_MIN_DELTA_PX_MULTIPLIER = 1.22;
+const ORIENTATION_BOUNDARY_SWITCH_REINFORCED_INTERSECTION_PX = 120;
+const ORIENTATION_BOUNDARY_COOLDOWN_MIN_SAMPLES = 2;
+const ORIENTATION_BOUNDARY_COOLDOWN_MIN_AGE_MS = 140;
 const KEYBOARD_NAV_LOCK_DURATION_MS = 650;
 const KEYBOARD_NAV_SETTLE_DURATION_MS = 120;
 const KEYBOARD_NAV_COOLDOWN_DURATION_MS = 700;
@@ -1299,6 +1304,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     let currentPageVisibleRatio = 0;
     const visibilityDebugEntries: Array<{ page: number; visibleIntersectionPx: number; visibleRatio: number }> = [];
     const pageVisibilityRatioMap = new Map<number, number>();
+    const pageVisibilityIntersectionMap = new Map<number, number>();
     const containerRect = container.getBoundingClientRect();
     let domBestCandidate: { page: number; intersectionPx: number; visibleRatio: number; distanceToCenter: number } | null = null;
     let cumulativeBestCandidate: { page: number; intersectionPx: number; visibleRatio: number; distanceToCenter: number } | null = null;
@@ -1325,6 +1331,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const pageHeight = Math.max(1, pageRect.height);
       const visibleRatio = visibleIntersectionPx / pageHeight;
       pageVisibilityRatioMap.set(pageNum, visibleRatio);
+      pageVisibilityIntersectionMap.set(pageNum, visibleIntersectionPx);
       const pageCenter = (pageRect.top + pageRect.bottom) / 2;
       const distanceToCenter = Math.abs(pageCenter - (containerRect.top + containerRect.height / 2));
 
@@ -1385,6 +1392,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }
         const visibleRatio = visibleIntersectionPx / pageHeight;
         pageVisibilityRatioMap.set(pageNum, visibleRatio);
+        pageVisibilityIntersectionMap.set(pageNum, visibleIntersectionPx);
         const pageCenter = pageTop + (pageBottom - pageTop) / 2;
         const distanceToCenter = Math.abs(pageCenter - viewportCenter);
 
@@ -1481,8 +1489,30 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         effectiveCurrentPage <= visibleEndPageRef.current;
 
       if (shouldApplyScrollHysteresis && centerPage !== effectiveCurrentPage && currentPageIntersectionPx > 0) {
-        const switchDeltaPx = maxVisibleIntersection - currentPageIntersectionPx;
-        const switchDeltaRatio = maxVisibleRatio - currentPageVisibleRatio;
+        const candidatePage = centerPage;
+        const candidatePageVisibilityRatio = pageVisibilityRatioMap.get(candidatePage) ?? maxVisibleRatio;
+        const candidatePageIntersectionPx = pageVisibilityIntersectionMap.get(candidatePage) ?? maxVisibleIntersection;
+        const currentPageWidthForBoundary = getPageWidth(effectiveCurrentPage);
+        const currentPageHeightForBoundary = Math.max(1, getPageHeight(effectiveCurrentPage));
+        const currentPageIsLandscapeForBoundary = currentPageWidthForBoundary > currentPageHeightForBoundary;
+        const candidatePageWidth = getPageWidth(candidatePage);
+        const candidatePageHeight = Math.max(1, getPageHeight(candidatePage));
+        const candidatePageIsLandscape = candidatePageWidth > candidatePageHeight;
+        const isOrientationBoundary = candidatePage !== effectiveCurrentPage && currentPageIsLandscapeForBoundary !== candidatePageIsLandscape;
+        const candidateMutationAt = pageDomMutationAtRef.current.get(candidatePage);
+        const candidateRecentlyMutated = Boolean(
+          candidateMutationAt !== undefined &&
+          candidateMutationAt !== null &&
+          (now - candidateMutationAt) <= CONTINUOUS_CENTER_PAGE_STABILIZATION_MS
+        );
+        const effectiveCandidateVisibleRatio = isOrientationBoundary && candidateRecentlyMutated
+          ? pageVisibilityRatioMap.get(candidatePage) ?? candidatePageVisibilityRatio
+          : candidatePageVisibilityRatio;
+        const effectiveCandidateIntersectionPx = isOrientationBoundary && candidateRecentlyMutated
+          ? pageVisibilityIntersectionMap.get(candidatePage) ?? candidatePageIntersectionPx
+          : candidatePageIntersectionPx;
+        const switchDeltaPx = effectiveCandidateIntersectionPx - currentPageIntersectionPx;
+        const switchDeltaRatio = effectiveCandidateVisibleRatio - currentPageVisibleRatio;
         const minSwitchDeltaPx = Math.max(
           18,
           Math.min(
@@ -1491,7 +1521,41 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             viewportHeight * Math.max(0.11, Math.min(0.2, viewportToPageRatio * 0.15))
           )
         );
-        if (switchDeltaPx < minSwitchDeltaPx && switchDeltaRatio < ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO) {
+        const orientationBoundaryMinSwitchDeltaPx = Math.max(
+          minSwitchDeltaPx,
+          ORIENTATION_BOUNDARY_SWITCH_REINFORCED_INTERSECTION_PX,
+          minSwitchDeltaPx * ORIENTATION_BOUNDARY_SWITCH_MIN_DELTA_PX_MULTIPLIER
+        );
+        const shouldBlockOrientationBoundarySwitch =
+          isOrientationBoundary &&
+          switchDeltaRatio < ORIENTATION_BOUNDARY_SWITCH_MIN_DELTA_RATIO &&
+          effectiveCandidateIntersectionPx < orientationBoundaryMinSwitchDeltaPx;
+
+        if (shouldBlockOrientationBoundarySwitch) {
+          centerPage = effectiveCurrentPage;
+          logPdfDebugEvent(
+            'orientation_boundary_hysteresis_applied',
+            {
+              mode: state.viewMode,
+              currentPage: effectiveCurrentPage,
+              candidatePage,
+              currentPageIsLandscape: currentPageIsLandscapeForBoundary,
+              candidatePageIsLandscape,
+              switchDeltaPx,
+              switchDeltaRatio,
+              minSwitchDeltaPx,
+              orientationBoundaryMinSwitchDeltaPx,
+              candidateRecentlyMutated,
+              candidateMutationAgeMs: candidateMutationAt ? now - candidateMutationAt : null,
+              effectiveCandidateIntersectionPx,
+              effectiveCandidateVisibleRatio,
+              currentPageIntersectionPx,
+              currentPageVisibleRatio,
+              reason: 'insufficient_advantage'
+            },
+            { throttleMs: 400, throttleKey: 'orientation-boundary-hysteresis' }
+          );
+        } else if (switchDeltaPx < minSwitchDeltaPx && switchDeltaRatio < ACTIVE_PAGE_SWITCH_MIN_DELTA_RATIO) {
           centerPage = effectiveCurrentPage;
         }
       }
@@ -2498,6 +2562,12 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const pageDifference = Math.abs(centerPage - lastDetectedPageRef.current);
     const jumpFromCurrentPage = Math.abs(centerPage - effectiveCurrentPage);
     const jumpFromStablePage = Math.abs(centerPage - stablePage);
+    const candidatePageWidthForBoundary = getPageWidth(centerPage);
+    const candidatePageHeightForBoundary = Math.max(1, getPageHeight(centerPage));
+    const candidatePageIsLandscapeForBoundary = candidatePageWidthForBoundary > candidatePageHeightForBoundary;
+    const isOrientationBoundaryTransition =
+      centerPage !== effectiveCurrentPage &&
+      currentPageIsLandscape !== candidatePageIsLandscapeForBoundary;
 
     if (centerPage === effectiveCurrentPage) {
       activePageTransitionCandidateRef.current = null;
@@ -2550,6 +2620,53 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       return;
+    }
+
+    if (
+      !shouldForcePageUpdate &&
+      isInCooldown &&
+      isOrientationBoundaryTransition &&
+      jumpFromCurrentPage === 1
+    ) {
+      const requiredSamples = scrollDirection === 'neutral'
+        ? ORIENTATION_BOUNDARY_COOLDOWN_MIN_SAMPLES
+        : ORIENTATION_BOUNDARY_COOLDOWN_MIN_SAMPLES + 1;
+      const {
+        accepted,
+        candidateAgeMs,
+        candidateSamples,
+        requiredAgeMs
+      } = updateTransitionCandidate(
+        centerPage,
+        requiredSamples,
+        ORIENTATION_BOUNDARY_COOLDOWN_MIN_AGE_MS
+      );
+
+      if (!accepted) {
+        logPdfDebugEvent(
+          'orientation_boundary_hysteresis_applied',
+          {
+            mode: state.viewMode,
+            currentPage: effectiveCurrentPage,
+            candidatePage: centerPage,
+            stablePage,
+            scrollDirection,
+            isInCooldown,
+            cooldownMs: PAGE_CHANGE_COOLDOWN_MS,
+            jumpFromCurrentPage,
+            jumpFromStablePage,
+            candidateSamples,
+            requiredSamples,
+            candidateAgeMs,
+            requiredAgeMs,
+            currentPageIsLandscape,
+            candidatePageIsLandscape: candidatePageIsLandscapeForBoundary,
+            reason: 'cooldown_adjacent_confirmation_pending'
+          },
+          { throttleMs: 400, throttleKey: 'orientation-boundary-cooldown-confirmation' }
+        );
+        return;
+      }
     }
 
     if (!shouldForcePageUpdate && jumpFromCurrentPage > MAX_PAGE_JUMP && !allowLargeJump) {
