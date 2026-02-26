@@ -1,14 +1,27 @@
 /**
- * Utility for extracting bookmarks/outlines from PDF documents using PDF.js
+ * Utility for extracting bookmarks/outlines from PDF documents using PDF.js.
+ * Limitação: interpretação do destino depende do formato retornado pelo PDF.js;
+ * em PDFs não padronizados alguns bookmarks podem ficar sem número de página.
  */
 
 import { PDFBookmark } from '../types/PDFBookmark';
 import logger from './logger';
 
+type PDFDestination = unknown[];
+
+interface PDFOutlineItem {
+  title?: string;
+  dest?: string | PDFDestination | null;
+  items?: PDFOutlineItem[];
+  bold?: boolean;
+  italic?: boolean;
+  color?: number[];
+}
+
 interface PDFDocumentProxy {
-  getOutline: () => Promise<any[] | null>;
-  getDestination: (dest: string) => Promise<any>;
-  getPageIndex: (ref: any) => Promise<number>;
+  getOutline: () => Promise<PDFOutlineItem[] | null>;
+  getDestination: (dest: string) => Promise<PDFDestination | null>;
+  getPageIndex: (ref: unknown) => Promise<number>;
 }
 
 /**
@@ -18,15 +31,9 @@ export interface DocumentInfo {
   documentId: string;
   documentIndex: number;
   documentName: string;
-  pageOffset: number; // Offset para converter páginas locais em páginas globais
+  pageOffset: number;
 }
 
-/**
- * Extrai bookmarks de um documento PDF com informações do documento e offset de páginas
- * @param pdfDocument - O documento PDF (PDFDocumentProxy do PDF.js)
- * @param documentInfo - Informações do documento (ID, índice, nome, offset)
- * @returns Array de bookmarks processados com numeração global
- */
 export async function extractBookmarksWithDocumentInfo(
   pdfDocument: PDFDocumentProxy,
   documentInfo: DocumentInfo
@@ -54,7 +61,7 @@ export async function extractBookmarksWithDocumentInfo(
 const BATCH_SIZE = 25;
 
 async function processBookmarkItems(
-  items: any[],
+  items: PDFOutlineItem[],
   pdfDocument: PDFDocumentProxy,
   documentInfo?: DocumentInfo
 ): Promise<PDFBookmark[]> {
@@ -98,13 +105,9 @@ async function processBookmarkItems(
 
 /**
  * Processa um único item de bookmark
- * @param item - Item do outline
- * @param pdfDocument - Documento PDF
- * @param documentInfo - Informações do documento (opcional)
- * @returns PDFBookmark processado
  */
 async function processBookmarkItem(
-  item: any,
+  item: PDFOutlineItem,
   pdfDocument: PDFDocumentProxy,
   documentInfo?: DocumentInfo
 ): Promise<PDFBookmark> {
@@ -120,16 +123,12 @@ async function processBookmarkItem(
         destination = await pdfDocument.getDestination(destination);
       }
 
-      if (destination && Array.isArray(destination) && destination[0]) {
+      if (Array.isArray(destination) && destination[0]) {
         const pageRef = destination[0];
         const pageIndex = await pdfDocument.getPageIndex(pageRef);
         const localPageNumber = pageIndex + 1;
 
-        if (documentInfo) {
-          pageNumber = localPageNumber + documentInfo.pageOffset;
-        } else {
-          pageNumber = localPageNumber;
-        }
+        pageNumber = documentInfo ? localPageNumber + documentInfo.pageOffset : localPageNumber;
       }
     } catch {
       // Silently handle destination resolution errors
@@ -151,7 +150,6 @@ async function processBookmarkItem(
     color: item.color
   };
 
-  // Adicionar metadados do documento se disponível
   if (documentInfo) {
     bookmark.documentId = documentInfo.documentId;
     bookmark.documentIndex = documentInfo.documentIndex;
@@ -162,11 +160,6 @@ async function processBookmarkItem(
   return bookmark;
 }
 
-/**
- * Conta o total de bookmarks incluindo filhos
- * @param bookmarks - Array de bookmarks
- * @returns Número total de bookmarks
- */
 export function countTotalBookmarks(bookmarks: PDFBookmark[]): number {
   let total = bookmarks.length;
 
@@ -179,12 +172,6 @@ export function countTotalBookmarks(bookmarks: PDFBookmark[]): number {
   return total;
 }
 
-/**
- * Achata a estrutura hierárquica de bookmarks em uma lista plana
- * @param bookmarks - Array de bookmarks
- * @param level - Nível de profundidade atual
- * @returns Array de bookmarks achatado com informação de nível
- */
 export function flattenBookmarks(
   bookmarks: PDFBookmark[],
   level: number = 0
@@ -202,12 +189,6 @@ export function flattenBookmarks(
   return flat;
 }
 
-/**
- * Filtra bookmarks por texto de busca
- * @param bookmarks - Array de bookmarks
- * @param searchQuery - Texto de busca
- * @returns Array de bookmarks filtrado
- */
 export function filterBookmarks(
   bookmarks: PDFBookmark[],
   searchQuery: string
@@ -236,12 +217,6 @@ export function filterBookmarks(
   return filtered;
 }
 
-/**
- * Aplica offset de página a todos os bookmarks de uma estrutura hierárquica
- * @param bookmarks - Array de bookmarks
- * @param offset - Offset a ser adicionado
- * @returns Array de bookmarks com páginas ajustadas
- */
 function applyPageOffsetToBookmarks(bookmarks: PDFBookmark[], offset: number): PDFBookmark[] {
   return bookmarks.map(bookmark => ({
     ...bookmark,
@@ -250,14 +225,6 @@ function applyPageOffsetToBookmarks(bookmarks: PDFBookmark[], offset: number): P
   }));
 }
 
-/**
- * Mescla bookmarks de múltiplos documentos em uma estrutura unificada
- * Agrupa bookmarks por documento com separadores visuais
- * IMPORTANTE: Recalcula os offsets de página baseado na contagem real de páginas de cada documento
- * para garantir numeração contínua correta mesmo quando documentos carregam em ordem diferente
- * @param bookmarksByDocument - Map de documentId para array de bookmarks com pageCount
- * @returns Array unificado de bookmarks com separadores de documento
- */
 export function mergeBookmarksFromMultipleDocuments(
   bookmarksByDocument: Map<string, { bookmarks: PDFBookmark[]; documentName: string; documentIndex: number; pageCount?: number }>,
   options?: { totalDocumentCount?: number }

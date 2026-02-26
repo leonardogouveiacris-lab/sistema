@@ -38,6 +38,7 @@ import { usePdfBookmarks } from '../hooks/usePdfBookmarks';
 import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_CONFIG } from '../types/Highlight';
 import { PDFBookmarkPanel, PDFSearchPopup, RotationControls, MemoizedPDFPage, PDFViewerMinimizedButton, PDFViewerHeader, PDFViewerSidebarArea, PDFSelectionCommentLayers, PDFViewerPageNavigation, PDFViewerOverlays } from './pdf';
 import { COMMENT_COLORS, CommentColor, PDFComment } from '../types/PDFComment';
+import type { PDFBookmark } from '../types/PDFBookmark';
 import * as PDFCommentsService from '../services/pdfComments.service';
 import { useSelectionOverlay } from '../hooks/useSelectionOverlay';
 import { usePDFPageNavigation } from '../hooks/usePDFPageNavigation';
@@ -4136,7 +4137,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     try {
       const cachedBookmarks = loadBookmarksFromCache(cacheKey);
-      let bookmarks: any[];
+      let bookmarks: PDFBookmark[];
       if (cachedBookmarks) {
         bookmarks = cachedBookmarks;
       } else {
@@ -4259,7 +4260,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * Handler quando PDF é carregado com sucesso
    * Fase crítica: registra metadados mínimos para liberar a primeira renderização rapidamente
    */
-  const onDocumentLoadSuccess = useCallback((pdf: any, documentIndex: number) => {
+  const onDocumentLoadSuccess = useCallback((pdf: { numPages: number }, documentIndex: number) => {
     const { numPages } = pdf;
     const currentDoc = state.documents[documentIndex];
     if (!currentDoc) {
@@ -5599,7 +5600,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * Nota: Funcionalidade simplificada - links internos do PDF não estão totalmente implementados
    */
   const onItemClick = useCallback(({ pageIndex, pageNumber }: {
-    dest?: any;
+    dest?: unknown;
     pageIndex?: number;
     pageNumber?: number;
   }) => {
@@ -6177,7 +6178,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * precisamos normalizar dividindo pelo zoom atual para armazenar dimensões BASE
    * Também armazena rotação interna do PDF para uso no cálculo de dimensões
    */
-  const onPageLoadSuccess = useCallback((page: any, pageNumber: number) => {
+  const onPageLoadSuccess = useCallback((page: { width: number; height: number; rotate?: number }, pageNumber: number) => {
     const { width, height, rotate: internalRotation } = page;
     const baseWidth = width / state.zoom;
     const baseHeight = height / state.zoom;
