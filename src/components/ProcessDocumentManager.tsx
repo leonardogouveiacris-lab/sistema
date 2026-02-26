@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useState, useRef } from 'react';
-import { FileText, Trash2, Eye, AlertCircle, Plus, Info, Download, Loader2 } from 'lucide-react';
+import { FileText, Trash2, Eye, AlertCircle, Plus, Info, Download, Loader2, Lock, X } from 'lucide-react';
 import { useProcessDocuments } from '../hooks/useProcessDocuments';
 import { usePDFViewer } from '../contexts/PDFViewerContext';
 import { useToast } from '../contexts/ToastContext';
@@ -64,6 +64,17 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
   });
   const [isDragging, setIsDragging] = useState(false);
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
+    isOpen: boolean;
+    document: ProcessDocument | null;
+    password: string;
+    error: string;
+  }>({
+    isOpen: false,
+    document: null,
+    password: '',
+    error: ''
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -156,16 +167,42 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
     setUploadFormData({ file: null, documentType: '' });
   }, []);
 
-  const handleDelete = useCallback(async (document: ProcessDocument) => {
-    const success = await deleteDocument(processId, document.id);
+  const handleDelete = useCallback((document: ProcessDocument) => {
+    setDeleteConfirmModal({
+      isOpen: true,
+      document,
+      password: '',
+      error: ''
+    });
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    const DELETE_PASSWORD = '123321';
+
+    if (deleteConfirmModal.password !== DELETE_PASSWORD) {
+      setDeleteConfirmModal(prev => ({
+        ...prev,
+        error: 'Senha incorreta. Tente novamente.'
+      }));
+      return;
+    }
+
+    if (!deleteConfirmModal.document) return;
+
+    const success = await deleteDocument(processId, deleteConfirmModal.document.id);
 
     if (success) {
+      setDeleteConfirmModal({ isOpen: false, document: null, password: '', error: '' });
       if (onDeleteSuccess) {
         onDeleteSuccess();
       }
       await loadDocuments(processId);
     }
-  }, [deleteDocument, processId, onDeleteSuccess, loadDocuments]);
+  }, [deleteConfirmModal.password, deleteConfirmModal.document, deleteDocument, processId, onDeleteSuccess, loadDocuments]);
+
+  const handleCancelDelete = useCallback(() => {
+    setDeleteConfirmModal({ isOpen: false, document: null, password: '', error: '' });
+  }, []);
 
   const handleOpenViewer = useCallback(() => {
     if (!documents || documents.length === 0) return;
@@ -434,6 +471,82 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
               className="bg-blue-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${uploadProgress}%` }}
             />
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-red-50 px-6 py-4 border-b border-red-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <Lock className="w-5 h-5 text-red-600 mr-2" />
+                  <h3 className="text-lg font-semibold text-gray-900">Confirmar Exclusao</h3>
+                </div>
+                <button
+                  onClick={handleCancelDelete}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="px-6 py-4">
+              <p className="text-sm text-gray-600 mb-4">
+                Voce esta prestes a excluir o documento:
+              </p>
+              <p className="text-sm font-medium text-gray-900 bg-gray-50 px-3 py-2 rounded border border-gray-200 mb-4 truncate">
+                {deleteConfirmModal.document?.file_name}
+              </p>
+              <p className="text-sm text-gray-600 mb-3">
+                Digite a senha para confirmar a exclusao:
+              </p>
+              <input
+                type="password"
+                value={deleteConfirmModal.password}
+                onChange={(e) => setDeleteConfirmModal(prev => ({
+                  ...prev,
+                  password: e.target.value,
+                  error: ''
+                }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleConfirmDelete();
+                  }
+                }}
+                placeholder="Digite a senha"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-colors ${
+                  deleteConfirmModal.error
+                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                    : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                }`}
+                autoFocus
+              />
+              {deleteConfirmModal.error && (
+                <p className="mt-2 text-sm text-red-600 flex items-center">
+                  <AlertCircle className="w-4 h-4 mr-1" />
+                  {deleteConfirmModal.error}
+                </p>
+              )}
+            </div>
+
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end space-x-3">
+              <button
+                onClick={handleCancelDelete}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={!deleteConfirmModal.password}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Excluir Documento
+              </button>
+            </div>
           </div>
         </div>
       )}
