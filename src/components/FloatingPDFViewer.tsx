@@ -3685,43 +3685,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       };
     };
 
-    const selectSentence = (span: HTMLElement) => {
-      const pageNumber = getPageNumber(span);
-      if (!pageNumber) return;
-
-      const spans = getSpansForPage(pageNumber);
-      if (spans.length === 0) return;
-
-      const spanRect = span.getBoundingClientRect();
-      const lineThreshold = spanRect.height * 0.5;
-
-      const lineSpans: HTMLElement[] = [];
-      for (const s of spans) {
-        const rect = s.getBoundingClientRect();
-        if (Math.abs(rect.top - spanRect.top) < lineThreshold) {
-          lineSpans.push(s);
-        }
-      }
-
-      lineSpans.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-
-      if (lineSpans.length === 0) return;
-
-      const firstSpan = lineSpans[0];
-      const lastSpan = lineSpans[lineSpans.length - 1];
-      const firstNode = firstSpan.firstChild;
-      const lastNode = lastSpan.firstChild;
-
-      if (!firstNode || !lastNode) return;
-
-      const range = document.createRange();
-      range.setStart(firstNode, 0);
-      range.setEnd(lastNode, lastNode.textContent?.length || 0);
-      applyRangeWithOverlayGuard(range, 'caret-click');
-
-      startedInsidePdfRef.current = true;
-    };
-
     const handleClick = (e: MouseEvent) => {
       const scrollContainer = scrollContainerRef.current;
       if (!scrollContainer) return;
@@ -3761,8 +3724,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         return;
       }
 
-      if (e.detail >= 3 && textLayerSpan && textLayerSpan.textContent?.trim()) {
-        selectSentence(textLayerSpan);
+      if (e.detail >= 3) {
+        // Não interceptar triplo clique: manter seleção nativa do browser/PDF.js
+        // para evitar inconsistências em text layers fragmentados.
         deactivateCaret();
         return;
       }

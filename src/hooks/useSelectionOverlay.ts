@@ -571,6 +571,10 @@ export function useSelectionOverlay(
     // Todo gesto de double-click deve passar exclusivamente por este fluxo
     // para evitar reaplicações concorrentes de applySelectionSafely(...).
     const handleDoubleClick = (e: MouseEvent) => {
+      if (e.detail >= 3) {
+        return;
+      }
+
       const target = e.target as HTMLElement;
       const textLayer = target.closest('.textLayer') || target.closest('.react-pdf__Page__textContent');
 
