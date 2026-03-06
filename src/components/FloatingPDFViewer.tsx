@@ -69,6 +69,7 @@ import { countTotalBookmarks, mergeBookmarksFromMultipleDocuments } from '../uti
 const lazyExtractBookmarks = () => import('../utils/pdfBookmarkExtractor').then(m => m.extractBookmarksWithDocumentInfo);
 import { mergeRectsIntoLines } from '../utils/rectMerger';
 import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibilityIndex';
+import { isTokenChar } from '../utils/tokenBoundaries';
 
 // Configurar worker do PDF.js usando arquivo local
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -3564,6 +3565,44 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return bestOffset;
     };
 
+    const selectWord = (span: HTMLElement, offset: number) => {
+      const textNode = span.firstChild;
+      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
+
+      const text = textNode.textContent || '';
+      if (text.length === 0) return;
+
+      let anchorOffset = Math.min(offset, text.length);
+      if (anchorOffset > 0 && anchorOffset === text.length) {
+        anchorOffset -= 1;
+      }
+
+      if (!isTokenChar(text, anchorOffset)) {
+        if (anchorOffset > 0 && isTokenChar(text, anchorOffset - 1)) {
+          anchorOffset -= 1;
+        } else {
+          return;
+        }
+      }
+
+      let startOffset = anchorOffset;
+      let endOffset = anchorOffset;
+
+      while (startOffset > 0 && isTokenChar(text, startOffset - 1)) {
+        startOffset -= 1;
+      }
+
+      while (endOffset < text.length && isTokenChar(text, endOffset)) {
+        endOffset += 1;
+      }
+
+      const range = document.createRange();
+      range.setStart(textNode, startOffset);
+      range.setEnd(textNode, endOffset);
+      applyRangeWithOverlayGuard(range, 'caret-click');
+      startedInsidePdfRef.current = true;
+    };
+
     const resolveNearestSpanFromPoint = (textLayer: HTMLElement, clientX: number, clientY: number): HTMLElement | null =>
       findNearestSpanByCoordinates(getVisibleSpansFromTextLayer(textLayer), clientX, clientY);
 
@@ -3724,6 +3763,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (e.detail >= 3 && textLayerSpan && textLayerSpan.textContent?.trim()) {
         selectSentence(textLayerSpan);
+        deactivateCaret();
+        return;
+      }
+
+      if (e.detail === 2 && textLayerSpan && textLayerSpan.textContent?.trim()) {
+        const clickOffset = getClickOffset(textLayerSpan, e.clientX);
+        selectWord(textLayerSpan, clickOffset);
         deactivateCaret();
         return;
       }

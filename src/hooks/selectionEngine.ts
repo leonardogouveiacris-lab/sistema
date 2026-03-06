@@ -1,4 +1,5 @@
 import { mergeRectsIntoLines } from '../utils/rectMerger';
+import { isCoreTokenChar, isTokenChar } from '../utils/tokenBoundaries';
 
 export interface SelectionRect {
   x: number;
@@ -32,7 +33,6 @@ export interface CaretInfo {
   spanInfo?: SpanInfo;
 }
 
-const WORD_CHAR_RE = /[\p{L}\p{N}]/u;
 const MAX_METRIC_SAMPLE_SPANS = 15;
 
 export function areRectsEqual(a: SelectionRect[], b: SelectionRect[]): boolean {
@@ -388,7 +388,7 @@ export function getSnappedCaretInfo(
 }
 
 export function isWordChar(char: string): boolean {
-  return WORD_CHAR_RE.test(char);
+  return isCoreTokenChar(char);
 }
 
 export function isPointOverValidText(
@@ -515,8 +515,8 @@ export function selectWordAtPoint(
     offset--;
   }
 
-  if (text.length === 0 || !isWordChar(text[offset])) {
-    if (offset > 0 && isWordChar(text[offset - 1])) {
+  if (text.length === 0 || !isTokenChar(text, offset)) {
+    if (offset > 0 && isTokenChar(text, offset - 1)) {
       offset--;
     } else {
       return null;
@@ -526,11 +526,11 @@ export function selectWordAtPoint(
   let startOffset = offset;
   let endOffset = offset;
 
-  while (startOffset > 0 && isWordChar(text[startOffset - 1])) {
+  while (startOffset > 0 && isTokenChar(text, startOffset - 1)) {
     startOffset--;
   }
 
-  while (endOffset < text.length && isWordChar(text[endOffset])) {
+  while (endOffset < text.length && isTokenChar(text, endOffset)) {
     endOffset++;
   }
 
@@ -563,14 +563,13 @@ export function selectWordAtPoint(
       const gapBetweenSpans = referenceRect.left - prevRect.right;
       if (gapBetweenSpans > metrics.averageCharWidth * 1.5) break;
 
-      const lastChar = prevText[prevText.length - 1];
-      if (!isWordChar(lastChar)) break;
+      if (!isTokenChar(prevText, prevText.length - 1)) break;
 
       const prevTextNode = prevSpan.firstChild;
       if (!prevTextNode || prevTextNode.nodeType !== Node.TEXT_NODE) break;
 
       let prevStartOffset = prevText.length - 1;
-      while (prevStartOffset > 0 && isWordChar(prevText[prevStartOffset - 1])) {
+      while (prevStartOffset > 0 && isTokenChar(prevText, prevStartOffset - 1)) {
         prevStartOffset--;
       }
 
@@ -597,14 +596,13 @@ export function selectWordAtPoint(
       const gapBetweenSpans = nextRect.left - lastSpanRect.right;
       if (gapBetweenSpans > metrics.averageCharWidth * 1.5) break;
 
-      const firstChar = nextText[0];
-      if (!isWordChar(firstChar)) break;
+      if (!isTokenChar(nextText, 0)) break;
 
       const nextTextNode = nextSpan.firstChild;
       if (!nextTextNode || nextTextNode.nodeType !== Node.TEXT_NODE) break;
 
       let nextEndOffset = 1;
-      while (nextEndOffset < nextText.length && isWordChar(nextText[nextEndOffset])) {
+      while (nextEndOffset < nextText.length && isTokenChar(nextText, nextEndOffset)) {
         nextEndOffset++;
       }
 
