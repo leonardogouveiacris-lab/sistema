@@ -3646,36 +3646,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       };
     };
 
-    const selectWord = (span: HTMLElement, offset: number) => {
-      const text = span.textContent || '';
-      if (!text) return;
-
-      let wordStart = offset;
-      let wordEnd = offset;
-
-      while (wordStart > 0 && /\w/.test(text[wordStart - 1])) {
-        wordStart--;
-      }
-      while (wordEnd < text.length && /\w/.test(text[wordEnd])) {
-        wordEnd++;
-      }
-
-      if (wordStart === wordEnd) {
-        wordStart = Math.max(0, offset - 1);
-        wordEnd = Math.min(text.length, offset + 1);
-      }
-
-      const textNode = span.firstChild;
-      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
-
-      const range = document.createRange();
-      range.setStart(textNode, wordStart);
-      range.setEnd(textNode, wordEnd);
-      applyRangeWithOverlayGuard(range, 'caret-click');
-
-      startedInsidePdfRef.current = true;
-    };
-
     const selectSentence = (span: HTMLElement) => {
       const pageNumber = getPageNumber(span);
       if (!pageNumber) return;
@@ -3748,13 +3718,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           return;
         }
 
-        deactivateCaret();
-        return;
-      }
-
-      if (e.detail === 2 && textLayerSpan && textLayerSpan.textContent?.trim()) {
-        const clickOffset = getClickOffset(textLayerSpan, e.clientX);
-        selectWord(textLayerSpan, clickOffset);
         deactivateCaret();
         return;
       }
