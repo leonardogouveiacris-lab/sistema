@@ -139,13 +139,9 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 CREATE OR REPLACE FUNCTION set_process_document_display_name()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Only set display_name if not provided or if sequence_order/date_reference changed
-  IF NEW.display_name IS NULL OR
-     (TG_OP = 'UPDATE' AND (
-       OLD.sequence_order IS DISTINCT FROM NEW.sequence_order OR
-       OLD.date_reference IS DISTINCT FROM NEW.date_reference
-     ))
-  THEN
+  -- Generate display_name only when it was not explicitly informed
+  -- (keeps stable business names manually defined in the application)
+  IF NEW.display_name IS NULL OR length(TRIM(BOTH FROM NEW.display_name)) = 0 THEN
     NEW.display_name := generate_document_display_name(
       NEW.sequence_order,
       NEW.date_reference
