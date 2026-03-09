@@ -18,7 +18,6 @@ import { ProcessDocument, DocumentValidation } from '../types/ProcessDocument';
 import { downloadDocument } from '../services/processDocument.service';
 import { DynamicEnumType } from '../services/dynamicEnum.service';
 import { CustomDropdown } from './ui';
-import logger from '../utils/logger';
 
 interface ProcessDocumentManagerProps {
   processId: string;
@@ -282,7 +281,10 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
           </div>
 
           <div className="space-y-3 mb-4">
-            {documents.map((doc, index) => (
+            {documents.map((doc, index) => {
+              const businessDisplayName = doc.displayName?.trim() || doc.fileName;
+
+              return (
               <div
                 key={doc.id}
                 className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
@@ -296,7 +298,7 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
                           #{index + 1}
                         </span>
                         <h4 className="text-sm font-semibold text-gray-900">
-                          {doc.displayName}
+                          {businessDisplayName}
                         </h4>
                       </div>
                       <p className="text-xs text-gray-600 truncate mb-2" title={doc.fileName}>
@@ -350,7 +352,8 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
 
           <button

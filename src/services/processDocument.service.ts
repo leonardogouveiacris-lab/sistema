@@ -12,7 +12,6 @@
 import { supabase } from '../lib/supabase';
 import {
   ProcessDocument,
-  NewProcessDocument,
   TemporaryDocument,
   DocumentUploadResult,
   DOCUMENT_CONSTANTS,
@@ -256,8 +255,9 @@ export const uploadDocument = async (
       sequence_order: finalSequenceOrder
     };
 
-    if (displayName) {
-      insertData.display_name = displayName;
+    const normalizedDisplayName = displayName?.trim();
+    if (normalizedDisplayName) {
+      insertData.display_name = normalizedDisplayName;
     }
 
     const { data: savedDocument, error: dbError } = await supabase
