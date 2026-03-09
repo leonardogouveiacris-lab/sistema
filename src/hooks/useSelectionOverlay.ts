@@ -354,6 +354,31 @@ export function useSelectionOverlay(
   }, [beginProgrammaticSelection, clearOverlay, endProgrammaticSelection, updateSelectionMode]);
 
   useEffect(() => {
+    const resolveTextLayerFromEvent = (e: MouseEvent): Element | null => {
+      const target = e.target;
+      if (target instanceof Element) {
+        const byTarget = target.closest('.textLayer, .react-pdf__Page__textContent');
+        if (byTarget) {
+          return byTarget;
+        }
+      }
+
+      const byPointer = document
+        .elementFromPoint(e.clientX, e.clientY)
+        ?.closest('.textLayer, .react-pdf__Page__textContent');
+
+      return byPointer ?? null;
+    };
+
+    const resetDragStateForLayerSwitch = () => {
+      dragAnchorRef.current = null;
+      lastValidSpanRef.current = null;
+      dragSyntheticRangeRef.current = null;
+      lastValidRangeRef.current = null;
+      lastValidRangeSignatureRef.current = null;
+      gapHysteresisRef.current = createHysteresisState();
+    };
+
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
 
@@ -477,11 +502,61 @@ export function useSelectionOverlay(
       }
       dragUpdateThrottleRef.current = now;
 
-      const textLayer = activeTextLayerRef.current;
+      const container = containerRef.current;
+      const isCurrentLayerValid =
+        !!activeTextLayerRef.current &&
+        !!container &&
+        container.contains(activeTextLayerRef.current);
+
+      let textLayer = isCurrentLayerValid ? activeTextLayerRef.current : null;
+
+      if (!textLayer) {
+        const resolvedLayer = resolveTextLayerFromEvent(e);
+
+        if (resolvedLayer && container?.contains(resolvedLayer)) {
+          const hasLayerChanged = activeTextLayerRef.current !== resolvedLayer;
+
+          activeTextLayerRef.current = resolvedLayer;
+          currentTextMetricsRef.current = getTextMetricsFromTextLayer(resolvedLayer);
+          cachedSpansRef.current = getSpansWithInfo(resolvedLayer);
+
+          if (hasLayerChanged) {
+            resetDragStateForLayerSwitch();
+            const fallbackCaret = getSnappedCaretInfo(
+              e.clientX,
+              e.clientY,
+              resolvedLayer,
+              currentTextMetricsRef.current,
+              e.clientY,
+              null
+            );
+
+            if (fallbackCaret) {
+              dragAnchorRef.current = {
+                node: fallbackCaret.node,
+                offset: fallbackCaret.offset,
+                anchorY: e.clientY
+              };
+              lastValidSpanRef.current = fallbackCaret.spanInfo ?? null;
+            }
+          }
+
+          textLayer = resolvedLayer;
+        }
+      }
+
       if (textLayer) {
         const anchor = dragAnchorRef.current;
         const metrics = currentTextMetricsRef.current;
         if (!anchor || !metrics) {
+          const selection = window.getSelection();
+          if (container && selection && selection.rangeCount > 0) {
+            const fallbackRange = selection.getRangeAt(0);
+            const fallbackRects = calculatePageRects(container, fallbackRange);
+            if (fallbackRects.size > 0) {
+              flushOverlayUpdate(fallbackRects, selection.toString());
+            }
+          }
           return;
         }
 
@@ -526,6 +601,17 @@ export function useSelectionOverlay(
         dragSyntheticRangeRef.current = syntheticRange;
         lastValidRangeRef.current = syntheticRange;
         lastValidRangeSignatureRef.current = getRangeSignature(syntheticRange);
+      }
+
+      if (!textLayer) {
+        const selection = window.getSelection();
+        if (container && selection && selection.rangeCount > 0) {
+          const fallbackRange = selection.getRangeAt(0);
+          const fallbackRects = calculatePageRects(container, fallbackRange);
+          if (fallbackRects.size > 0) {
+            flushOverlayUpdate(fallbackRects, selection.toString());
+          }
+        }
       }
 
       lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
