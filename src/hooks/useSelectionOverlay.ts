@@ -42,6 +42,8 @@ type SelectionProgrammaticSource =
 
 const DRAG_THROTTLE_MS = 16;
 const MOUSEUP_PROTECTION_MS = 100;
+const DRAG_SELECTIONCHANGE_THROTTLE_MS = 40;
+const DRAG_SELECTIONCHANGE_MOUSEMOVE_GUARD_MS = 24;
 
 export function useSelectionOverlay(
   containerRef: React.RefObject<HTMLElement | null>
@@ -73,6 +75,8 @@ export function useSelectionOverlay(
 
   const selectionUpdateTokenRef = useRef(0);
   const dragUpdateThrottleRef = useRef<number>(0);
+  const lastDragMouseMoveAtRef = useRef<number>(0);
+  const lastDragSelectionChangeAtRef = useRef<number>(0);
 
   const dragAnchorRef = useRef<{ node: Node; offset: number; anchorY: number } | null>(null);
   const dragSyntheticRangeRef = useRef<Range | null>(null);
@@ -314,6 +318,23 @@ export function useSelectionOverlay(
     }
 
     if (isDraggingRef.current) {
+      const selection = document.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        return;
+      }
+
+      const now = performance.now();
+      const hasRecentMouseMove = now - lastDragMouseMoveAtRef.current < DRAG_SELECTIONCHANGE_MOUSEMOVE_GUARD_MS;
+      if (hasRecentMouseMove) {
+        return;
+      }
+
+      if (now - lastDragSelectionChangeAtRef.current < DRAG_SELECTIONCHANGE_THROTTLE_MS) {
+        return;
+      }
+
+      lastDragSelectionChangeAtRef.current = now;
+      scheduleRafUpdate(true);
       return;
     }
 
@@ -429,6 +450,8 @@ export function useSelectionOverlay(
 
         isDraggingRef.current = true;
         gapHysteresisRef.current = createHysteresisState();
+        lastDragMouseMoveAtRef.current = 0;
+        lastDragSelectionChangeAtRef.current = 0;
         updateSelectionMode('native-drag');
 
         if (clickedCaret) {
@@ -476,6 +499,7 @@ export function useSelectionOverlay(
         return;
       }
       dragUpdateThrottleRef.current = now;
+      lastDragMouseMoveAtRef.current = now;
 
       const textLayer = activeTextLayerRef.current;
       if (textLayer) {
@@ -540,6 +564,8 @@ export function useSelectionOverlay(
 
       if (wasDragging) {
         mouseupProtectionUntilRef.current = Date.now() + MOUSEUP_PROTECTION_MS;
+        lastDragMouseMoveAtRef.current = 0;
+        lastDragSelectionChangeAtRef.current = 0;
 
         if (finalSyntheticRange) {
           applySelectionSafely(finalSyntheticRange, 'mouseup-finalize');
