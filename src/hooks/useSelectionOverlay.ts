@@ -42,7 +42,6 @@ type SelectionProgrammaticSource =
 
 const DRAG_THROTTLE_MS = 16;
 const MOUSEUP_PROTECTION_MS = 100;
-const PROGRAMMATIC_GUARD_MS = 250;
 
 export function useSelectionOverlay(
   containerRef: React.RefObject<HTMLElement | null>
@@ -69,7 +68,6 @@ export function useSelectionOverlay(
   const selectionEpochRef = useRef(0);
   const lastAppliedRangeRef = useRef<RangeSignature | null>(null);
   const handledProgrammaticEpochRef = useRef<number | null>(null);
-  const handledProgrammaticEpochAtRef = useRef<number>(0);
   const currentProgrammaticEpochRef = useRef<number | null>(null);
   const pendingProgrammaticResetRef = useRef<number | null>(null);
 
@@ -293,38 +291,17 @@ export function useSelectionOverlay(
   }, [calculateSelectionRects]);
 
   const handleSelectionChange = useCallback(() => {
-    const now = Date.now();
     const programmaticEpoch = currentProgrammaticEpochRef.current;
     if (isProgrammaticSelectionRef.current && programmaticEpoch !== null) {
-      console.debug('[selection-overlay] programmatic selectionchange', {
-        currentEpoch: programmaticEpoch,
-        handledEpoch: handledProgrammaticEpochRef.current,
-        latestEpoch: selectionEpochRef.current
-      });
-
       if (handledProgrammaticEpochRef.current === programmaticEpoch) {
         return;
       }
       handledProgrammaticEpochRef.current = programmaticEpoch;
-      handledProgrammaticEpochAtRef.current = now;
       return;
     }
 
-    const handledEpoch = handledProgrammaticEpochRef.current;
-    const handledAge = now - handledProgrammaticEpochAtRef.current;
-    const hasActiveProgrammaticGuard =
-      handledEpoch !== null && handledAge < PROGRAMMATIC_GUARD_MS;
-
-    console.debug('[selection-overlay] native selectionchange', {
-      isProgrammaticSelection: isProgrammaticSelectionRef.current,
-      currentEpoch: programmaticEpoch,
-      handledEpoch,
-      latestEpoch: selectionEpochRef.current,
-      handledAge,
-      hasActiveProgrammaticGuard
-    });
-
-    if (hasActiveProgrammaticGuard && handledEpoch === selectionEpochRef.current) {
+    const latestEpoch = selectionEpochRef.current;
+    if (handledProgrammaticEpochRef.current !== null && handledProgrammaticEpochRef.current < latestEpoch - 1) {
       return;
     }
 
