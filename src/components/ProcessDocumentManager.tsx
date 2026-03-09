@@ -50,7 +50,7 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
     uploadProgress,
     loadDocuments,
     uploadDocument,
-    deleteDocument,
+    deleteDocumentById,
     clearError
   } = useProcessDocuments(processId);
 
@@ -189,7 +189,7 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
 
     if (!deleteConfirmModal.document) return;
 
-    const success = await deleteDocument(processId, deleteConfirmModal.document.id);
+    const success = await deleteDocumentById(deleteConfirmModal.document.id);
 
     if (success) {
       setDeleteConfirmModal({ isOpen: false, document: null, password: '', error: '' });
@@ -198,7 +198,7 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
       }
       await loadDocuments(processId);
     }
-  }, [deleteConfirmModal.password, deleteConfirmModal.document, deleteDocument, processId, onDeleteSuccess, loadDocuments]);
+  }, [deleteConfirmModal.password, deleteConfirmModal.document, deleteDocumentById, processId, onDeleteSuccess, loadDocuments]);
 
   const handleCancelDelete = useCallback(() => {
     setDeleteConfirmModal({ isOpen: false, document: null, password: '', error: '' });
