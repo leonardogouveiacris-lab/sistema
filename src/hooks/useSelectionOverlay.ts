@@ -464,7 +464,7 @@ export function useSelectionOverlay(
           clearSelection();
         }
       } else if (hasActiveSelectionRef.current && textLayer && !e.shiftKey) {
-        clearOverlay();
+        clearSelection();
       }
     };
 
