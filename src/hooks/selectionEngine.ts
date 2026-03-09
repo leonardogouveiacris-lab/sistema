@@ -450,15 +450,10 @@ export function shouldHoldSelection(
   textLayer: Element,
   hysteresis: HysteresisState,
   thresholdMs: number = 60,
-  cachedSpans?: SpanInfo[],
-  suspectStaleRects: boolean = false
+  cachedSpans?: SpanInfo[]
 ): { hold: boolean; updatedHysteresis: HysteresisState } {
   const now = performance.now();
-  let isOverText = isPointOverValidText(x, y, textLayer, 3, cachedSpans);
-
-  if (!isOverText && suspectStaleRects && cachedSpans) {
-    isOverText = isPointOverValidText(x, y, textLayer, 3);
-  }
+  const isOverText = isPointOverValidText(x, y, textLayer, 3, cachedSpans);
 
   if (isOverText) {
     return {
