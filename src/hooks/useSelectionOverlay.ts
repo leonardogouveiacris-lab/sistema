@@ -61,8 +61,6 @@ export function useSelectionOverlay(
   const currentTextMetricsRef = useRef<TextMetrics | null>(null);
   const activeTextLayerRef = useRef<Element | null>(null);
   const cachedSpansRef = useRef<SpanInfo[] | null>(null);
-  const dragScrollSnapshotRef = useRef<{ top: number; left: number } | null>(null);
-  const spansCacheInvalidatedByScrollRef = useRef(false);
   const selectionModeRef = useRef<SelectionMode>('idle');
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('idle');
 
@@ -346,8 +344,6 @@ export function useSelectionOverlay(
     isDraggingRef.current = false;
     activeTextLayerRef.current = null;
     cachedSpansRef.current = null;
-    dragScrollSnapshotRef.current = null;
-    spansCacheInvalidatedByScrollRef.current = false;
     dragAnchorRef.current = null;
     dragSyntheticRangeRef.current = null;
     lastValidRangeRef.current = null;
@@ -371,11 +367,6 @@ export function useSelectionOverlay(
         currentTextMetricsRef.current = metrics;
         activeTextLayerRef.current = textLayer;
         cachedSpansRef.current = getSpansWithInfo(textLayer);
-        dragScrollSnapshotRef.current = {
-          top: containerRef.current?.scrollTop ?? window.scrollY,
-          left: containerRef.current?.scrollLeft ?? window.scrollX
-        };
-        spansCacheInvalidatedByScrollRef.current = false;
 
         const clickedCaret = getSnappedCaretInfo(
           e.clientX,
@@ -494,29 +485,13 @@ export function useSelectionOverlay(
           return;
         }
 
-        const currentScrollTop = containerRef.current?.scrollTop ?? window.scrollY;
-        const currentScrollLeft = containerRef.current?.scrollLeft ?? window.scrollX;
-        const snapshot = dragScrollSnapshotRef.current;
-        const hasScrollDelta = !!snapshot && (
-          snapshot.top !== currentScrollTop || snapshot.left !== currentScrollLeft
-        );
-
-        const suspectStaleRects = hasScrollDelta || spansCacheInvalidatedByScrollRef.current;
-
-        if (!cachedSpansRef.current || suspectStaleRects) {
-          cachedSpansRef.current = getSpansWithInfo(textLayer);
-          spansCacheInvalidatedByScrollRef.current = false;
-          dragScrollSnapshotRef.current = { top: currentScrollTop, left: currentScrollLeft };
-        }
-
         const hysteresisResult = shouldHoldSelection(
           e.clientX,
           e.clientY,
           textLayer,
           gapHysteresisRef.current,
           80,
-          cachedSpansRef.current ?? undefined,
-          suspectStaleRects
+          cachedSpansRef.current ?? undefined
         );
         gapHysteresisRef.current = hysteresisResult.updatedHysteresis;
 
@@ -584,8 +559,6 @@ export function useSelectionOverlay(
         updateSelectionMode('idle');
         activeTextLayerRef.current = null;
         cachedSpansRef.current = null;
-        dragScrollSnapshotRef.current = null;
-        spansCacheInvalidatedByScrollRef.current = false;
         dragSyntheticRangeRef.current = null;
         lastValidRangeRef.current = null;
         lastValidRangeSignatureRef.current = null;
@@ -642,24 +615,12 @@ export function useSelectionOverlay(
       }
     };
 
-    const handleScroll = () => {
-      if (!isDraggingRef.current) {
-        return;
-      }
-      cachedSpansRef.current = null;
-      spansCacheInvalidatedByScrollRef.current = true;
-    };
-
-    const scrollContainer = containerRef.current;
-
     document.addEventListener('mousedown', handleMouseDown);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('dblclick', handleDoubleClick);
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('scroll', handleScroll, true);
-    scrollContainer?.addEventListener('scroll', handleScroll);
 
     return () => {
       document.removeEventListener('mousedown', handleMouseDown);
@@ -668,8 +629,6 @@ export function useSelectionOverlay(
       document.removeEventListener('dblclick', handleDoubleClick);
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('scroll', handleScroll, true);
-      scrollContainer?.removeEventListener('scroll', handleScroll);
     };
   }, [applySelectionSafely, clearOverlay, clearSelection, containerRef, flushOverlayUpdate, scheduleRafUpdate, updateSelectionMode]);
 
