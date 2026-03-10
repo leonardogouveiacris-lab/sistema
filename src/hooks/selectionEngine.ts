@@ -20,6 +20,23 @@ export interface SpanInfo {
   textNode: Node | null;
 }
 
+export interface GlyphPosition {
+  index: number;
+  charIndex: number;
+  x: number;
+  y: number;
+  height: number;
+  pageNumber: number;
+  span: HTMLElement;
+  textNode: Text;
+  offset: number;
+}
+
+export interface GlyphMap {
+  glyphs: GlyphPosition[];
+  lineGroups: GlyphPosition[][];
+}
+
 export interface RangeSignature {
   startContainer: Node;
   startOffset: number;
@@ -34,6 +51,11 @@ export interface CaretInfo {
 }
 
 const MAX_METRIC_SAMPLE_SPANS = 15;
+
+function getPageNumberFromElement(element: Element): number {
+  const pageEl = element.closest('[data-global-page]');
+  return parseInt(pageEl?.getAttribute('data-global-page') || '0', 10) || 0;
+}
 
 export function areRectsEqual(a: SelectionRect[], b: SelectionRect[]): boolean {
   if (a.length !== b.length) return false;
@@ -130,8 +152,8 @@ export function getCaretInfoFromPoint(x: number, y: number): CaretInfo | null {
 
   if (document.caretRangeFromPoint) {
     caretRange = document.caretRangeFromPoint(x, y);
-  } else if ((document as any).caretPositionFromPoint) {
-    const pos = (document as any).caretPositionFromPoint(x, y);
+  } else if ('caretPositionFromPoint' in document && typeof document.caretPositionFromPoint === 'function') {
+    const pos = document.caretPositionFromPoint(x, y);
     if (pos) {
       caretRange = document.createRange();
       caretRange.setStart(pos.offsetNode, pos.offset);
@@ -163,6 +185,93 @@ export function getSpansWithInfo(textLayer: Element): SpanInfo[] {
   });
 
   return result;
+}
+
+export function buildGlyphMapFromTextLayer(textLayer: Element): GlyphMap {
+  const spans = getSpansWithInfo(textLayer);
+  const glyphs: GlyphPosition[] = [];
+
+  for (const info of spans) {
+    const textNode = info.textNode;
+    const text = textNode?.textContent || '';
+    if (!textNode || text.length === 0) continue;
+
+    const rect = info.rect;
+    const charWidth = rect.width / text.length;
+    const pageNumber = getPageNumberFromElement(info.span);
+
+    for (let i = 0; i <= text.length; i++) {
+      glyphs.push({
+        index: glyphs.length,
+        charIndex: i,
+        x: rect.left + charWidth * i,
+        y: rect.top,
+        height: rect.height,
+        pageNumber,
+        span: info.span,
+        textNode,
+        offset: i
+      });
+    }
+  }
+
+  const lineGroupsMap = new Map<number, GlyphPosition[]>();
+  for (const glyph of glyphs) {
+    const lineKey = Math.round(glyph.y / 4);
+    const line = lineGroupsMap.get(lineKey) || [];
+    line.push(glyph);
+    lineGroupsMap.set(lineKey, line);
+  }
+
+  const lineGroups = Array.from(lineGroupsMap.values())
+    .map((line) => line.sort((a, b) => a.x - b.x))
+    .sort((a, b) => a[0].y - b[0].y);
+
+  return { glyphs, lineGroups };
+}
+
+export function findClosestGlyphByPoint(glyphMap: GlyphMap, x: number, y: number): GlyphPosition | null {
+  if (glyphMap.glyphs.length === 0) return null;
+
+  let closest: GlyphPosition | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (const glyph of glyphMap.glyphs) {
+    const dy = Math.abs((glyph.y + glyph.height / 2) - y);
+    const dx = Math.abs(glyph.x - x);
+    const score = dy * 20 + dx;
+
+    if (score < bestScore) {
+      bestScore = score;
+      closest = glyph;
+    }
+  }
+
+  return closest;
+}
+
+export function getGlyphRectInPage(
+  glyph: GlyphPosition,
+  textLayerRect: DOMRect,
+  pageRect: DOMRect
+): SelectionRect {
+  const offsetX = textLayerRect.left - pageRect.left;
+  const offsetY = textLayerRect.top - pageRect.top;
+  return {
+    x: (glyph.x - textLayerRect.left) + offsetX,
+    y: (glyph.y - textLayerRect.top) + offsetY,
+    width: 1,
+    height: glyph.height
+  };
+}
+
+export function createRangeFromGlyphs(anchorGlyph: GlyphPosition, focusGlyph: GlyphPosition): Range {
+  return createSelectionRange(
+    anchorGlyph.textNode,
+    anchorGlyph.offset,
+    focusGlyph.textNode,
+    focusGlyph.offset
+  );
 }
 
 interface LineBounds {

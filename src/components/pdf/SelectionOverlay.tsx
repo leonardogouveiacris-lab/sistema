@@ -4,9 +4,10 @@ import { SelectionRect } from '../../hooks/useSelectionOverlay';
 interface SelectionOverlayProps {
   pageNumber: number;
   rects: SelectionRect[];
+  caretRect?: SelectionRect | null;
 }
 
-const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, rects }) => {
+const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, rects, caretRect }) => {
   const stableRects = useMemo(() => {
     if (!rects || rects.length === 0) return [];
     return rects.map((rect, index) => ({
@@ -15,7 +16,7 @@ const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, re
     }));
   }, [rects, pageNumber]);
 
-  if (stableRects.length === 0) {
+  if (stableRects.length === 0 && !caretRect) {
     return null;
   }
 
@@ -25,6 +26,21 @@ const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, re
       style={{ zIndex: 5 }}
       data-selection-overlay={pageNumber}
     >
+
+      {caretRect ? (
+        <div
+          className="absolute"
+          style={{
+            left: `${caretRect.x}px`,
+            top: `${caretRect.y}px`,
+            width: '1px',
+            height: `${caretRect.height}px`,
+            backgroundColor: '#0078d7',
+            pointerEvents: 'none'
+          }}
+        />
+      ) : null}
+
       {stableRects.map((rect) => (
         <div
           key={rect.key}
@@ -43,6 +59,14 @@ const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, re
   );
 }, (prevProps, nextProps) => {
   if (prevProps.pageNumber !== nextProps.pageNumber) return false;
+  const prevCaret = prevProps.caretRect;
+  const nextCaret = nextProps.caretRect;
+  if (!!prevCaret !== !!nextCaret) return false;
+  if (prevCaret && nextCaret) {
+    if (Math.abs(prevCaret.x - nextCaret.x) > 0.5 || Math.abs(prevCaret.y - nextCaret.y) > 0.5 || Math.abs(prevCaret.height - nextCaret.height) > 0.5) {
+      return false;
+    }
+  }
   if (prevProps.rects === nextProps.rects) return true;
   if (!prevProps.rects || !nextProps.rects) return prevProps.rects === nextProps.rects;
   if (prevProps.rects.length !== nextProps.rects.length) return false;

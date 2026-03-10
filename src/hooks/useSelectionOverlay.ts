@@ -14,13 +14,20 @@ import {
   createSelectionRange,
   getSnappedCaretInfo,
   createHysteresisState,
-  shouldHoldSelection
+  shouldHoldSelection,
+  buildGlyphMapFromTextLayer,
+  findClosestGlyphByPoint,
+  createRangeFromGlyphs,
+  getGlyphRectInPage,
+  GlyphPosition,
+  GlyphMap
 } from './selectionEngine';
 
 export type { SelectionRect };
 
 export interface SelectionOverlayResult {
   selectionsByPage: Map<number, SelectionRect[]>;
+  caretByPage: Map<number, SelectionRect>;
   hasSelection: boolean;
   selectionMode: SelectionMode;
   canWriteProgrammaticSelection: boolean;
@@ -50,6 +57,7 @@ export function useSelectionOverlay(
     new Map()
   );
   const [hasSelection, setHasSelection] = useState(false);
+  const [caretByPage, setCaretByPage] = useState<Map<number, SelectionRect>>(new Map());
 
   const pendingRafRef = useRef<number | null>(null);
   const lastRectsMapRef = useRef<Map<number, SelectionRect[]>>(new Map());
@@ -79,6 +87,9 @@ export function useSelectionOverlay(
   const lastValidRangeSignatureRef = useRef<RangeSignature | null>(null);
   const lastValidSpanRef = useRef<SpanInfo | null>(null);
   const lastValidCaretRef = useRef<{ x: number; y: number } | null>(null);
+  const glyphMapRef = useRef<GlyphMap | null>(null);
+  const caretGlyphRef = useRef<GlyphPosition | null>(null);
+  const selectionAnchorGlyphRef = useRef<GlyphPosition | null>(null);
   const gapHysteresisRef = useRef(createHysteresisState());
   const mouseupProtectionUntilRef = useRef<number>(0);
 
@@ -161,6 +172,27 @@ export function useSelectionOverlay(
     lastSelectionTextRef.current = '';
     setSelectionsByPage(new Map());
     setHasSelection(false);
+  }, []);
+
+  const updateCaretOverlayFromGlyph = useCallback((glyph: GlyphPosition | null) => {
+    caretGlyphRef.current = glyph;
+
+    if (!glyph) {
+      setCaretByPage(new Map());
+      return;
+    }
+
+    const pageEl = glyph.span.closest('[data-global-page]');
+    const textLayer = glyph.span.closest('.textLayer, .react-pdf__Page__textContent');
+    if (!pageEl || !textLayer) {
+      setCaretByPage(new Map());
+      return;
+    }
+
+    const pageRect = pageEl.getBoundingClientRect();
+    const textLayerRect = textLayer.getBoundingClientRect();
+    const caretRect = getGlyphRectInPage(glyph, textLayerRect, pageRect);
+    setCaretByPage(new Map([[glyph.pageNumber, caretRect]]));
   }, []);
 
   const registerContextCommit = useCallback(() => {}, []);
@@ -350,9 +382,12 @@ export function useSelectionOverlay(
     lastValidRangeRef.current = null;
     lastValidSpanRef.current = null;
     gapHysteresisRef.current = createHysteresisState();
+    glyphMapRef.current = null;
+    selectionAnchorGlyphRef.current = null;
+    updateCaretOverlayFromGlyph(null);
     updateSelectionMode('idle');
     clearOverlay();
-  }, [beginProgrammaticSelection, clearOverlay, endProgrammaticSelection, updateSelectionMode]);
+  }, [beginProgrammaticSelection, clearOverlay, endProgrammaticSelection, updateCaretOverlayFromGlyph, updateSelectionMode]);
 
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
@@ -368,6 +403,7 @@ export function useSelectionOverlay(
         currentTextMetricsRef.current = metrics;
         activeTextLayerRef.current = textLayer;
         cachedSpansRef.current = getSpansWithInfo(textLayer);
+        glyphMapRef.current = buildGlyphMapFromTextLayer(textLayer);
 
         const clickedCaret = getSnappedCaretInfo(
           e.clientX,
@@ -378,54 +414,33 @@ export function useSelectionOverlay(
           null
         );
 
-        if (e.shiftKey && clickedCaret) {
-          let anchorNode: Node | null = null;
-          let anchorOffset: number = 0;
-          let anchorY: number = e.clientY;
+        const glyphMap = glyphMapRef.current;
+        const clickedGlyph = glyphMap ? findClosestGlyphByPoint(glyphMap, e.clientX, e.clientY) : null;
 
-          if (dragAnchorRef.current) {
-            anchorNode = dragAnchorRef.current.node;
-            anchorOffset = dragAnchorRef.current.offset;
-            anchorY = dragAnchorRef.current.anchorY;
-          } else {
-            const selection = window.getSelection();
-            if (selection && selection.anchorNode && textLayer.contains(selection.anchorNode)) {
-              anchorNode = selection.anchorNode;
-              anchorOffset = selection.anchorOffset;
-            }
-          }
+        if (e.shiftKey && clickedGlyph && selectionAnchorGlyphRef.current) {
+          e.preventDefault();
 
-          if (anchorNode) {
-            e.preventDefault();
+          const extendedRange = createRangeFromGlyphs(selectionAnchorGlyphRef.current, clickedGlyph);
 
-            const extendedRange = createSelectionRange(
-              anchorNode,
-              anchorOffset,
-              clickedCaret.node,
-              clickedCaret.offset
-            );
+          dragAnchorRef.current = {
+            node: selectionAnchorGlyphRef.current.textNode,
+            offset: selectionAnchorGlyphRef.current.offset,
+            anchorY: e.clientY
+          };
 
-            if (!dragAnchorRef.current) {
-              dragAnchorRef.current = {
-                node: anchorNode,
-                offset: anchorOffset,
-                anchorY: anchorY
-              };
-            }
+          dragSyntheticRangeRef.current = extendedRange;
+          lastValidRangeRef.current = extendedRange;
+          lastValidRangeSignatureRef.current = getRangeSignature(extendedRange);
+          lastValidSpanRef.current = clickedCaret?.spanInfo ?? lastValidSpanRef.current;
+          lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
+          updateCaretOverlayFromGlyph(clickedGlyph);
 
-            dragSyntheticRangeRef.current = extendedRange;
-            lastValidRangeRef.current = extendedRange;
-            lastValidRangeSignatureRef.current = getRangeSignature(extendedRange);
-            lastValidSpanRef.current = clickedCaret.spanInfo ?? lastValidSpanRef.current;
-            lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
+          applySelectionSafely(extendedRange, 'caret-shift-click');
+          scheduleRafUpdate(true);
 
-            applySelectionSafely(extendedRange, 'caret-shift-click');
-            scheduleRafUpdate(true);
-
-            isDraggingRef.current = true;
-            updateSelectionMode('native-drag');
-            return;
-          }
+          isDraggingRef.current = true;
+          updateSelectionMode('native-drag');
+          return;
         }
 
         isDraggingRef.current = true;
@@ -448,6 +463,10 @@ export function useSelectionOverlay(
           dragSyntheticRangeRef.current = initialRange;
           lastValidRangeRef.current = initialRange;
           lastValidRangeSignatureRef.current = getRangeSignature(initialRange);
+          if (clickedGlyph) {
+            selectionAnchorGlyphRef.current = clickedGlyph;
+            updateCaretOverlayFromGlyph(clickedGlyph);
+          }
         } else {
           dragAnchorRef.current = null;
         }
@@ -497,7 +516,13 @@ export function useSelectionOverlay(
         return;
       }
 
-      const focusCaret = getSnappedCaretInfo(
+      const glyphMap = glyphMapRef.current;
+      const focusGlyph = glyphMap ? findClosestGlyphByPoint(glyphMap, e.clientX, e.clientY) : null;
+      const focusCaret = focusGlyph ? {
+        node: focusGlyph.textNode,
+        offset: focusGlyph.offset,
+        spanInfo: lastValidSpanRef.current ?? undefined
+      } : getSnappedCaretInfo(
         e.clientX,
         e.clientY,
         textLayer,
@@ -513,6 +538,9 @@ export function useSelectionOverlay(
       }
 
       lastValidSpanRef.current = focusCaret.spanInfo ?? lastValidSpanRef.current;
+      if (focusGlyph) {
+        updateCaretOverlayFromGlyph(focusGlyph);
+      }
       const syntheticRange = createSelectionRange(
         anchor.node,
         anchor.offset,
@@ -566,8 +594,6 @@ export function useSelectionOverlay(
           }
         }
         updateSelectionMode('idle');
-        activeTextLayerRef.current = null;
-        cachedSpansRef.current = null;
         dragSyntheticRangeRef.current = null;
         lastValidRangeRef.current = null;
         lastValidRangeSignatureRef.current = null;
@@ -606,6 +632,46 @@ export function useSelectionOverlay(
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const movable = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+      if (movable.includes(e.key) && caretGlyphRef.current && glyphMapRef.current) {
+        e.preventDefault();
+        const glyphs = glyphMapRef.current.glyphs;
+        const current = caretGlyphRef.current;
+        const currentIndex = glyphs.findIndex((g) => g.index === current.index);
+        if (currentIndex >= 0) {
+          let target = current;
+          if (e.key === 'ArrowLeft' && currentIndex > 0) target = glyphs[currentIndex - 1];
+          if (e.key === 'ArrowRight' && currentIndex < glyphs.length - 1) target = glyphs[currentIndex + 1];
+          if (e.key === 'Home') target = glyphs.find((g) => Math.abs(g.y - current.y) < 2) || target;
+          if (e.key === 'End') {
+            const sameLine = glyphs.filter((g) => Math.abs(g.y - current.y) < 2);
+            target = sameLine[sameLine.length - 1] || target;
+          }
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            const lines = glyphMapRef.current.lineGroups;
+            const lineIndex = lines.findIndex((line) => line.some((g) => g.index === current.index));
+            if (lineIndex >= 0) {
+              const desiredLine = e.key === 'ArrowUp' ? lines[lineIndex - 1] : lines[lineIndex + 1];
+              if (desiredLine?.length) {
+                target = desiredLine.reduce((best, g) => Math.abs(g.x - current.x) < Math.abs(best.x - current.x) ? g : best, desiredLine[0]);
+              }
+            }
+          }
+
+          updateCaretOverlayFromGlyph(target);
+
+          const anchorGlyph = e.shiftKey ? (selectionAnchorGlyphRef.current || current) : target;
+          if (!e.shiftKey) selectionAnchorGlyphRef.current = target;
+
+          const range = createRangeFromGlyphs(anchorGlyph, target);
+          applySelectionSafely(range, e.shiftKey ? 'caret-shift-arrow' : 'caret-arrow');
+          if (e.shiftKey) {
+            scheduleRafUpdate(true);
+            updateSelectionMode('keyboard-extend');
+          }
+          return;
+        }
+      }
       if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         isKeyboardSelectingRef.current = true;
         updateSelectionMode('keyboard-extend');
@@ -639,7 +705,7 @@ export function useSelectionOverlay(
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [applySelectionSafely, clearOverlay, clearSelection, containerRef, flushOverlayUpdate, scheduleRafUpdate, updateSelectionMode]);
+  }, [applySelectionSafely, clearOverlay, clearSelection, containerRef, flushOverlayUpdate, scheduleRafUpdate, updateCaretOverlayFromGlyph, updateSelectionMode]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
@@ -696,6 +762,7 @@ export function useSelectionOverlay(
 
   return {
     selectionsByPage,
+    caretByPage,
     hasSelection,
     selectionMode,
     canWriteProgrammaticSelection: selectionMode !== 'native-drag',

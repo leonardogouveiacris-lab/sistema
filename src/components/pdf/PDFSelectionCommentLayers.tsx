@@ -15,6 +15,7 @@ interface PDFSelectionCommentLayersProps {
   currentSearchIndex: number;
   searchQuery: string;
   selectionRects: Array<{ x: number; y: number; width: number; height: number }>;
+  caretRect?: { x: number; y: number; width: number; height: number } | null;
 }
 
 const PDFSelectionCommentLayers: React.FC<PDFSelectionCommentLayersProps> = ({
@@ -28,6 +29,7 @@ const PDFSelectionCommentLayers: React.FC<PDFSelectionCommentLayersProps> = ({
   currentSearchIndex,
   searchQuery,
   selectionRects,
+  caretRect,
 }) => (
   <>
     <HighlightLayer pageNumber={pageNumber} scale={scale} />
@@ -47,7 +49,7 @@ const PDFSelectionCommentLayers: React.FC<PDFSelectionCommentLayersProps> = ({
       currentSearchIndex={currentSearchIndex}
       searchQuery={searchQuery}
     />
-    <SelectionOverlay pageNumber={pageNumber} rects={selectionRects} />
+    <SelectionOverlay pageNumber={pageNumber} rects={selectionRects} caretRect={caretRect} />
   </>
 );
 
