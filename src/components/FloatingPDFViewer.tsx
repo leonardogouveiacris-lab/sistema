@@ -6749,7 +6749,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       {/* Painel principal */}
       <div
         ref={containerRef}
-        className="pdf-caret-tuning fixed top-0 right-0 bottom-0 bg-white shadow-2xl z-50 flex flex-col notranslate"
+        className="fixed top-0 right-0 bottom-0 bg-white shadow-2xl z-50 flex flex-col notranslate"
         style={{ width: state.panelWidth }}
         translate="no"
       >
