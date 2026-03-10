@@ -40,7 +40,6 @@ type SelectionProgrammaticSource =
   | 'mouseup-finalize'
   | 'clear-selection';
 
-const DRAG_THROTTLE_MS = 8;
 const MOUSEUP_PROTECTION_MS = 50;
 const SCROLL_DEBOUNCE_MS = 16;
 
@@ -73,7 +72,6 @@ export function useSelectionOverlay(
   const pendingProgrammaticResetRef = useRef<number | null>(null);
 
   const selectionUpdateTokenRef = useRef(0);
-  const dragUpdateThrottleRef = useRef<number>(0);
 
   const dragAnchorRef = useRef<{ node: Node; offset: number; anchorY: number } | null>(null);
   const dragSyntheticRangeRef = useRef<Range | null>(null);
@@ -274,31 +272,23 @@ export function useSelectionOverlay(
 
   const scheduleRafUpdate = useCallback((forceUpdate: boolean) => {
     selectionUpdateTokenRef.current++;
-    const currentToken = selectionUpdateTokenRef.current;
 
-    if (rafCoalesceRef.current.pending) {
-      rafCoalesceRef.current.forceUpdate = rafCoalesceRef.current.forceUpdate || forceUpdate;
+    if (forceUpdate) {
+      rafCoalesceRef.current.forceUpdate = true;
+    }
+
+    if (pendingRafRef.current !== null) {
       return;
     }
 
-    rafCoalesceRef.current.pending = true;
-    rafCoalesceRef.current.forceUpdate = forceUpdate;
-
-    if (pendingRafRef.current !== null) {
-      cancelAnimationFrame(pendingRafRef.current);
-    }
-
-    pendingRafRef.current = requestAnimationFrame(() => {
-      rafCoalesceRef.current.pending = false;
-
-      if (selectionUpdateTokenRef.current !== currentToken) {
-        pendingRafRef.current = null;
-        return;
-      }
-
-      calculateSelectionRects(rafCoalesceRef.current.forceUpdate);
+    const executeUpdate = () => {
       pendingRafRef.current = null;
-    });
+      const shouldForce = rafCoalesceRef.current.forceUpdate;
+      rafCoalesceRef.current.forceUpdate = false;
+      calculateSelectionRects(shouldForce);
+    };
+
+    pendingRafRef.current = requestAnimationFrame(executeUpdate);
   }, [calculateSelectionRects]);
 
   const handleSelectionChange = useCallback(() => {
@@ -482,65 +472,73 @@ export function useSelectionOverlay(
     const handleMouseMove = (e: MouseEvent) => {
       if (!isMouseDownRef.current || !isDraggingRef.current) return;
 
-      const now = performance.now();
-      if (now - dragUpdateThrottleRef.current < DRAG_THROTTLE_MS) {
-        return;
-      }
-      dragUpdateThrottleRef.current = now;
-
       const textLayer = activeTextLayerRef.current;
-      if (textLayer) {
-        const anchor = dragAnchorRef.current;
-        const metrics = currentTextMetricsRef.current;
-        if (!anchor || !metrics) {
-          return;
-        }
+      if (!textLayer) return;
 
-        const hysteresisResult = shouldHoldSelection(
-          e.clientX,
-          e.clientY,
-          textLayer,
-          gapHysteresisRef.current,
-          80,
-          cachedSpansRef.current ?? undefined
-        );
-        gapHysteresisRef.current = hysteresisResult.updatedHysteresis;
-
-        if (hysteresisResult.hold) {
-          dragSyntheticRangeRef.current = lastValidRangeRef.current;
-          scheduleRafUpdate(true);
-          return;
-        }
-
-        const focusCaret = getSnappedCaretInfo(
-          e.clientX,
-          e.clientY,
-          textLayer,
-          metrics,
-          anchor.anchorY,
-          lastValidSpanRef.current
-        );
-
-        if (!focusCaret) {
-          dragSyntheticRangeRef.current = lastValidRangeRef.current;
-          scheduleRafUpdate(true);
-          return;
-        }
-
-        lastValidSpanRef.current = focusCaret.spanInfo ?? lastValidSpanRef.current;
-        const syntheticRange = createSelectionRange(
-          anchor.node,
-          anchor.offset,
-          focusCaret.node,
-          focusCaret.offset
-        );
-        dragSyntheticRangeRef.current = syntheticRange;
-        lastValidRangeRef.current = syntheticRange;
-        lastValidRangeSignatureRef.current = getRangeSignature(syntheticRange);
-      }
+      const anchor = dragAnchorRef.current;
+      const metrics = currentTextMetricsRef.current;
+      if (!anchor || !metrics) return;
 
       lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
-      scheduleRafUpdate(true);
+
+      const hysteresisResult = shouldHoldSelection(
+        e.clientX,
+        e.clientY,
+        textLayer,
+        gapHysteresisRef.current,
+        80,
+        cachedSpansRef.current ?? undefined
+      );
+      gapHysteresisRef.current = hysteresisResult.updatedHysteresis;
+
+      if (hysteresisResult.hold) {
+        dragSyntheticRangeRef.current = lastValidRangeRef.current;
+        scheduleRafUpdate(true);
+        return;
+      }
+
+      const focusCaret = getSnappedCaretInfo(
+        e.clientX,
+        e.clientY,
+        textLayer,
+        metrics,
+        anchor.anchorY,
+        lastValidSpanRef.current
+      );
+
+      if (!focusCaret) {
+        dragSyntheticRangeRef.current = lastValidRangeRef.current;
+        scheduleRafUpdate(true);
+        return;
+      }
+
+      lastValidSpanRef.current = focusCaret.spanInfo ?? lastValidSpanRef.current;
+      const syntheticRange = createSelectionRange(
+        anchor.node,
+        anchor.offset,
+        focusCaret.node,
+        focusCaret.offset
+      );
+
+      const prevSig = lastValidRangeSignatureRef.current;
+      const newSig = getRangeSignature(syntheticRange);
+      const rangeChanged = !areRangesEqual(prevSig, newSig);
+
+      dragSyntheticRangeRef.current = syntheticRange;
+      lastValidRangeRef.current = syntheticRange;
+      lastValidRangeSignatureRef.current = newSig;
+
+      if (!rangeChanged) {
+        return;
+      }
+
+      const container = containerRef.current;
+      if (container) {
+        const pageRectsMap = calculatePageRects(container, syntheticRange);
+        if (pageRectsMap.size > 0) {
+          flushOverlayUpdate(pageRectsMap, syntheticRange.toString());
+        }
+      }
     };
 
     const handleMouseUp = () => {
