@@ -3550,17 +3550,26 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return null;
     };
 
-    const getClickOffset = (span: HTMLElement, clientX: number, clientY: number): number => {
+    const HIT_TEST_OFFSET_DIVERGENCE_THRESHOLD = 2;
+    const HIT_TEST_VISUAL_X_DIVERGENCE_THRESHOLD_PX = 14;
+
+    const getOffsetRect = (span: HTMLElement, offset: number): DOMRect | null => {
+      const textNode = span.firstChild;
+      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return null;
+
+      const range = document.createRange();
+      const normalizedOffset = Math.max(0, Math.min(offset, textNode.textContent?.length || 0));
+      range.setStart(textNode, normalizedOffset);
+      range.setEnd(textNode, normalizedOffset);
+      const rect = range.getBoundingClientRect();
+      return rect.width >= 0 ? rect : null;
+    };
+
+    const getOffsetByBinarySearch = (span: HTMLElement, clientX: number): number => {
       const textNode = span.firstChild;
       if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return 0;
-
       const text = textNode.textContent || '';
       if (text.length === 0) return 0;
-
-      const directOffset = getCaretOffsetFromPoint(span, clientX, clientY);
-      if (directOffset !== null) {
-        return directOffset;
-      }
 
       const range = document.createRange();
       let lo = 0;
@@ -3577,20 +3586,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           hi = mid;
         }
       }
+
       return lo;
     };
 
-    const getClickOffsetByCoordinates = (span: HTMLElement, clientX: number, clientY: number): number => {
+    const getOffsetByCoordinates = (span: HTMLElement, clientX: number, clientY: number): number => {
       const textNode = span.firstChild;
       if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return 0;
 
       const text = textNode.textContent || '';
       if (text.length === 0) return 0;
-
-      const directOffset = getCaretOffsetFromPoint(span, clientX, clientY);
-      if (directOffset !== null) {
-        return directOffset;
-      }
 
       const range = document.createRange();
       let bestOffset = 0;
@@ -3611,6 +3616,67 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       return bestOffset;
+    };
+
+    const resolveClickOffsetWithConfidence = (
+      span: HTMLElement,
+      clientX: number,
+      clientY: number,
+      source: 'single-click' | 'double-click' | 'shift-click'
+    ): { offset: number; isUncertain: boolean } => {
+      const directOffset = getCaretOffsetFromPoint(span, clientX, clientY);
+      const geometricOffset = getOffsetByCoordinates(span, clientX, clientY);
+      const fallbackOffset = getOffsetByBinarySearch(span, clientX);
+      const resolvedOffset = directOffset ?? geometricOffset ?? fallbackOffset;
+
+      if (directOffset === null) {
+        return { offset: resolvedOffset, isUncertain: false };
+      }
+
+      const directRect = getOffsetRect(span, directOffset);
+      const geometricRect = getOffsetRect(span, geometricOffset);
+      const visualDistanceX = directRect && geometricRect
+        ? Math.abs(directRect.left - geometricRect.left)
+        : 0;
+      const charDivergence = Math.abs(directOffset - geometricOffset);
+      const isUncertain = charDivergence >= HIT_TEST_OFFSET_DIVERGENCE_THRESHOLD
+        || visualDistanceX >= HIT_TEST_VISUAL_X_DIVERGENCE_THRESHOLD_PX;
+
+      if (isUncertain) {
+        logger.info('Hit-test incerto detectado em span de texto', 'FloatingPDFViewer.handleClick', {
+          source,
+          page: getPageNumber(span),
+          spanText: (span.textContent || '').slice(0, 200),
+          directOffset,
+          geometricOffset,
+          fallbackOffset,
+          resolvedOffset,
+          charDivergence,
+          visualDistanceX,
+          thresholdChars: HIT_TEST_OFFSET_DIVERGENCE_THRESHOLD,
+          thresholdX: HIT_TEST_VISUAL_X_DIVERGENCE_THRESHOLD_PX,
+        });
+      }
+
+      return { offset: resolvedOffset, isUncertain };
+    };
+
+    const getClickOffset = (
+      span: HTMLElement,
+      clientX: number,
+      clientY: number,
+      source: 'single-click' | 'double-click' | 'shift-click' = 'single-click'
+    ): { offset: number; isUncertain: boolean } => {
+      return resolveClickOffsetWithConfidence(span, clientX, clientY, source);
+    };
+
+    const getClickOffsetByCoordinates = (
+      span: HTMLElement,
+      clientX: number,
+      clientY: number,
+      source: 'single-click' | 'double-click' | 'shift-click' = 'single-click'
+    ): { offset: number; isUncertain: boolean } => {
+      return resolveClickOffsetWithConfidence(span, clientX, clientY, source);
     };
 
     const selectWord = (span: HTMLElement, offset: number) => {
@@ -3687,10 +3753,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       clientX: number,
       clientY: number,
       clickPage: number | null
-    ): { span: HTMLElement; offset: number } | null => {
+    ): { span: HTMLElement; offset: number; isUncertain: boolean } | null => {
       const directSpan = target.closest(TEXT_SPAN_SELECTOR) as HTMLElement | null;
       if (directSpan && isSelectableSpan(directSpan)) {
-        return { span: directSpan, offset: getClickOffsetByCoordinates(directSpan, clientX, clientY) };
+        const { offset, isUncertain } = getClickOffsetByCoordinates(directSpan, clientX, clientY, 'shift-click');
+        return { span: directSpan, offset, isUncertain };
       }
 
       const activeTextLayer = target.closest('.textLayer') as HTMLElement | null;
@@ -3699,9 +3766,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         : null;
 
       if (nearestInActiveLayer) {
+        const { offset, isUncertain } = getClickOffsetByCoordinates(nearestInActiveLayer, clientX, clientY, 'shift-click');
         return {
           span: nearestInActiveLayer,
-          offset: getClickOffsetByCoordinates(nearestInActiveLayer, clientX, clientY)
+          offset,
+          isUncertain
         };
       }
 
@@ -3709,9 +3778,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const clickPageSpans = getSpansForPage(clickPage);
         const clickPageFallback = findNearestSpanByCoordinates(clickPageSpans, clientX, clientY);
         if (clickPageFallback) {
+          const { offset, isUncertain } = getClickOffsetByCoordinates(clickPageFallback, clientX, clientY, 'shift-click');
           return {
             span: clickPageFallback,
-            offset: getClickOffsetByCoordinates(clickPageFallback, clientX, clientY)
+            offset,
+            isUncertain
           };
         }
       }
@@ -3729,7 +3800,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       return {
         span: fallbackSpan,
-        offset: getClickOffsetByCoordinates(fallbackSpan, clientX, clientY)
+        ...getClickOffsetByCoordinates(fallbackSpan, clientX, clientY, 'shift-click')
       };
     };
 
@@ -3750,6 +3821,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const resolved = resolveShiftClickTarget(target, selectionAnchor, e.clientX, e.clientY, clickPage);
 
         if (resolved) {
+          if (resolved.isUncertain) {
+            deactivateCaret();
+            return;
+          }
           activateCaret(resolved.span, true);
           const selectionApplied = createSelectionBetween(
             selectionAnchor.span,
@@ -3780,14 +3855,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       if (e.detail === 2 && textLayerSpan && textLayerSpan.textContent?.trim()) {
-        const clickOffset = getClickOffset(textLayerSpan, e.clientX, e.clientY);
-        selectWord(textLayerSpan, clickOffset);
+        const clickOffset = getClickOffset(textLayerSpan, e.clientX, e.clientY, 'double-click');
+        if (clickOffset.isUncertain) {
+          deactivateCaret();
+          return;
+        }
+        selectWord(textLayerSpan, clickOffset.offset);
         deactivateCaret();
         return;
       }
 
       if (textLayerSpan && textLayerSpan.textContent?.trim()) {
-        const clickOffset = getClickOffset(textLayerSpan, e.clientX, e.clientY);
+        const source = e.shiftKey ? 'shift-click' : 'single-click';
+        const clickOffset = getClickOffset(textLayerSpan, e.clientX, e.clientY, source);
+        if (clickOffset.isUncertain) {
+          deactivateCaret();
+          return;
+        }
 
         if (e.shiftKey && selectionAnchor) {
           activateCaret(textLayerSpan, true);
@@ -3795,14 +3879,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
             selectionAnchor.span,
             selectionAnchor.offset,
             textLayerSpan,
-            clickOffset
+            clickOffset.offset
           );
-          currentFocus = { span: textLayerSpan, offset: clickOffset };
+          currentFocus = { span: textLayerSpan, offset: clickOffset.offset };
         } else {
           activateCaret(textLayerSpan);
-          setCaretPosition(textLayerSpan, clickOffset);
-          selectionAnchor = { span: textLayerSpan, offset: clickOffset };
-          currentFocus = { span: textLayerSpan, offset: clickOffset };
+          setCaretPosition(textLayerSpan, clickOffset.offset);
+          selectionAnchor = { span: textLayerSpan, offset: clickOffset.offset };
+          currentFocus = { span: textLayerSpan, offset: clickOffset.offset };
         }
       } else if (!textLayer) {
         deactivateCaret();
