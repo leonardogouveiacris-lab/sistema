@@ -648,6 +648,70 @@ export function useSelectionOverlay(
     };
   }, [handleSelectionChange]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const requestReconcile = () => {
+      if (!hasActiveSelectionRef.current) {
+        return;
+      }
+      scheduleRafUpdate(true);
+    };
+
+    const onScroll = () => {
+      requestReconcile();
+    };
+
+    const onResize = () => {
+      requestReconcile();
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onResize);
+
+    const mutationObserver = new MutationObserver((mutations) => {
+      if (!hasActiveSelectionRef.current) {
+        return;
+      }
+
+      const hasRelevantMutation = mutations.some((mutation) => {
+        if ((mutation.target as Element).closest?.('.react-pdf__Page, .textLayer')) {
+          return true;
+        }
+
+        return Array.from(mutation.addedNodes).some((node) => {
+          if (!(node instanceof Element)) {
+            return false;
+          }
+          return (
+            node.matches('.react-pdf__Page, .textLayer') ||
+            Boolean(node.querySelector('.react-pdf__Page, .textLayer'))
+          );
+        });
+      });
+
+      if (hasRelevantMutation) {
+        scheduleRafUpdate(true);
+      }
+    });
+
+    mutationObserver.observe(container, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onResize);
+      mutationObserver.disconnect();
+    };
+  }, [containerRef, scheduleRafUpdate]);
+
   return {
     selectionsByPage,
     hasSelection,
