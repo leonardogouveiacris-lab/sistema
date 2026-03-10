@@ -40,8 +40,9 @@ type SelectionProgrammaticSource =
   | 'mouseup-finalize'
   | 'clear-selection';
 
-const DRAG_THROTTLE_MS = 16;
-const MOUSEUP_PROTECTION_MS = 100;
+const DRAG_THROTTLE_MS = 8;
+const MOUSEUP_PROTECTION_MS = 50;
+const SCROLL_DEBOUNCE_MS = 16;
 
 export function useSelectionOverlay(
   containerRef: React.RefObject<HTMLElement | null>
@@ -87,6 +88,9 @@ export function useSelectionOverlay(
     pending: boolean;
     forceUpdate: boolean;
   }>({ pending: false, forceUpdate: false });
+
+  const scrollDebounceRef = useRef<number | null>(null);
+  const isScrollingRef = useRef(false);
 
   const updateSelectionMode = useCallback((nextMode: SelectionMode) => {
     if (selectionModeRef.current === nextMode) {
@@ -189,7 +193,10 @@ export function useSelectionOverlay(
       }
 
       const signature = getRangeSignature(syntheticRange);
-      if (areRangesEqual(lastValidRangeSignatureRef.current, signature) && !forceUpdate) {
+      const skipRecalc = areRangesEqual(lastValidRangeSignatureRef.current, signature) &&
+                         !forceUpdate &&
+                         !isScrollingRef.current;
+      if (skipRecalc) {
         return;
       }
 
@@ -245,7 +252,11 @@ export function useSelectionOverlay(
 
     const range = selection.getRangeAt(0);
     const signature = getRangeSignature(range);
-    if (isDraggingRef.current && areRangesEqual(lastValidRangeSignatureRef.current, signature)) {
+    const skipDragRecalc = isDraggingRef.current &&
+                           areRangesEqual(lastValidRangeSignatureRef.current, signature) &&
+                           !isScrollingRef.current &&
+                           !forceUpdate;
+    if (skipDragRecalc) {
       return;
     }
 
@@ -313,15 +324,15 @@ export function useSelectionOverlay(
       return;
     }
 
-    if (isDraggingRef.current) {
+    if (isDraggingRef.current && !isScrollingRef.current) {
       return;
     }
 
-    if (Date.now() < mouseupProtectionUntilRef.current) {
+    if (Date.now() < mouseupProtectionUntilRef.current && !isScrollingRef.current) {
       return;
     }
 
-    scheduleRafUpdate(false);
+    scheduleRafUpdate(isScrollingRef.current);
   }, [scheduleRafUpdate]);
 
   const clearSelection = useCallback(() => {
@@ -647,6 +658,43 @@ export function useSelectionOverlay(
       }
     };
   }, [handleSelectionChange]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      if (!hasActiveSelectionRef.current && !isDraggingRef.current) {
+        return;
+      }
+
+      isScrollingRef.current = true;
+
+      if (scrollDebounceRef.current !== null) {
+        cancelAnimationFrame(scrollDebounceRef.current);
+      }
+
+      scrollDebounceRef.current = requestAnimationFrame(() => {
+        scheduleRafUpdate(true);
+
+        setTimeout(() => {
+          isScrollingRef.current = false;
+        }, SCROLL_DEBOUNCE_MS);
+
+        scrollDebounceRef.current = null;
+      });
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (scrollDebounceRef.current !== null) {
+        cancelAnimationFrame(scrollDebounceRef.current);
+        scrollDebounceRef.current = null;
+      }
+    };
+  }, [containerRef, scheduleRafUpdate]);
 
   return {
     selectionsByPage,
