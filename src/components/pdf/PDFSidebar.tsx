@@ -283,7 +283,32 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       }
       groups.get(tipo)!.push(item);
     });
-    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+    const getFirstPage = (items: typeof allLancamentos): number | null => {
+      const pages = items
+        .map(({ lancamento }) => lancamento.paginaVinculada)
+        .filter((page): page is number => page != null)
+        .sort((x, y) => x - y);
+
+      return pages.length > 0 ? pages[0] : null;
+    };
+
+    return Array.from(groups.entries()).sort((a, b) => {
+      const firstPageA = getFirstPage(a[1]);
+      const firstPageB = getFirstPage(b[1]);
+
+      if (firstPageA != null && firstPageB != null) {
+        if (firstPageA !== firstPageB) {
+          return firstPageA - firstPageB;
+        }
+      } else if (firstPageA != null) {
+        return -1;
+      } else if (firstPageB != null) {
+        return 1;
+      }
+
+      return a[0].localeCompare(b[0]);
+    });
   }, [filteredLancamentos, groupByTipoVerba]);
 
   const lancamentosToDisplay = useMemo(() => {
