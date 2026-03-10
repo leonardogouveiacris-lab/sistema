@@ -3512,12 +3512,55 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return true;
     };
 
-    const getClickOffset = (span: HTMLElement, clientX: number): number => {
+    const getCaretOffsetFromPoint = (span: HTMLElement, clientX: number, clientY: number): number | null => {
+      const textNode = span.firstChild;
+      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return null;
+
+      const normalizeOffset = (node: Node | null, offset: number): number | null => {
+        if (!node) return null;
+
+        if (node === textNode) {
+          return Math.max(0, Math.min(offset, textNode.textContent?.length || 0));
+        }
+
+        if (node.nodeType === Node.ELEMENT_NODE && node.contains(textNode)) {
+          return Math.max(0, Math.min(offset, textNode.textContent?.length || 0));
+        }
+
+        return null;
+      };
+
+      if (typeof document.caretPositionFromPoint === 'function') {
+        const caretPosition = document.caretPositionFromPoint(clientX, clientY);
+        const normalized = normalizeOffset(caretPosition?.offsetNode ?? null, caretPosition?.offset ?? 0);
+        if (normalized !== null) {
+          return normalized;
+        }
+      }
+
+      const fallbackDocument = span.ownerDocument;
+      if (fallbackDocument && typeof fallbackDocument.caretRangeFromPoint === 'function') {
+        const caretRange = fallbackDocument.caretRangeFromPoint(clientX, clientY);
+        const normalized = normalizeOffset(caretRange?.startContainer ?? null, caretRange?.startOffset ?? 0);
+        if (normalized !== null) {
+          return normalized;
+        }
+      }
+
+      return null;
+    };
+
+    const getClickOffset = (span: HTMLElement, clientX: number, clientY: number): number => {
       const textNode = span.firstChild;
       if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return 0;
 
       const text = textNode.textContent || '';
       if (text.length === 0) return 0;
+
+      const directOffset = getCaretOffsetFromPoint(span, clientX, clientY);
+      if (directOffset !== null) {
+        return directOffset;
+      }
 
       const range = document.createRange();
       let lo = 0;
@@ -3543,6 +3586,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       const text = textNode.textContent || '';
       if (text.length === 0) return 0;
+
+      const directOffset = getCaretOffsetFromPoint(span, clientX, clientY);
+      if (directOffset !== null) {
+        return directOffset;
+      }
 
       const range = document.createRange();
       let bestOffset = 0;
@@ -3732,14 +3780,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
 
       if (e.detail === 2 && textLayerSpan && textLayerSpan.textContent?.trim()) {
-        const clickOffset = getClickOffset(textLayerSpan, e.clientX);
+        const clickOffset = getClickOffset(textLayerSpan, e.clientX, e.clientY);
         selectWord(textLayerSpan, clickOffset);
         deactivateCaret();
         return;
       }
 
       if (textLayerSpan && textLayerSpan.textContent?.trim()) {
-        const clickOffset = getClickOffset(textLayerSpan, e.clientX);
+        const clickOffset = getClickOffset(textLayerSpan, e.clientX, e.clientY);
 
         if (e.shiftKey && selectionAnchor) {
           activateCaret(textLayerSpan, true);
