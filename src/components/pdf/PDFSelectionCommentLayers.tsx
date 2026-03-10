@@ -49,7 +49,7 @@ const PDFSelectionCommentLayers: React.FC<PDFSelectionCommentLayersProps> = ({
       currentSearchIndex={currentSearchIndex}
       searchQuery={searchQuery}
     />
-    <SelectionOverlay pageNumber={pageNumber} rects={selectionRects} caretRect={caretRect} />
+    <SelectionOverlay pageNumber={pageNumber} rects={selectionRects} caretRect={caretRect} zoom={scale} />
   </>
 );
 
