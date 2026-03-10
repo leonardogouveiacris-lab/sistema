@@ -6,6 +6,28 @@ import logger from '../utils/logger';
 
 const ITEMS_PER_PAGE = 5;
 
+
+const sortLancamentosByPagina = (lancamentos: Verba['lancamentos']): Verba['lancamentos'] => {
+  return [...lancamentos].sort((a, b) => {
+    const aPagina = a.paginaVinculada;
+    const bPagina = b.paginaVinculada;
+
+    if (aPagina != null && bPagina != null) {
+      return aPagina - bPagina;
+    }
+
+    if (aPagina != null) {
+      return -1;
+    }
+
+    if (bPagina != null) {
+      return 1;
+    }
+
+    return new Date(a.dataCriacao).getTime() - new Date(b.dataCriacao).getTime();
+  });
+};
+
 interface ProcessVerbaListProps {
   processId: string;
   processNumber: string;
@@ -275,7 +297,7 @@ const ProcessVerbaList: React.FC<ProcessVerbaListProps> = ({
                       </div>
                     </div>
                     <div className="divide-y divide-gray-200">
-                      {verba.lancamentos.map(lancamento => (
+                      {sortLancamentosByPagina(verba.lancamentos).map(lancamento => (
                         <div key={lancamento.id} className="p-4 hover:bg-gray-50 transition-colors">
                           <div className="flex items-start justify-between">
                             <div className="flex-1 min-w-0">
@@ -332,7 +354,7 @@ const ProcessVerbaList: React.FC<ProcessVerbaListProps> = ({
           ) : (
             <div className="space-y-3">
               {filteredVerbas.flatMap(verba =>
-                verba.lancamentos.map(lancamento => (
+                sortLancamentosByPagina(verba.lancamentos).map(lancamento => (
                   <div
                     key={lancamento.id}
                     className="border border-gray-200 rounded-lg p-4 hover:border-green-300 hover:bg-green-50 transition-all"

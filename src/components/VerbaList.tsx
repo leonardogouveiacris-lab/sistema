@@ -44,6 +44,27 @@ const VerbaList: React.FC<VerbaListProps> = ({
   refreshVerbas,
   onForceRefreshVerbas
 }) => {
+  const sortLancamentosByPagina = useCallback((lancamentos: VerbaLancamento[]): VerbaLancamento[] => {
+    return [...lancamentos].sort((a, b) => {
+      const aPagina = a.paginaVinculada;
+      const bPagina = b.paginaVinculada;
+
+      if (aPagina != null && bPagina != null) {
+        return aPagina - bPagina;
+      }
+
+      if (aPagina != null) {
+        return -1;
+      }
+
+      if (bPagina != null) {
+        return 1;
+      }
+
+      return new Date(a.dataCriacao).getTime() - new Date(b.dataCriacao).getTime();
+    });
+  }, []);
+
   // Estado do filtro de pesquisa para busca dinâmica
   const [filter, setFilter] = useState<VerbaFilter>({ searchTerm: '' });
 
@@ -448,7 +469,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
                     </h5>
                     
                     <div className="space-y-3">
-                      {verba.lancamentos.map((lancamento) => {
+                      {sortLancamentosByPagina(verba.lancamentos).map((lancamento) => {
                         const isCardExpanded = expandedCards.has(lancamento.id);
                         const hasLongFundamentacao = hasLongText(lancamento.fundamentacao);
                         const hasLongComentarios = hasLongText(lancamento.comentariosCalculistas);
