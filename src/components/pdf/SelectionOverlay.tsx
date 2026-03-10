@@ -5,10 +5,9 @@ interface SelectionOverlayProps {
   pageNumber: number;
   rects: SelectionRect[];
   caretRect?: SelectionRect | null;
-  zoom?: number;
 }
 
-const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, rects, caretRect, zoom = 1 }) => {
+const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, rects, caretRect }) => {
   const stableRects = useMemo(() => {
     if (!rects || rects.length === 0) return [];
     return rects.map((rect, index) => ({
@@ -21,9 +20,6 @@ const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, re
     return null;
   }
 
-  const caretThickness = zoom >= 2.5 ? 1.5 : zoom >= 1.75 ? 1.25 : 1;
-  const snappedCaretX = caretRect ? Math.round(caretRect.x) + 0.5 : 0;
-
   return (
     <div
       className="absolute inset-0 pointer-events-none"
@@ -35,9 +31,9 @@ const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, re
         <div
           className="absolute"
           style={{
-            left: `${snappedCaretX}px`,
+            left: `${caretRect.x}px`,
             top: `${caretRect.y}px`,
-            width: `${caretThickness}px`,
+            width: '1px',
             height: `${caretRect.height}px`,
             backgroundColor: '#0078d7',
             pointerEvents: 'none'
@@ -63,7 +59,6 @@ const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, re
   );
 }, (prevProps, nextProps) => {
   if (prevProps.pageNumber !== nextProps.pageNumber) return false;
-  if (Math.abs((prevProps.zoom ?? 1) - (nextProps.zoom ?? 1)) > 0.01) return false;
   const prevCaret = prevProps.caretRect;
   const nextCaret = nextProps.caretRect;
   if (!!prevCaret !== !!nextCaret) return false;

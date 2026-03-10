@@ -183,67 +183,18 @@ export function useSelectionOverlay(
       return;
     }
 
-    const container = containerRef.current;
-    if (!container) {
-      setCaretByPage(new Map());
-      return;
-    }
-
     const pageEl = glyph.span.closest('[data-global-page]');
     const textLayer = glyph.span.closest('.textLayer, .react-pdf__Page__textContent');
-    if (!pageEl || !textLayer || !document.contains(glyph.span) || !container.contains(pageEl)) {
+    if (!pageEl || !textLayer) {
       setCaretByPage(new Map());
       return;
     }
 
-    const renderedPageEl = container.querySelector(`[data-global-page="${glyph.pageNumber}"]`);
-    const pageNumberFromDom = parseInt(pageEl.getAttribute('data-global-page') || '0', 10);
-    const renderedTextLayer = renderedPageEl?.querySelector('.textLayer, .react-pdf__Page__textContent');
-    const hasActiveRenderedPage =
-      !!renderedPageEl &&
-      renderedPageEl === pageEl &&
-      pageNumberFromDom === glyph.pageNumber &&
-      !!renderedTextLayer &&
-      renderedTextLayer === textLayer;
-
-    if (!hasActiveRenderedPage) {
-      setCaretByPage(new Map());
-      return;
-    }
-
-    const containerRect = container.getBoundingClientRect();
     const pageRect = pageEl.getBoundingClientRect();
-    const isPageInViewport =
-      pageRect.bottom > containerRect.top &&
-      pageRect.top < containerRect.bottom &&
-      pageRect.right > containerRect.left &&
-      pageRect.left < containerRect.right;
-
-    if (!isPageInViewport) {
-      setCaretByPage(new Map());
-      return;
-    }
-
-    const range = document.createRange();
-    range.setStart(glyph.textNode, glyph.offset);
-    range.setEnd(glyph.textNode, glyph.offset);
-    const measuredCaretRect = range.getBoundingClientRect();
-
     const textLayerRect = textLayer.getBoundingClientRect();
-
-    const measuredGlyph =
-      Number.isFinite(measuredCaretRect.left) && Number.isFinite(measuredCaretRect.top)
-        ? {
-            ...glyph,
-            x: measuredCaretRect.left,
-            y: measuredCaretRect.top,
-            height: measuredCaretRect.height > 0 ? measuredCaretRect.height : glyph.height
-          }
-        : glyph;
-
-    const caretRect = getGlyphRectInPage(measuredGlyph, textLayerRect, pageRect);
+    const caretRect = getGlyphRectInPage(glyph, textLayerRect, pageRect);
     setCaretByPage(new Map([[glyph.pageNumber, caretRect]]));
-  }, [containerRef]);
+  }, []);
 
   const registerContextCommit = useCallback(() => {}, []);
 
