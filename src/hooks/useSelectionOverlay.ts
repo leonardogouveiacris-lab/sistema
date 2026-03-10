@@ -314,6 +314,9 @@ export function useSelectionOverlay(
     }
 
     if (isDraggingRef.current) {
+      if (dragSyntheticRangeRef.current || lastValidRangeRef.current) {
+        scheduleRafUpdate(true);
+      }
       return;
     }
 
