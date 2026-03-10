@@ -119,17 +119,3 @@
   background-color: transparent !important;
   border-radius: 0 !important;
 }
-
-/*
- * Experimento isolado para ajuste de caret/seleção em PDFs.
- * Para comparar rendering, troque `geometricPrecision` por `auto`.
- */
-.pdf-caret-tuning .textLayer > span,
-.pdf-caret-tuning .react-pdf__Page__textContent > span,
-.pdf-caret-tuning .textLayer span[role="presentation"],
-.pdf-caret-tuning .react-pdf__Page__textContent span[role="presentation"] {
-  font-kerning: none;
-  font-variant-ligatures: none;
-  text-rendering: geometricPrecision;
-  line-height: 1;
-}
