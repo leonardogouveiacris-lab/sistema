@@ -52,123 +52,6 @@ export interface CaretInfo {
 
 const MAX_METRIC_SAMPLE_SPANS = 15;
 
-interface CachedTextNodeMeasurements {
-  textLength: number;
-  spanLeft: number;
-  spanTop: number;
-  spanWidth: number;
-  spanHeight: number;
-  offsets: number[];
-  y: number;
-  height: number;
-}
-
-const textNodeMeasurementCache = new WeakMap<Text, CachedTextNodeMeasurements>();
-
-function isRectValid(rect: DOMRect | null): rect is DOMRect {
-  if (!rect) return false;
-  return Number.isFinite(rect.left) && Number.isFinite(rect.right) && Number.isFinite(rect.top) && Number.isFinite(rect.height);
-}
-
-function measureOffsetXFromRange(textNode: Text, offset: number): number | null {
-  const range = document.createRange();
-  range.setStart(textNode, offset);
-  range.setEnd(textNode, offset);
-  const caretRect = range.getBoundingClientRect();
-  if (isRectValid(caretRect)) {
-    return caretRect.left;
-  }
-
-  const textLength = textNode.textContent?.length || 0;
-  if (textLength === 0) return null;
-
-  if (offset < textLength) {
-    range.setStart(textNode, offset);
-    range.setEnd(textNode, offset + 1);
-    const fallbackRect = range.getBoundingClientRect();
-    if (isRectValid(fallbackRect)) {
-      return fallbackRect.left;
-    }
-  }
-
-  if (offset > 0) {
-    range.setStart(textNode, offset - 1);
-    range.setEnd(textNode, offset);
-    const fallbackRect = range.getBoundingClientRect();
-    if (isRectValid(fallbackRect)) {
-      return fallbackRect.right;
-    }
-  }
-
-  return null;
-}
-
-function getTextNodeOffsetPositions(textNode: Text, spanRect: DOMRect): { offsets: number[]; y: number; height: number } | null {
-  const text = textNode.textContent || '';
-  const textLength = text.length;
-  const cached = textNodeMeasurementCache.get(textNode);
-
-  if (
-    cached &&
-    cached.textLength === textLength &&
-    Math.abs(cached.spanLeft - spanRect.left) < 0.5 &&
-    Math.abs(cached.spanTop - spanRect.top) < 0.5 &&
-    Math.abs(cached.spanWidth - spanRect.width) < 0.5 &&
-    Math.abs(cached.spanHeight - spanRect.height) < 0.5
-  ) {
-    return { offsets: cached.offsets, y: cached.y, height: cached.height };
-  }
-
-  const offsets = Array.from({ length: textLength + 1 }, (_, i) => measureOffsetXFromRange(textNode, i));
-  const validOffsets = offsets.filter((value): value is number => value !== null);
-
-  if (validOffsets.length === 0) {
-    return null;
-  }
-
-  for (let i = 0; i < offsets.length; i++) {
-    if (offsets[i] !== null) continue;
-
-    let prev = i - 1;
-    while (prev >= 0 && offsets[prev] === null) prev--;
-
-    let next = i + 1;
-    while (next < offsets.length && offsets[next] === null) next++;
-
-    if (prev >= 0 && next < offsets.length && offsets[prev] !== null && offsets[next] !== null) {
-      const progress = (i - prev) / (next - prev);
-      offsets[i] = offsets[prev] + (offsets[next] - offsets[prev]) * progress;
-    } else if (prev >= 0 && offsets[prev] !== null) {
-      offsets[i] = offsets[prev];
-    } else if (next < offsets.length && offsets[next] !== null) {
-      offsets[i] = offsets[next];
-    }
-  }
-
-  const normalizedOffsets = offsets.map((value) => value ?? spanRect.left);
-
-  const range = document.createRange();
-  range.setStart(textNode, 0);
-  range.setEnd(textNode, textLength);
-  const textRect = range.getBoundingClientRect();
-
-  const y = isRectValid(textRect) ? textRect.top : spanRect.top;
-  const height = isRectValid(textRect) && textRect.height > 0 ? textRect.height : spanRect.height;
-
-  textNodeMeasurementCache.set(textNode, {
-    textLength,
-    spanLeft: spanRect.left,
-    spanTop: spanRect.top,
-    spanWidth: spanRect.width,
-    spanHeight: spanRect.height,
-    offsets: normalizedOffsets,
-    y,
-    height
-  });
-
-  return { offsets: normalizedOffsets, y, height };
-}
-
 function getPageNumberFromElement(element: Element): number {
   const pageEl = element.closest('[data-global-page]');
   return parseInt(pageEl?.getAttribute('data-global-page') || '0', 10) || 0;
@@ -314,18 +197,16 @@ export function buildGlyphMapFromTextLayer(textLayer: Element): GlyphMap {
     if (!textNode || text.length === 0) continue;
 
     const rect = info.rect;
+    const charWidth = rect.width / text.length;
     const pageNumber = getPageNumberFromElement(info.span);
-    const measuredOffsets = getTextNodeOffsetPositions(textNode, rect);
 
     for (let i = 0; i <= text.length; i++) {
-      const fallbackCharWidth = rect.width / text.length;
-      const x = measuredOffsets ? measuredOffsets.offsets[i] : rect.left + fallbackCharWidth * i;
       glyphs.push({
         index: glyphs.length,
         charIndex: i,
-        x,
-        y: measuredOffsets?.y ?? rect.top,
-        height: measuredOffsets?.height ?? rect.height,
+        x: rect.left + charWidth * i,
+        y: rect.top,
+        height: rect.height,
         pageNumber,
         span: info.span,
         textNode,
@@ -355,21 +236,14 @@ export function findClosestGlyphByPoint(glyphMap: GlyphMap, x: number, y: number
   let closest: GlyphPosition | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
-  for (const line of glyphMap.lineGroups) {
-    for (let i = 0; i < line.length; i++) {
-      const glyph = line[i];
-      const prev = line[i - 1];
-      const next = line[i + 1];
-      const leftBoundary = prev ? (prev.x + glyph.x) / 2 : glyph.x - 1;
-      const rightBoundary = next ? (glyph.x + next.x) / 2 : glyph.x + 1;
-      const dx = x < leftBoundary ? leftBoundary - x : x > rightBoundary ? x - rightBoundary : 0;
-      const dy = Math.abs((glyph.y + glyph.height / 2) - y);
-      const score = dy * 20 + dx;
+  for (const glyph of glyphMap.glyphs) {
+    const dy = Math.abs((glyph.y + glyph.height / 2) - y);
+    const dx = Math.abs(glyph.x - x);
+    const score = dy * 20 + dx;
 
-      if (score < bestScore) {
-        bestScore = score;
-        closest = glyph;
-      }
+    if (score < bestScore) {
+      bestScore = score;
+      closest = glyph;
     }
   }
 
