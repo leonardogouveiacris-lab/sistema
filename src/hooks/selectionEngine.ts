@@ -34,16 +34,7 @@ export interface GlyphPosition {
 
 export interface GlyphMap {
   glyphs: GlyphPosition[];
-  lineGroups: GlyphLineGroup[];
-}
-
-export interface GlyphLineGroup {
-  pageNumber: number;
-  glyphs: GlyphPosition[];
-  baselineY: number;
-  top: number;
-  bottom: number;
-  height: number;
+  lineGroups: GlyphPosition[][];
 }
 
 export interface RangeSignature {
@@ -343,68 +334,17 @@ export function buildGlyphMapFromTextLayer(textLayer: Element): GlyphMap {
     }
   }
 
-  const sortedGlyphs = [...glyphs].sort((a, b) => {
-    if (a.pageNumber !== b.pageNumber) return a.pageNumber - b.pageNumber;
-    if (a.y !== b.y) return a.y - b.y;
-    return a.x - b.x;
-  });
-
-  const lineHeights = sortedGlyphs
-    .map((glyph) => glyph.height)
-    .filter((height) => Number.isFinite(height) && height > 0)
-    .sort((a, b) => a - b);
-  const medianLineHeight =
-    lineHeights.length > 0
-      ? lineHeights[Math.floor(lineHeights.length / 2)]
-      : 16;
-  const baselineTolerance = Math.min(6, medianLineHeight * 0.35);
-
-  const lineGroups: GlyphLineGroup[] = [];
-
-  for (const glyph of sortedGlyphs) {
-    let closestLine: GlyphLineGroup | null = null;
-    let closestDistance = Number.POSITIVE_INFINITY;
-
-    for (const line of lineGroups) {
-      if (line.pageNumber !== glyph.pageNumber) {
-        continue;
-      }
-
-      const distance = Math.abs(glyph.y - line.baselineY);
-      if (distance <= baselineTolerance && distance < closestDistance) {
-        closestDistance = distance;
-        closestLine = line;
-      }
-    }
-
-    if (!closestLine) {
-      lineGroups.push({
-        pageNumber: glyph.pageNumber,
-        glyphs: [glyph],
-        baselineY: glyph.y,
-        top: glyph.y,
-        bottom: glyph.y + glyph.height,
-        height: glyph.height
-      });
-      continue;
-    }
-
-    const glyphCount = closestLine.glyphs.length;
-    closestLine.glyphs.push(glyph);
-    closestLine.baselineY = ((closestLine.baselineY * glyphCount) + glyph.y) / (glyphCount + 1);
-    closestLine.top = Math.min(closestLine.top, glyph.y);
-    closestLine.bottom = Math.max(closestLine.bottom, glyph.y + glyph.height);
-    closestLine.height = closestLine.bottom - closestLine.top;
+  const lineGroupsMap = new Map<number, GlyphPosition[]>();
+  for (const glyph of glyphs) {
+    const lineKey = Math.round(glyph.y / 4);
+    const line = lineGroupsMap.get(lineKey) || [];
+    line.push(glyph);
+    lineGroupsMap.set(lineKey, line);
   }
 
-  for (const line of lineGroups) {
-    line.glyphs.sort((a, b) => a.x - b.x);
-  }
-
-  lineGroups.sort((a, b) => {
-    if (a.pageNumber !== b.pageNumber) return a.pageNumber - b.pageNumber;
-    return a.baselineY - b.baselineY;
-  });
+  const lineGroups = Array.from(lineGroupsMap.values())
+    .map((line) => line.sort((a, b) => a.x - b.x))
+    .sort((a, b) => a[0].y - b[0].y);
 
   return { glyphs, lineGroups };
 }
@@ -416,10 +356,10 @@ export function findClosestGlyphByPoint(glyphMap: GlyphMap, x: number, y: number
   let bestScore = Number.POSITIVE_INFINITY;
 
   for (const line of glyphMap.lineGroups) {
-    for (let i = 0; i < line.glyphs.length; i++) {
-      const glyph = line.glyphs[i];
-      const prev = line.glyphs[i - 1];
-      const next = line.glyphs[i + 1];
+    for (let i = 0; i < line.length; i++) {
+      const glyph = line[i];
+      const prev = line[i - 1];
+      const next = line[i + 1];
       const leftBoundary = prev ? (prev.x + glyph.x) / 2 : glyph.x - 1;
       const rightBoundary = next ? (glyph.x + next.x) / 2 : glyph.x + 1;
       const dx = x < leftBoundary ? leftBoundary - x : x > rightBoundary ? x - rightBoundary : 0;

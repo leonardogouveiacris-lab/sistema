@@ -20,8 +20,7 @@ import {
   createRangeFromGlyphs,
   getGlyphRectInPage,
   GlyphPosition,
-  GlyphMap,
-  GlyphLineGroup
+  GlyphMap
 } from './selectionEngine';
 
 export type { SelectionRect };
@@ -197,38 +196,6 @@ export function useSelectionOverlay(
   }, []);
 
   const registerContextCommit = useCallback(() => {}, []);
-
-  const getLineForGlyph = useCallback((glyphMap: GlyphMap, glyph: GlyphPosition): GlyphLineGroup | null => {
-    return glyphMap.lineGroups.find((line) => line.glyphs.some((g) => g.index === glyph.index)) || null;
-  }, []);
-
-  const getClosestVerticalLine = useCallback((
-    glyphMap: GlyphMap,
-    currentLine: GlyphLineGroup,
-    direction: 'up' | 'down'
-  ): GlyphLineGroup | null => {
-    const candidateLines = glyphMap.lineGroups.filter((line) => {
-      if (line.pageNumber !== currentLine.pageNumber) {
-        return false;
-      }
-
-      if (direction === 'up') {
-        return line.baselineY < currentLine.baselineY;
-      }
-
-      return line.baselineY > currentLine.baselineY;
-    });
-
-    if (candidateLines.length === 0) {
-      return null;
-    }
-
-    return candidateLines.reduce((closest, line) => {
-      const distance = Math.abs(line.baselineY - currentLine.baselineY);
-      const closestDistance = Math.abs(closest.baselineY - currentLine.baselineY);
-      return distance < closestDistance ? line : closest;
-    }, candidateLines[0]);
-  }, []);
 
   const flushOverlayUpdate = useCallback((pageRectsMap: Map<number, SelectionRect[]>, selectionText: string) => {
     const hasChanged = !areMapsEqual(lastRectsMapRef.current, pageRectsMap);
@@ -675,22 +642,18 @@ export function useSelectionOverlay(
           let target = current;
           if (e.key === 'ArrowLeft' && currentIndex > 0) target = glyphs[currentIndex - 1];
           if (e.key === 'ArrowRight' && currentIndex < glyphs.length - 1) target = glyphs[currentIndex + 1];
-          const currentLine = getLineForGlyph(glyphMapRef.current, current);
-          if (e.key === 'Home' && currentLine?.glyphs.length) {
-            target = currentLine.glyphs[0];
-          }
-          if (e.key === 'End' && currentLine?.glyphs.length) {
-            target = currentLine.glyphs[currentLine.glyphs.length - 1];
+          if (e.key === 'Home') target = glyphs.find((g) => Math.abs(g.y - current.y) < 2) || target;
+          if (e.key === 'End') {
+            const sameLine = glyphs.filter((g) => Math.abs(g.y - current.y) < 2);
+            target = sameLine[sameLine.length - 1] || target;
           }
           if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-            if (currentLine) {
-              const desiredLine = getClosestVerticalLine(
-                glyphMapRef.current,
-                currentLine,
-                e.key === 'ArrowUp' ? 'up' : 'down'
-              );
-              if (desiredLine?.glyphs.length) {
-                target = desiredLine.glyphs.reduce((best, g) => Math.abs(g.x - current.x) < Math.abs(best.x - current.x) ? g : best, desiredLine.glyphs[0]);
+            const lines = glyphMapRef.current.lineGroups;
+            const lineIndex = lines.findIndex((line) => line.some((g) => g.index === current.index));
+            if (lineIndex >= 0) {
+              const desiredLine = e.key === 'ArrowUp' ? lines[lineIndex - 1] : lines[lineIndex + 1];
+              if (desiredLine?.length) {
+                target = desiredLine.reduce((best, g) => Math.abs(g.x - current.x) < Math.abs(best.x - current.x) ? g : best, desiredLine[0]);
               }
             }
           }
@@ -742,7 +705,7 @@ export function useSelectionOverlay(
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [applySelectionSafely, clearOverlay, clearSelection, containerRef, flushOverlayUpdate, getClosestVerticalLine, getLineForGlyph, scheduleRafUpdate, updateCaretOverlayFromGlyph, updateSelectionMode]);
+  }, [applySelectionSafely, clearOverlay, clearSelection, containerRef, flushOverlayUpdate, scheduleRafUpdate, updateCaretOverlayFromGlyph, updateSelectionMode]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
