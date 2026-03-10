@@ -29,7 +29,7 @@ const SelectionOverlay: React.FC<SelectionOverlayProps> = memo(({ pageNumber, re
 
       {caretRect ? (
         <div
-          className="absolute"
+          className="absolute pdf-overlay-caret"
           style={{
             left: `${caretRect.x}px`,
             top: `${caretRect.y}px`,
