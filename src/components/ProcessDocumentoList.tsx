@@ -9,6 +9,7 @@ import React, { useState, useMemo } from 'react';
 import { Documento } from '../types/Documento';
 import { FileText, Search, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { getPreviewText, hasLongText, PREVIEW_LENGTHS } from '../utils/previewText';
+import { sortByPagina } from '../utils/sortByPagina';
 
 interface ProcessDocumentoListProps {
   processId: string;
@@ -63,14 +64,7 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
       );
     }
 
-    return filtered.sort((a, b) => {
-      if (a.paginaVinculada && !b.paginaVinculada) return -1;
-      if (!a.paginaVinculada && b.paginaVinculada) return 1;
-      if (a.paginaVinculada && b.paginaVinculada) {
-        return a.paginaVinculada - b.paginaVinculada;
-      }
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
+    return filtered.sort((a, b) => sortByPagina(a, b, { getDataCriacao: item => item.createdAt }));
   }, [processDocumentos, selectedTipo, searchQuery]);
 
   const groupedDocumentos = useMemo(() => {
@@ -90,7 +84,7 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
 
   const stats = useMemo(() => ({
     total: processDocumentos.length,
-    comPaginaVinculada: processDocumentos.filter(d => d.paginaVinculada).length,
+    comPaginaVinculada: processDocumentos.filter(d => d.paginaVinculada != null).length,
     porTipo: processDocumentos.reduce((acc, d) => {
       acc[d.tipoDocumento] = (acc[d.tipoDocumento] || 0) + 1;
       return acc;
@@ -237,7 +231,7 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center space-x-2 mb-2">
-                              {doc.paginaVinculada && (
+                              {doc.paginaVinculada != null && (
                                 <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-orange-700 bg-orange-100 rounded">
                                   <FileText size={12} className="mr-1" />
                                   p.{doc.paginaVinculada}
@@ -288,7 +282,7 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-2 mb-2">
-                        {doc.paginaVinculada && (
+                        {doc.paginaVinculada != null && (
                           <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-orange-700 bg-orange-100 rounded">
                             <FileText size={12} className="mr-1" />
                             p.{doc.paginaVinculada}

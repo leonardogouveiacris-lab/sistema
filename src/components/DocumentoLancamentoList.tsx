@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { Trash2, Edit2, FileText, Search, Filter, ChevronDown } from 'lucide-react';
 import { DocumentoLancamento } from '../types';
 import { getPreviewText, hasLongText, PREVIEW_LENGTHS } from '../utils/previewText';
+import { sortByPagina } from '../utils/sortByPagina';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -70,14 +71,7 @@ const DocumentoLancamentoList: React.FC<DocumentoLancamentoListProps> = ({
       );
     }
 
-    return filtered.sort((a, b) => {
-      if (a.paginaVinculada && !b.paginaVinculada) return -1;
-      if (!a.paginaVinculada && b.paginaVinculada) return 1;
-      if (a.paginaVinculada && b.paginaVinculada) {
-        return a.paginaVinculada - b.paginaVinculada;
-      }
-      return new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime();
-    });
+    return filtered.sort(sortByPagina);
   }, [documentos, selectedTipo, searchQuery]);
 
   const visibleDocumentos = useMemo(() => {
@@ -195,7 +189,7 @@ const DocumentoLancamentoList: React.FC<DocumentoLancamentoListProps> = ({
                         <h4 className="font-medium text-gray-900 truncate">
                           {documento.tipoDocumento}
                         </h4>
-                        {documento.paginaVinculada && (
+                        {documento.paginaVinculada != null && (
                           <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
                             p.{documento.paginaVinculada}
                           </span>
