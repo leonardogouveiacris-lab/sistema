@@ -41,11 +41,19 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const progressResetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
+
       if (progressResetTimeoutRef.current) {
         clearTimeout(progressResetTimeoutRef.current);
+      }
+
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
       }
     };
   }, []);
@@ -105,15 +113,20 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
     setError(null);
     setUploadProgress(0);
 
+    let progressInterval: ReturnType<typeof setInterval> | null = null;
+
     try {
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
+        if (!isMountedRef.current) return;
         setUploadProgress(prev => Math.min(prev + 10, 90));
       }, 200);
+      progressIntervalRef.current = progressInterval;
 
       const result = await ProcessDocumentService.uploadDocument(processId, file, undefined, displayName);
 
-      clearInterval(progressInterval);
-      setUploadProgress(100);
+      if (isMountedRef.current) {
+        setUploadProgress(100);
+      }
 
       if (result.success && result.document) {
         await loadDocuments(processId);
@@ -121,17 +134,26 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
         if (progressResetTimeoutRef.current) {
           clearTimeout(progressResetTimeoutRef.current);
         }
-        progressResetTimeoutRef.current = setTimeout(() => setUploadProgress(0), 1000);
+
+        progressResetTimeoutRef.current = setTimeout(() => {
+          if (!isMountedRef.current) return;
+          setUploadProgress(0);
+        }, 1000);
       } else {
-        setError(result.error || 'Erro ao fazer upload');
-        setUploadProgress(0);
+        if (isMountedRef.current) {
+          setError(result.error || 'Erro ao fazer upload');
+          setUploadProgress(0);
+        }
       }
 
       return result;
     } catch (err) {
       const errorMessage = 'Erro ao fazer upload do documento';
-      setError(errorMessage);
-      setUploadProgress(0);
+
+      if (isMountedRef.current) {
+        setError(errorMessage);
+        setUploadProgress(0);
+      }
 
       logger.errorWithException(
         errorMessage,
@@ -145,7 +167,15 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
         error: errorMessage
       };
     } finally {
-      setIsLoading(false);
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+
+      progressIntervalRef.current = null;
+
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [loadDocuments]);
 
