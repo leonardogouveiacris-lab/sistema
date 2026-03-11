@@ -24,7 +24,8 @@ import {
   formatarData,
   formatarDataCurta,
   filtrarPorProcesso,
-  sortByPagina
+  sortByPagina,
+  buildPaginaSortKey
 } from '../utils';
 
 const ITEMS_PER_SECTION = 10;
@@ -96,10 +97,18 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
   }, [documentosDoProcesso]);
 
   const verbasComLancamentosOrdenados = useMemo(() => {
-    return verbasAgrupadas.map(verba => ({
-      ...verba,
-      lancamentos: [...verba.lancamentos].sort(sortByPagina)
-    }));
+    return verbasAgrupadas
+      .map(verba => {
+        const lancamentosOrdenados = [...verba.lancamentos].sort(sortByPagina);
+        const sortKey = buildPaginaSortKey(lancamentosOrdenados, verba.dataCriacao);
+
+        return {
+          ...verba,
+          lancamentosOrdenados,
+          sortKey
+        };
+      })
+      .sort((a, b) => sortByPagina(a.sortKey, b.sortKey, { newestFirst: false }));
   }, [verbasAgrupadas]);
 
   const visibleDecisions = useMemo(() => {
@@ -399,7 +408,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
           {visibleVerbas.map((verba, index) => {
             const isExpanded = expandedVerbas[verba.verbaId] ?? false;
             const temMudancaSituacao = verificarMudancaSituacao(verba);
-            const lancamentosOrdenados = verba.lancamentos;
+            const lancamentosOrdenados = verba.lancamentosOrdenados;
 
             return (
               <div
@@ -421,7 +430,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
                       )}
                     </div>
                     <div className="text-sm text-gray-500 mt-0.5 pl-6">
-                      {verba.lancamentos.length} lancamento{verba.lancamentos.length !== 1 ? 's' : ''} - {formatarResumoSituacoes(verba.resumoSituacoes)}
+                      {verba.lancamentosOrdenados.length} lancamento{verba.lancamentosOrdenados.length !== 1 ? 's' : ''} - {formatarResumoSituacoes(verba.resumoSituacoes)}
                     </div>
                   </div>
 
@@ -481,7 +490,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
                   <span className="text-gray-400 font-mono text-sm">{index + 1}.</span>
                   <span className="font-medium text-gray-900">{decision.tipoDecisao}</span>
                   <span className="text-sm text-gray-500">{decision.idDecisao}</span>
-                  {decision.paginaVinculada && (
+                  {decision.paginaVinculada != null && (
                     <span className="text-xs text-gray-400">p. {decision.paginaVinculada}</span>
                   )}
                 </div>

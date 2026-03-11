@@ -8,7 +8,7 @@ import { Verba } from '../types/Verba';
 import { Decision } from '../types/Decision';
 import { DocumentoLancamento } from '../types/DocumentoLancamento';
 import HTMLTemplate from './htmlTemplate';
-import { sortByPagina } from './sortByPagina';
+import { buildPaginaSortKey, sortByPagina } from './sortByPagina';
 import {
   formatarData,
   calcularResumoSituacoes,
@@ -76,7 +76,7 @@ class HTMLFormatter {
         <div class="flex items-start justify-between mb-2">
           <div class="flex items-center space-x-2">
             <span class="text-xs font-medium text-gray-500">#${index}</span>
-            ${lancamento.paginaVinculada ? `
+            ${lancamento.paginaVinculada != null ? `
               <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium text-cyan-700 bg-cyan-100 rounded">
                 p.${lancamento.paginaVinculada}
               </span>
@@ -209,10 +209,11 @@ class HTMLFormatter {
       `;
     }
 
-    // Ordena verbas alfabeticamente por tipo
-    const verbasOrdenadas = [...verbas].sort((a, b) =>
-      a.tipoVerba.localeCompare(b.tipoVerba, 'pt-BR')
-    );
+    const verbasOrdenadas = [...verbas].sort((a, b) => {
+      const sortKeyA = buildPaginaSortKey(a.lancamentos, a.dataCriacao);
+      const sortKeyB = buildPaginaSortKey(b.lancamentos, b.dataCriacao);
+      return sortByPagina(sortKeyA, sortKeyB, { newestFirst: false });
+    });
 
     // Gera HTML para cada verba
     const verbasHTML = verbasOrdenadas
