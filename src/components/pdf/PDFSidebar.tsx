@@ -161,7 +161,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   const toast = useToast();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [groupByTipoVerba, setGroupByTipoVerba] = useState(false);
+  const [groupByTipoVerba, setGroupByTipoVerba] = useState(true);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [selectedLancamentoId, setSelectedLancamentoId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -181,6 +181,8 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     const savedGrouping = localStorage.getItem('pdf-sidebar-group-by-tipo');
     if (savedGrouping === 'true') {
       setGroupByTipoVerba(true);
+    } else if (savedGrouping === 'false') {
+      setGroupByTipoVerba(false);
     }
     const savedCollapsedGroups = localStorage.getItem('pdf-sidebar-collapsed-groups');
     if (savedCollapsedGroups) {
