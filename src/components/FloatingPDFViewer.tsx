@@ -3818,8 +3818,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
         logger.warn(
           `Falha na extração lazy de texto do documento ${documentId}`,
-          error,
-          'FloatingPDFViewer.startLazyTextExtraction'
+          'FloatingPDFViewer.startLazyTextExtraction',
+          { error }
         );
       });
     });

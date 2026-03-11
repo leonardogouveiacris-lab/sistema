@@ -27,7 +27,6 @@ const triggerTextExtraction = (documentId: string): void => {
   if (!supabaseUrl || !supabaseAnonKey) {
     logger.warn(
       'Supabase environment variables not available for text extraction',
-      undefined,
       'processDocumentService.triggerTextExtraction'
     );
     return;
@@ -48,18 +47,16 @@ const triggerTextExtraction = (documentId: string): void => {
       if (!result.success && result.message) {
         logger.warn(
           'Text extraction returned unexpected result',
-          result,
           'processDocumentService.triggerTextExtraction',
-          { documentId }
+          { documentId, result }
         );
       }
     })
     .catch(error => {
       logger.warn(
         'Text extraction failed (non-blocking)',
-        error,
         'processDocumentService.triggerTextExtraction',
-        { documentId }
+        { documentId, error }
       );
     });
 };
@@ -99,7 +96,6 @@ const validatePublicUrl = (url: string): boolean => {
   if (!url.includes('process-documents')) {
     logger.warn(
       'URL pública não contém o nome do bucket esperado',
-      undefined,
       'processDocumentService.validatePublicUrl',
       { url }
     );
@@ -140,7 +136,6 @@ export const getDocumentsByProcessId = async (processId: string): Promise<Proces
       if (!validatePublicUrl(document.url)) {
         logger.warn(
           'URL pública inválida gerada para documento',
-          undefined,
           'processDocumentService.getDocumentsByProcessId',
           { documentId: document.id, url: document.url }
         );
@@ -233,14 +228,14 @@ export const uploadDocument = async (
     if (uploadError) {
       logger.error(
         'Erro detalhado no upload para storage',
-        uploadError,
         'processDocumentService.uploadDocument',
         {
           errorCode: uploadError.name,
           errorMessage: uploadError.message,
           filePath,
           bucket: DOCUMENT_CONSTANTS.STORAGE_BUCKET
-        }
+        },
+        uploadError
       );
       throw uploadError;
     }
@@ -269,13 +264,13 @@ export const uploadDocument = async (
     if (dbError) {
       logger.error(
         'Erro ao inserir registro no banco',
-        dbError,
         'processDocumentService.uploadDocument',
         {
           errorCode: dbError.code,
           errorMessage: dbError.message,
           processId
-        }
+        },
+        dbError
       );
       throw dbError;
     }
@@ -293,7 +288,6 @@ export const uploadDocument = async (
     if (!validatePublicUrl(document.url)) {
       logger.error(
         'URL pública inválida gerada após upload',
-        undefined,
         'processDocumentService.uploadDocument',
         { documentId: document.id, url: document.url }
       );
@@ -362,7 +356,6 @@ export const deleteDocumentById = async (documentId: string): Promise<boolean> =
     if (!document) {
       logger.warn(
         `Nenhum documento encontrado para remoção: ${documentId}`,
-        undefined,
         'processDocumentService.deleteDocumentById'
       );
       return true; // Considera sucesso se não há documento
@@ -376,8 +369,8 @@ export const deleteDocumentById = async (documentId: string): Promise<boolean> =
     if (storageError) {
       logger.warn(
         'Erro ao remover arquivo do storage',
-        storageError,
-        'processDocumentService.deleteDocumentById'
+        'processDocumentService.deleteDocumentById',
+        { storageError }
       );
     }
 
@@ -420,7 +413,6 @@ export const downloadDocument = async (document: ProcessDocument): Promise<boole
     if (!document.url) {
       logger.error(
         'URL do documento não disponível para download',
-        undefined,
         'processDocumentService.downloadDocument',
         { documentId: document.id }
       );
