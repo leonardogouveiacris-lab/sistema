@@ -64,6 +64,8 @@ import { buildBookmarksDomain } from './pdf/floatingViewer/bookmarksDomain';
 import { buildSelectionCommentsDomain } from './pdf/floatingViewer/selectionCommentsDomain';
 import { buildRenderStrategyDomain } from './pdf/floatingViewer/renderStrategyDomain';
 import { buildToolbarVisualDomain } from './pdf/floatingViewer/toolbarVisualDomain';
+import { useFloatingViewerIdleTask } from './pdf/floatingViewer/useFloatingViewerIdleTask';
+import { useFloatingViewerInteractionState } from './pdf/floatingViewer/useFloatingViewerInteractionState';
 import { countTotalBookmarks, mergeBookmarksFromMultipleDocuments } from '../utils/pdfBookmarkExtractor';
 
 const lazyExtractBookmarks = () => import('../utils/pdfBookmarkExtractor').then(m => m.extractBookmarksWithDocumentInfo);
@@ -333,7 +335,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const prevDisplayZoomRef = useRef<number>(state.displayZoom);
   const isZoomChangingRef = useRef(false);
   const lastZoomTimestampRef = useRef<number>(0);
-  const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const textSelectionDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const handlePreviousPageRef = useRef<() => void>(() => {});
   const handleNextPageRef = useRef<() => void>(() => {});
@@ -742,14 +743,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
   }, []);
 
-  const scheduleIdleTask = useCallback((task: () => void, timeout = BOOKMARKS_IDLE_TIMEOUT_MS): (() => void) => {
-    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      const idleId = window.requestIdleCallback(task, { timeout });
-      return () => window.cancelIdleCallback(idleId);
-    }
-    const timeoutId = window.setTimeout(task, 0);
-    return () => window.clearTimeout(timeoutId);
-  }, []);
+  const { scheduleIdleTask } = useFloatingViewerIdleTask(BOOKMARKS_IDLE_TIMEOUT_MS);
 
   const logHeavyTaskMetrics = useCallback((reason: string) => {
     const metrics = heavyTaskMetricsRef.current;
@@ -962,31 +956,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * Helper para marcar inicio de interacao e agendar fim
    * Quando usuario esta scrollando ou zoomando, desabilitamos layers pesadas
    */
-  const markInteractionStart = useCallback(() => {
-    if (interactionTimeoutRef.current) {
-      clearTimeout(interactionTimeoutRef.current);
-    }
-    if (!state.isInteracting) {
-      setIsInteracting(true);
-    }
-    if (!isProgrammaticScrollRef.current && !isSearchNavigationActive()) {
-      disableSearchNavigationSync();
-    }
-    interactionTimeoutRef.current = setTimeout(() => {
-      setIsInteracting(false);
-    }, INTERACTION_DEBOUNCE_MS);
-  }, [disableSearchNavigationSync, isSearchNavigationActive, state.isInteracting, setIsInteracting]);
-
-  /**
-   * Cleanup do timeout de interacao
-   */
-  useEffect(() => {
-    return () => {
-      if (interactionTimeoutRef.current) {
-        clearTimeout(interactionTimeoutRef.current);
-      }
-    };
-  }, []);
+  const { markInteractionStart } = useFloatingViewerInteractionState({
+    debounceMs: INTERACTION_DEBOUNCE_MS,
+    isInteracting: state.isInteracting,
+    setIsInteracting,
+    disableSearchNavigationSync,
+    isSearchNavigationActive,
+    isProgrammaticScrollRef
+  });
 
   const deriveVisibleRangeFromContainer = useCallback(() => {
     const container = scrollContainerRef.current;
