@@ -8,6 +8,7 @@ import { Verba } from '../types/Verba';
 import { Decision } from '../types/Decision';
 import { DocumentoLancamento } from '../types/DocumentoLancamento';
 import HTMLTemplate from './htmlTemplate';
+import { sortByPagina } from './sortByPagina';
 import {
   formatarData,
   calcularResumoSituacoes,
@@ -138,12 +139,13 @@ class HTMLFormatter {
    * Otimizado com array.join()
    */
   static generateVerbaHTML(verba: Verba, index: number): string {
-    const temMudancaSituacao = this.hasMudancaSituacao(verba.lancamentos);
-    const resumoSituacoes = this.generateResumoSituacoes(verba.lancamentos);
-    const numLanc = verba.lancamentos.length;
+    const lancamentosOrdenados = [...verba.lancamentos].sort((a, b) => sortByPagina(a, b));
+    const temMudancaSituacao = this.hasMudancaSituacao(lancamentosOrdenados);
+    const resumoSituacoes = this.generateResumoSituacoes(lancamentosOrdenados);
+    const numLanc = lancamentosOrdenados.length;
     const plural = numLanc !== 1 ? 's' : '';
 
-    const lancamentosHTML = verba.lancamentos
+    const lancamentosHTML = lancamentosOrdenados
       .map((lancamento, lancIndex) => this.generateLancamentoHTML(lancamento, lancIndex + 1))
       .join('');
 
@@ -343,7 +345,9 @@ class HTMLFormatter {
       return '';
     }
 
-    const documentosHTML = documentos
+    const documentosOrdenados = [...documentos].sort((a, b) => sortByPagina(a, b));
+
+    const documentosHTML = documentosOrdenados
       .map((doc, index) => this.generateDocumentoLancamentoHTML(doc, index + 1))
       .join('');
 
@@ -437,7 +441,9 @@ class HTMLFormatter {
       return '';
     }
 
-    const decisionsHTML = decisions
+    const decisionsOrdenadas = [...decisions].sort((a, b) => sortByPagina(a, b));
+
+    const decisionsHTML = decisionsOrdenadas
       .map((decision, index) => this.generateDecisionHTML(decision, index + 1))
       .join('');
 
