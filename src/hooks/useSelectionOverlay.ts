@@ -475,7 +475,8 @@ export function useSelectionOverlay(
         updateSelectionMode('idle');
       }
 
-      if (hasActiveSelectionRef.current && !textLayer) {
+      const hasVisibleOverlayState = hasActiveSelectionRef.current || !!caretGlyphRef.current;
+      if (hasVisibleOverlayState && !textLayer) {
         const isOnSelectionOverlay = target.closest('[data-selection-overlay]');
         const isOnTextSelectionPopup = target.closest('[data-text-selection-popup]');
         const isOnInlineForm = target.closest('[data-inline-form]');
