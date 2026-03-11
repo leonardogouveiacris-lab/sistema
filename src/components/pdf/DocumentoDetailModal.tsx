@@ -75,6 +75,18 @@ const DocumentoDetailModal: React.FC<DocumentoDetailModalProps> = ({
     onClose();
   };
 
+  const getSafeDate = (dateValue?: string | Date | null): Date | null => {
+    if (!dateValue) return null;
+
+    const parsedDate = new Date(dateValue);
+    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+  };
+
+  const formatDateTime = (dateValue?: string | Date | null): string => {
+    const validDate = getSafeDate(dateValue);
+    return validDate ? validDate.toLocaleString('pt-BR') : 'Data indisponível';
+  };
+
   const getDocumentoTypeColor = (tipo: string): string => {
     const colors: Record<string, string> = {
       'Petição Inicial': 'bg-blue-100 text-blue-800 border-blue-300',
@@ -86,6 +98,15 @@ const DocumentoDetailModal: React.FC<DocumentoDetailModalProps> = ({
     };
     return colors[tipo] || 'bg-gray-100 text-gray-800 border-gray-300';
   };
+
+  const createdAtDate = getSafeDate(documento.dataCriacao);
+  const updatedAtDate = getSafeDate(documento.dataAtualizacao);
+  const createdAtTimestamp = createdAtDate?.getTime();
+  const updatedAtTimestamp = updatedAtDate?.getTime();
+  const shouldShowUpdatedAt =
+    createdAtTimestamp !== undefined &&
+    updatedAtTimestamp !== undefined &&
+    updatedAtTimestamp !== createdAtTimestamp;
 
   if (!isOpen) return null;
 
@@ -149,11 +170,11 @@ const DocumentoDetailModal: React.FC<DocumentoDetailModalProps> = ({
           {/* Timestamps */}
           <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-200">
             <p className="mb-1">
-              <span className="font-medium">Criado em:</span> {new Date(documento.createdAt).toLocaleString('pt-BR')}
+              <span className="font-medium">Criado em:</span> {formatDateTime(documento.dataCriacao)}
             </p>
-            {documento.updatedAt !== documento.createdAt && (
+            {shouldShowUpdatedAt && (
               <p>
-                <span className="font-medium">Atualizado em:</span> {new Date(documento.updatedAt).toLocaleString('pt-BR')}
+                <span className="font-medium">Atualizado em:</span> {formatDateTime(documento.dataAtualizacao)}
               </p>
             )}
           </div>
