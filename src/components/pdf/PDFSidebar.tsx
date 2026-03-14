@@ -10,7 +10,7 @@
  * - Empty states
  */
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { NewDecision } from '../../types/Decision';
 import { NewVerbaComLancamento, VerbaLancamento } from '../../types/Verba';
 import { NewDocumento } from '../../types/Documento';
@@ -174,6 +174,8 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   const [decisionSearchQuery, setDecisionSearchQuery] = useState('');
   const [documentoSearchQuery, setDocumentoSearchQuery] = useState('');
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
   // Debounced search queries for better performance
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const debouncedDecisionSearchQuery = useDebounce(decisionSearchQuery, 300);
@@ -205,6 +207,14 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   useEffect(() => {
     localStorage.setItem('pdf-sidebar-collapsed-groups', JSON.stringify(Array.from(collapsedGroups)));
   }, [collapsedGroups]);
+
+  useEffect(() => {
+    if (state.formMode === 'edit-verba' || state.formMode === 'create-verba' ||
+        state.formMode === 'edit-decision' || state.formMode === 'create-decision' ||
+        state.formMode === 'edit-documento' || state.formMode === 'create-documento') {
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [state.formMode]);
 
   // Filter records for current process
   const processDecisions = useMemo(() => {
@@ -754,7 +764,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4">
         {/* Decisions Tab */}
         {state.sidebarTab === 'decisions' && (
           <div>
