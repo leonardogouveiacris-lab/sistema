@@ -123,8 +123,10 @@ export function formatFormulaResult(value: string): string {
 
 export function formatCellNumber(value: string | null): string {
   if (value === null || value === '') return '';
-  const cleaned = String(value).replace(/[^\d.,-]/g, '').replace(',', '.');
-  const n = parseFloat(cleaned);
-  if (isNaN(n)) return value ?? '';
+  const str = String(value).trim();
+  if (!/^-?[\d.,]+$/.test(str)) return str;
+  const normalized = str.replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(normalized);
+  if (isNaN(n)) return str;
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
