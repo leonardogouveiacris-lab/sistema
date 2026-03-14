@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { Verba, VerbaLancamento } from '../../types/Verba';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useToast } from '../../contexts/ToastContext';
-import { Link2, FileText, Eye, CreditCard as Edit2, Trash2, Circle, Clock, CheckCircle2, Check } from 'lucide-react';
+import { Link2, FileText, Eye, CreditCard as Edit2, Trash2, Circle, Clock, CheckCircle2, Check, Calendar } from 'lucide-react';
 import { Tooltip } from '../ui';
 
 function formatDateTime(date: Date | string | undefined): string {
@@ -199,15 +199,24 @@ const VerbaLancamentoCard: React.FC<VerbaLancamentoCardProps> = ({
           </button>
         ) : <div />}
 
-        <div className="flex items-center gap-2 text-xs text-gray-400 ml-auto pl-2 flex-shrink-0">
+        <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
           {hasHighlights && (
             <span className="flex items-center gap-0.5 text-blue-400">
               <Link2 size={9} />
               {highlightIds.length}
             </span>
           )}
-          <Tooltip content={`Criado: ${formatDateTime(lancamento.dataCriacao)}`}>
-            <span className="cursor-default">{formatDateTime(lancamento.dataAtualizacao)}</span>
+          <Tooltip content={`Criado em: ${formatDateTime(lancamento.dataCriacao)}`}>
+            <span className="cursor-default flex items-center gap-1">
+              <Calendar size={10} className="flex-shrink-0" />
+              {formatDateTime(lancamento.dataCriacao)}
+            </span>
+          </Tooltip>
+          <Tooltip content={`Atualizado em: ${formatDateTime(lancamento.dataAtualizacao)}`}>
+            <span className="cursor-default flex items-center gap-1">
+              <Clock size={10} className="flex-shrink-0" />
+              {formatDateTime(lancamento.dataAtualizacao)}
+            </span>
           </Tooltip>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Decision } from '../../types/Decision';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
-import { FileText, Eye, CreditCard as Edit2, Trash2 } from 'lucide-react';
+import { FileText, Eye, CreditCard as Edit2, Trash2, Calendar, Clock } from 'lucide-react';
 import { Tooltip } from '../ui';
 
 function formatDateTime(date: Date | string | undefined): string {
@@ -123,9 +123,18 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
           </p>
         )}
 
-        <div className="flex items-center justify-end mt-1.5">
-          <Tooltip content={`Criado: ${formatDateTime(decision.dataCriacao)}`}>
-            <span className="text-xs text-gray-400 cursor-default">{formatDateTime(decision.dataAtualizacao)}</span>
+        <div className="flex items-center gap-3 mt-2">
+          <Tooltip content={`Criado em: ${formatDateTime(decision.dataCriacao)}`}>
+            <span className="text-xs text-gray-400 cursor-default flex items-center gap-1">
+              <Calendar size={10} className="flex-shrink-0" />
+              {formatDateTime(decision.dataCriacao)}
+            </span>
+          </Tooltip>
+          <Tooltip content={`Atualizado em: ${formatDateTime(decision.dataAtualizacao)}`}>
+            <span className="text-xs text-gray-400 cursor-default flex items-center gap-1">
+              <Clock size={10} className="flex-shrink-0" />
+              {formatDateTime(decision.dataAtualizacao)}
+            </span>
           </Tooltip>
         </div>
       </div>

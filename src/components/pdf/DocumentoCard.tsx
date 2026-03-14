@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Documento } from '../../types/Documento';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
-import { FileText, Eye, CreditCard as Edit2, Trash2, Link2 } from 'lucide-react';
+import { FileText, Eye, CreditCard as Edit2, Trash2, Link2, Calendar, Clock } from 'lucide-react';
 import { Tooltip } from '../ui';
 
 function formatDateTime(date: Date | string | undefined): string {
@@ -102,12 +102,6 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
                 {documento.tipoDocumento}
               </p>
             </Tooltip>
-
-            <div className="mt-1">
-              <span className={`text-xs font-medium px-1.5 py-0.5 rounded border ${getTipoBadge(documento.tipoDocumento)}`}>
-                {documento.tipoDocumento}
-              </span>
-            </div>
           </div>
 
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
@@ -131,15 +125,24 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
           </p>
         )}
 
-        <div className="flex items-center justify-between mt-1.5">
-          {hasHighlights ? (
-            <span className="text-xs text-blue-400 flex items-center gap-0.5">
+        <div className="flex items-center gap-3 mt-2">
+          {hasHighlights && (
+            <span className="text-xs text-blue-400 flex items-center gap-0.5 mr-auto">
               <Link2 size={9} />
               {highlightIds.length} destaque{highlightIds.length !== 1 ? 's' : ''}
             </span>
-          ) : <span />}
-          <Tooltip content={`Criado: ${formatDateTime(documento.dataCriacao)}`}>
-            <span className="text-xs text-gray-400 cursor-default">{formatDateTime(documento.dataAtualizacao)}</span>
+          )}
+          <Tooltip content={`Criado em: ${formatDateTime(documento.dataCriacao)}`}>
+            <span className="text-xs text-gray-400 cursor-default flex items-center gap-1">
+              <Calendar size={10} className="flex-shrink-0" />
+              {formatDateTime(documento.dataCriacao)}
+            </span>
+          </Tooltip>
+          <Tooltip content={`Atualizado em: ${formatDateTime(documento.dataAtualizacao)}`}>
+            <span className="text-xs text-gray-400 cursor-default flex items-center gap-1">
+              <Clock size={10} className="flex-shrink-0" />
+              {formatDateTime(documento.dataAtualizacao)}
+            </span>
           </Tooltip>
         </div>
       </div>
