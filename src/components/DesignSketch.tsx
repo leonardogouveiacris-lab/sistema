@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Save, X, Trash2, CreditCard as Edit2, Eye, FileText, Link2, Circle, Clock, CheckCircle2, Calendar, Loader2, ChevronDown, AlertTriangle, BookOpen, Scale, RotateCcw, Check } from 'lucide-react';
 
-type SketchTab = 'decisao-modal' | 'verba-modal' | 'cards';
+type SketchTab = 'decisao-modal' | 'verba-modal' | 'cards' | 'documento-modal' | 'documento-cards';
 type ViewMode = 'atual' | 'proposto';
 
 export default function DesignSketch() {
@@ -12,6 +12,8 @@ export default function DesignSketch() {
     { id: 'decisao-modal', label: 'Modal — Decisao' },
     { id: 'verba-modal', label: 'Modal — Verba' },
     { id: 'cards', label: 'Cards da Sidebar' },
+    { id: 'documento-modal', label: 'Modal — Documento' },
+    { id: 'documento-cards', label: 'Cards — Documento' },
   ];
 
   return (
@@ -40,12 +42,12 @@ export default function DesignSketch() {
       </div>
 
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 flex gap-0">
+        <div className="max-w-6xl mx-auto px-6 flex gap-0 overflow-x-auto">
           {tabs.map(t => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               {t.label}
             </button>
@@ -62,6 +64,12 @@ export default function DesignSketch() {
         )}
         {activeTab === 'cards' && (
           viewMode === 'atual' ? <CardsAtuais /> : <CardsPropostos />
+        )}
+        {activeTab === 'documento-modal' && (
+          viewMode === 'atual' ? <DocumentoModalAtual /> : <DocumentoModalProposto />
+        )}
+        {activeTab === 'documento-cards' && (
+          viewMode === 'atual' ? <DocumentoCardsAtuais /> : <DocumentoCardsPropostos />
         )}
       </div>
     </div>
@@ -676,6 +684,303 @@ function CardsPropostos() {
           <li>Clique no pill de status do card cicla o status (Pendente → Calculado → Concluido)</li>
           <li>Sombra sutil ao hover para indicar interatividade</li>
           <li>Badges de situação com rounded-full para diferenciar visualmente de outras tags</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+const tipoDocumentoColors: Record<string, string> = {
+  'Petição Inicial': 'bg-blue-100 text-blue-800 border-blue-300',
+  'Contestação': 'bg-red-100 text-red-800 border-red-300',
+  'Réplica': 'bg-teal-100 text-teal-800 border-teal-300',
+  'Laudo Pericial': 'bg-amber-100 text-amber-800 border-amber-300',
+  'Recurso': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  'Contrato': 'bg-orange-100 text-orange-800 border-orange-300',
+  'Sentença': 'bg-sky-100 text-sky-800 border-sky-300',
+  'Acordo': 'bg-green-100 text-green-800 border-green-300',
+};
+
+function getTipoColor(tipo: string) {
+  return tipoDocumentoColors[tipo] || 'bg-gray-100 text-gray-700 border-gray-300';
+}
+
+function DocumentoModalAtual() {
+  return (
+    <div className="flex flex-col items-center">
+      <SectionLabel>Formulário de Documento (Versão Atual — Inline)</SectionLabel>
+
+      <div className="w-full max-w-2xl space-y-4">
+        <div className="bg-white rounded-lg border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FileText size={18} className="text-orange-600" />
+              <h3 className="text-base font-semibold text-gray-900">Editar Documento</h3>
+            </div>
+            <button className="p-1.5 text-gray-400 hover:text-gray-600 rounded"><X size={16} /></button>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Tipo de Documento <span className="text-red-500">*</span>
+              </label>
+              <div className="relative w-full border border-gray-300 rounded-md">
+                <div className="w-full px-3 py-2 text-left bg-white flex items-center justify-between text-sm text-gray-900">
+                  <span>Petição Inicial</span>
+                  <ChevronDown size={14} className="text-gray-400" />
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Página Vinculada</label>
+              <input
+                readOnly
+                value="12"
+                className="w-32 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 bg-white"
+              />
+            </div>
+            <FakeRichText label="Comentários" value="Petição protocolada em 05/01/2026 com pedido de tutela de urgência..." />
+          </div>
+
+          <div className="mt-5 flex justify-end gap-3">
+            <button className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md">Cancelar</button>
+            <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md">
+              <Save size={15} /> Atualizar
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg border border-dashed border-gray-300 p-4 text-xs text-gray-500 text-center">
+          ↑ O formulário aparece inline acima da lista — sem header contextual, sem timestamps, sem confirmação de exclusão
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocumentoModalProposto() {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const tipo = 'Petição Inicial';
+  const badgeClass = getTipoColor(tipo);
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <SectionLabel>Painel de Edição — Documento (Versão Proposta)</SectionLabel>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-lg w-full max-w-2xl overflow-hidden">
+        <div className="px-6 pt-5 pb-4 border-b border-gray-100 bg-gray-50">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 p-2 bg-orange-100 rounded-lg">
+                <FileText size={18} className="text-orange-600" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base font-bold text-gray-900">Editar Documento</h2>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${badgeClass}`}>{tipo}</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">Vinculado à p. 12 · Criado em 05/01/2026</p>
+              </div>
+            </div>
+            <button className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <FakeDropdown label="Tipo de Documento" value="Petição Inicial" required />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Página Vinculada</label>
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                value="12"
+                className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 bg-white text-center"
+              />
+              <span className="text-sm text-gray-400">de 830</span>
+            </div>
+          </div>
+
+          <FakeRichText label="Comentários" value="Petição protocolada em 05/01/2026 com pedido de tutela de urgência..." />
+
+          <div className="pt-4 border-t border-gray-100 grid grid-cols-2 gap-4 text-xs text-gray-400">
+            <div className="flex items-center gap-1.5"><Calendar size={11} /> Criado: 05/01/2026 10:14</div>
+            <div className="flex items-center gap-1.5"><Clock size={11} /> Atualizado: 10/03/2026 16:42</div>
+          </div>
+        </div>
+
+        {showDeleteConfirm && (
+          <div className="mx-6 mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-800">Excluir "Petição Inicial"?</p>
+                <p className="text-xs text-red-600 mt-0.5">Esta ação não pode ser desfeita. O documento será removido permanentemente.</p>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => setShowDeleteConfirm(false)} className="px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50">Cancelar</button>
+                  <button className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700">Sim, excluir</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="px-6 pb-6 flex items-center justify-between gap-3">
+          <button
+            onClick={() => setShowDeleteConfirm(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md border transition-colors ${showDeleteConfirm ? 'bg-red-50 border-red-200 text-red-700' : 'text-red-500 border-red-200 hover:bg-red-50'}`}
+          >
+            <Trash2 size={14} /> Excluir
+          </button>
+          <div className="flex gap-2">
+            <button className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
+            <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 shadow-sm">
+              <Save size={15} /> Salvar Alterações
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 w-full max-w-2xl text-sm">
+        <p className="font-semibold text-orange-800 mb-2">O que mudou no painel de Documento:</p>
+        <ul className="text-orange-700 space-y-1 text-xs list-disc list-inside">
+          <li>Formulário inline convertido para painel lateral com header contextual (mesmo padrão de Decisão e Verba)</li>
+          <li>Badge colorido por tipo de documento no header — código de cores consistente com detalhes do modal</li>
+          <li>Campo Página Vinculada com total de páginas contextual ("de 830")</li>
+          <li>Timestamps de criação e atualização visíveis no rodapé do formulário</li>
+          <li>Botão de excluir no footer esquerdo com confirmação inline — sem popup separado</li>
+          <li>Botão de salvar laranja para diferenciar visualmente de Decisão (azul) e Verba (verde)</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function DocumentoCardsAtuais() {
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <SectionLabel>Cards de Documento (Versão Atual)</SectionLabel>
+      <div className="w-full max-w-2xl space-y-2">
+        {[
+          { tipo: 'Petição Inicial', pagina: 12, comentario: 'Petição protocolada em 05/01/2026 com pedido de tutela de urgência...', data: '05/01/2026' },
+          { tipo: 'Contestação', pagina: 87, comentario: null, data: '20/01/2026' },
+          { tipo: 'Laudo Pericial', pagina: 210, comentario: 'Perito nomeado: Dr. José Santos. Prazo: 30 dias. Quesitos das partes em anexo.', data: '15/02/2026' },
+        ].map((doc, i) => (
+          <div key={i} className="border border-gray-200 bg-white rounded-lg p-3 hover:border-orange-300 hover:bg-orange-50 transition-colors group">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <FileText size={16} className="text-orange-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm text-gray-900">{doc.tipo}</span>
+                    <span className="px-1.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 rounded">p.{doc.pagina}</span>
+                  </div>
+                  {doc.comentario && (
+                    <p className="text-xs text-gray-500 italic mt-1 line-clamp-2">{doc.comentario}</p>
+                  )}
+                  <p className="text-xs text-gray-400 mt-1">Criado: {doc.data}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button className="p-1.5 text-orange-500 hover:text-orange-700 hover:bg-orange-100 rounded-md"><Edit2 size={13} /></button>
+                <button className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md"><Trash2 size={13} /></button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DocumentoCardsPropostos() {
+  const [deleteState, setDeleteState] = useState<Record<number, 'idle' | 'confirming'>>({ 0: 'idle', 1: 'idle', 2: 'idle' });
+
+  const docs = [
+    { tipo: 'Petição Inicial', pagina: 12, comentario: 'Petição protocolada em 05/01/2026 com pedido de tutela de urgência. Valor da causa: R$ 45.000,00.', data: '05/01/2026', atualizado: null },
+    { tipo: 'Contestação', pagina: 87, comentario: null, data: '20/01/2026', atualizado: '22/01/2026' },
+    { tipo: 'Laudo Pericial', pagina: 210, comentario: 'Perito nomeado: Dr. José Santos. Prazo: 30 dias. Quesitos das partes em anexo.', data: '15/02/2026', atualizado: null },
+  ];
+
+  const toggleDelete = (i: number) => {
+    setDeleteState(s => ({ ...s, [i]: s[i] === 'idle' ? 'confirming' : 'idle' }));
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <SectionLabel>Cards de Documento (Versão Proposta)</SectionLabel>
+      <div className="w-full max-w-2xl space-y-2">
+        {docs.map((doc, i) => {
+          const badgeClass = getTipoColor(doc.tipo);
+          const isConfirming = deleteState[i] === 'confirming';
+          return (
+            <div key={i} className={`bg-white rounded-lg border overflow-hidden shadow-sm transition-all hover:shadow-md ${isConfirming ? 'border-red-200' : 'border-gray-200'}`}>
+              <div className="p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                    <div className="mt-0.5 p-1.5 bg-orange-50 rounded-md flex-shrink-0">
+                      <FileText size={13} className="text-orange-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${badgeClass}`}>{doc.tipo}</span>
+                        <span className="px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">p.{doc.pagina}</span>
+                      </div>
+                      {doc.comentario && (
+                        <p className="text-xs text-gray-500 italic line-clamp-2">{doc.comentario}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <span className="flex items-center gap-1 text-xs text-gray-400">
+                          <Calendar size={10} /> {doc.data}
+                        </span>
+                        {doc.atualizado && (
+                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                            <Clock size={10} /> atualizado {doc.atualizado}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button className="p-1.5 text-orange-400 hover:text-orange-600 hover:bg-orange-50 rounded-md transition-colors"><Edit2 size={13} /></button>
+                    <button
+                      onClick={() => toggleDelete(i)}
+                      className={`p-1.5 rounded-md transition-colors ${isConfirming ? 'text-red-600 bg-red-100' : 'text-red-400 hover:text-red-600 hover:bg-red-50'}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {isConfirming && (
+                <div className="mx-3 mb-3 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-xs font-medium text-red-800 mb-0.5">Excluir "{doc.tipo}"?</p>
+                  <p className="text-xs text-red-500 mb-2">p.{doc.pagina} · Esta ação não pode ser desfeita.</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => toggleDelete(i)} className="flex-1 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50">Cancelar</button>
+                    <button className="flex-1 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700">Excluir</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 w-full max-w-2xl text-sm">
+        <p className="font-semibold text-orange-800 mb-2">O que mudou nos cards de Documento:</p>
+        <ul className="text-orange-700 space-y-1 text-xs list-disc list-inside">
+          <li>Badge do tipo com cor dinâmica (rounded-full) — mesmo código de cores do modal de detalhes</li>
+          <li>Badge de página com rounded-full para consistência visual com os demais cards</li>
+          <li>Ícone do documento com fundo laranja suave (bg-orange-50) para hierarquia visual</li>
+          <li>Timestamps de criação e atualização quando disponíveis</li>
+          <li>Confirmação de exclusão inline no próprio card — sem excluir imediatamente</li>
+          <li>Sombra sutil ao hover (hover:shadow-md) para indicar interatividade</li>
+          <li>Botões sempre visíveis (sem depender de opacity-0 group-hover) para melhor UX em touch</li>
         </ul>
       </div>
     </div>
