@@ -94,7 +94,7 @@ const DocumentoDetailModal: React.FC<DocumentoDetailModalProps> = ({
       <div
         ref={panelRef}
         style={style}
-        className="absolute right-4 top-4 pointer-events-auto w-[480px] bg-white shadow-2xl flex flex-col border border-gray-200 rounded-xl max-h-[calc(100vh-2rem)] overflow-hidden relative"
+        className="absolute right-4 top-4 pointer-events-auto w-[580px] bg-white shadow-2xl flex flex-col border border-gray-200 rounded-xl max-h-[calc(100vh-2rem)] overflow-hidden relative"
       >
         <div
           className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-orange-100 bg-orange-50 flex-shrink-0 cursor-grab active:cursor-grabbing select-none"

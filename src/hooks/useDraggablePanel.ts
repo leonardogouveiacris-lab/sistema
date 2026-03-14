@@ -5,26 +5,25 @@ interface Position {
   y: number;
 }
 
-interface UseDraggablePanelOptions {
-  initialRight?: number;
-  initialTop?: number;
-}
-
-export function useDraggablePanel({ initialRight = 16, initialTop = 16 }: UseDraggablePanelOptions = {}) {
+export function useDraggablePanel() {
   const [position, setPosition] = useState<Position | null>(null);
   const isDragging = useRef(false);
   const dragOffset = useRef<Position>({ x: 0, y: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const getInitialPosition = useCallback((): Position => {
-    if (!panelRef.current) return { x: window.innerWidth - initialRight - 480, y: initialTop };
-    const rect = panelRef.current.getBoundingClientRect();
-    return { x: window.innerWidth - initialRight - rect.width, y: initialTop };
-  }, [initialRight, initialTop]);
-
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    const currentPos = position ?? getInitialPosition();
+
+    let currentPos: Position;
+    if (position) {
+      currentPos = position;
+    } else if (panelRef.current) {
+      const rect = panelRef.current.getBoundingClientRect();
+      currentPos = { x: rect.left, y: rect.top };
+    } else {
+      return;
+    }
+
     isDragging.current = true;
     dragOffset.current = {
       x: e.clientX - currentPos.x,
@@ -33,7 +32,7 @@ export function useDraggablePanel({ initialRight = 16, initialTop = 16 }: UseDra
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!isDragging.current) return;
-      const panelWidth = panelRef.current?.offsetWidth ?? 480;
+      const panelWidth = panelRef.current?.offsetWidth ?? 560;
       const panelHeight = panelRef.current?.offsetHeight ?? 400;
       const newX = Math.max(0, Math.min(window.innerWidth - panelWidth, ev.clientX - dragOffset.current.x));
       const newY = Math.max(0, Math.min(window.innerHeight - panelHeight, ev.clientY - dragOffset.current.y));
@@ -48,7 +47,7 @@ export function useDraggablePanel({ initialRight = 16, initialTop = 16 }: UseDra
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [position, getInitialPosition]);
+  }, [position]);
 
   useEffect(() => {
     return () => {
