@@ -156,7 +156,8 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     startEditDecision,
     startEditVerba,
     startEditDocumento,
-    cancelForm
+    cancelForm,
+    removeHighlight
   } = usePDFViewer();
 
   const toast = useToast();
@@ -405,15 +406,34 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   }, [onDeleteDecision, toast]);
 
   const handleDeleteVerba = useCallback(async (verbaId: string, lancamentoId: string) => {
+    const verba = verbas.find(v => v.id === verbaId);
+    const lancamento = verba?.lancamentos.find(l => l.id === lancamentoId);
+
+    const highlightIdsToRemove: string[] = [];
+    if (lancamento?.highlightId) {
+      highlightIdsToRemove.push(lancamento.highlightId);
+    }
+    if (lancamento?.highlightIds) {
+      for (const hid of lancamento.highlightIds) {
+        if (!highlightIdsToRemove.includes(hid)) {
+          highlightIdsToRemove.push(hid);
+        }
+      }
+    }
+
     try {
       const result = await onDeleteVerba(verbaId, lancamentoId, true);
       if (!result.success) {
         toast.error(result.error || 'Falha ao excluir lancamento.');
+        return;
+      }
+      for (const hid of highlightIdsToRemove) {
+        removeHighlight(hid);
       }
     } catch {
       toast.error('Erro ao excluir lancamento.');
     }
-  }, [onDeleteVerba, toast]);
+  }, [onDeleteVerba, toast, verbas, removeHighlight]);
 
   const handleToggleCheck = useCallback(async (
     verbaId: string,
