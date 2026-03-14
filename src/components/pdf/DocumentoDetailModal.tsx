@@ -88,7 +88,7 @@ const DocumentoDetailModal: React.FC<DocumentoDetailModalProps> = ({
         onClick={onClose}
       />
 
-      <div className="absolute right-0 top-0 bottom-0 pointer-events-auto w-[480px] bg-white shadow-2xl flex flex-col border-l border-gray-200">
+      <div className="absolute right-4 top-4 pointer-events-auto w-[480px] bg-white shadow-2xl flex flex-col border border-gray-200 rounded-xl max-h-[calc(100vh-2rem)] overflow-hidden">
         <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-orange-100 bg-orange-50 flex-shrink-0">
           <div className="flex-1 min-w-0 pr-3">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
