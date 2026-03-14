@@ -8,7 +8,7 @@ import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useDynamicEnums } from '../../hooks/useDynamicEnums';
-import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
+import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 import { Save, X, Scale, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock } from 'lucide-react';
 
 interface PDFDecisionFormInlineProps {
@@ -44,10 +44,18 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
   onDelete,
   editingDecision = null
 }) => {
-  const { state } = usePDFViewer();
+  const { state, navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
   const { refreshEnumValues } = useDynamicEnums();
   const isEditMode = !!editingDecision;
   const referenceItems = useLancamentosForReference(processId);
+
+  const handleReferenceClick = useCallback((item: LancamentoReferenceItem) => {
+    if (item.highlightIds?.length && item.paginaVinculada) {
+      scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
+    } else if (item.paginaVinculada) {
+      navigateToPageWithHighlight(item.paginaVinculada, item.id);
+    }
+  }, [navigateToPageWithHighlight, scrollToMultipleHighlights]);
 
   const [formData, setFormData] = useState<NewDecision>({
     tipoDecisao: editingDecision?.tipoDecisao || '',
@@ -284,6 +292,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           onExpand={handleExpandText}
           fieldType="comentariosDecisao"
           referenceItems={referenceItems}
+          onReferenceClick={handleReferenceClick}
         />
 
         {isEditMode && (editingDecision?.createdAt || editingDecision?.updatedAt) && (

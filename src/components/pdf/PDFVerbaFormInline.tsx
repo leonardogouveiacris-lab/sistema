@@ -11,7 +11,7 @@ import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useTipoVerbas } from '../../hooks/useTipoVerbas';
 import { useToast } from '../../contexts/ToastContext';
-import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
+import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 import { Save, X, BookOpen, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock, Check, CreditCard as Edit2 } from 'lucide-react';
 
 interface PDFVerbaFormInlineProps {
@@ -49,11 +49,19 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
   onDelete,
   editingVerba = null
 }) => {
-  const { state, clearHighlightIdsToLink, getCurrentDocument } = usePDFViewer();
+  const { state, clearHighlightIdsToLink, getCurrentDocument, navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
   const { tipos: tiposDisponiveis, isLoading: isTiposLoading, forcarRecarregamento, excluirTipo, renomearTipo } = useTipoVerbas(processId);
   const toast = useToast();
   const isEditMode = !!editingVerba;
   const referenceItems = useLancamentosForReference(processId);
+
+  const handleReferenceClick = useCallback((item: LancamentoReferenceItem) => {
+    if (item.highlightIds?.length && item.paginaVinculada) {
+      scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
+    } else if (item.paginaVinculada) {
+      navigateToPageWithHighlight(item.paginaVinculada, item.id);
+    }
+  }, [navigateToPageWithHighlight, scrollToMultipleHighlights]);
 
   const [formData, setFormData] = useState<NewVerbaComLancamento>({
     tipoVerba: editingVerba?.verba.tipoVerba || '',
@@ -534,6 +542,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
           onExpand={() => handleExpandText('fundamentacao', 'Fundamentação')}
           fieldType="fundamentacao"
           referenceItems={referenceItems}
+          onReferenceClick={handleReferenceClick}
         />
 
         <RichTextEditor
@@ -545,6 +554,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
           onExpand={() => handleExpandText('comentariosCalculistas', 'Comentários')}
           fieldType="comentariosCalculistas"
           referenceItems={referenceItems}
+          onReferenceClick={handleReferenceClick}
         />
 
         {isEditMode && (editingVerba?.lancamento.createdAt || editingVerba?.lancamento.updatedAt) && (

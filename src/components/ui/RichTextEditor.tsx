@@ -5,6 +5,9 @@ import { EditorRef, InsertionField, usePDFViewer } from '../../contexts/PDFViewe
 import { Maximize2 } from 'lucide-react';
 import LancamentoReferencePicker from './LancamentoReferencePicker';
 import { LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
+import { registerLancamentoRefBlot } from './lancamentoRefBlot';
+
+registerLancamentoRefBlot();
 
 interface RichTextEditorProps {
   label?: string;
@@ -18,6 +21,7 @@ interface RichTextEditorProps {
   className?: string;
   fieldType?: InsertionField;
   referenceItems?: LancamentoReferenceItem[];
+  onReferenceClick?: (item: LancamentoReferenceItem) => void;
 }
 
 const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
@@ -32,6 +36,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
   className = "",
   fieldType,
   referenceItems = [],
+  onReferenceClick,
 }, ref) => {
   const quillRef = useRef<ReactQuill>(null);
   const { registerEditor, unregisterEditor } = usePDFViewer();
@@ -51,6 +56,11 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     referenceItemsRef.current = referenceItems;
   }, [referenceItems]);
 
+  const onReferenceClickRef = useRef(onReferenceClick);
+  useEffect(() => {
+    onReferenceClickRef.current = onReferenceClick;
+  }, [onReferenceClick]);
+
   const modules = useMemo(() => ({
     toolbar: [
       ['bold', 'italic', 'underline'],
@@ -62,7 +72,8 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
   const formats = useMemo(() => [
     'bold', 'italic', 'underline',
     'list', 'bullet',
-    'link'
+    'link',
+    'lancamentoRef',
   ], []);
 
   useImperativeHandle(ref, () => ({
@@ -148,12 +159,19 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
   const getCaretRectRef = useRef(getCaretRect);
   useEffect(() => { getCaretRectRef.current = getCaretRect; }, [getCaretRect]);
 
+  const handleReferenceSelectRef = useRef<(item: LancamentoReferenceItem) => void>(() => {});
+
   useEffect(() => {
     const editor = quillRef.current?.getEditor();
     if (!editor) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (pickerOpenRef.current) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         if (e.key === 'Escape') {
           e.stopPropagation();
           closePickerRef.current();
@@ -194,11 +212,27 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       if (rect) setAnchorRect(rect);
     };
 
+    const handleEditorClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const chip = target.closest('[data-ref="lancamento"]') as HTMLElement | null;
+      if (!chip) return;
+      const id = chip.getAttribute('data-id');
+      if (!id || !onReferenceClickRef.current) return;
+      const item = referenceItemsRef.current.find(r => r.id === id);
+      if (item) {
+        e.preventDefault();
+        e.stopPropagation();
+        onReferenceClickRef.current(item);
+      }
+    };
+
     editor.root.addEventListener('keydown', handleKeyDown, true);
+    editor.root.addEventListener('click', handleEditorClick);
     editor.on('text-change', handleTextChange);
 
     return () => {
       editor.root.removeEventListener('keydown', handleKeyDown, true);
+      editor.root.removeEventListener('click', handleEditorClick);
       editor.off('text-change', handleTextChange);
     };
   }, []);
@@ -217,18 +251,16 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
 
     editor.deleteText(triggerIdx, typedLength, 'user');
 
-    const chipHtml = buildChipHtml(item);
+    editor.insertEmbed(triggerIdx, 'lancamentoRef', {
+      id: item.id,
+      type: item.type,
+      label: item.label,
+      sublabel: item.sublabel,
+      paginaVinculada: item.paginaVinculada,
+    }, 'user');
 
-    const delta = editor.clipboard.convert({ html: chipHtml + '&nbsp;' });
-    editor.updateContents(
-      new (editor.constructor as any).import('delta')()
-        .retain(triggerIdx)
-        .concat(delta),
-      'user'
-    );
-
-    const newLen = triggerIdx + delta.length();
-    editor.setSelection(newLen, 0);
+    editor.insertText(triggerIdx + 1, ' ', 'user');
+    editor.setSelection(triggerIdx + 2, 0);
 
     setTimeout(() => {
       const newContent = editor.root.innerHTML;
@@ -237,6 +269,10 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
 
     closePicker();
   }, [onChange, closePicker]);
+
+  useEffect(() => {
+    handleReferenceSelectRef.current = handleReferenceSelect;
+  }, [handleReferenceSelect]);
 
   const containerClasses = useMemo(() => {
     const baseClasses = 'border rounded-md transition-all duration-200';
@@ -350,15 +386,6 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     </div>
   );
 });
-
-function buildChipHtml(item: LancamentoReferenceItem): string {
-  const icon = item.type === 'verba' ? '⬡' : item.type === 'decisao' ? '◈' : '⬜';
-  const label = item.sublabel
-    ? `${item.label} · ${item.sublabel}`
-    : item.label;
-  const page = item.paginaVinculada ? ` p.${item.paginaVinculada}` : '';
-  return `<span class="lancamento-ref-chip" data-type="${item.type}" data-id="${item.id}" data-ref="lancamento" contenteditable="false">${icon} ${label}${page}</span>`;
-}
 
 RichTextEditor.displayName = 'RichTextEditor';
 
