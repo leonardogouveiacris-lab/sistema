@@ -4,6 +4,13 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { FileText, Eye, CreditCard as Edit2, Trash2, Link2 } from 'lucide-react';
 import { Tooltip } from '../ui';
 
+function formatDateTime(date: Date | string | undefined): string {
+  if (!date) return '';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
 interface DocumentoCardProps {
   documento: Documento;
   onEdit: (documentoId: string) => void;
@@ -124,14 +131,17 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
           </p>
         )}
 
-        {hasHighlights && (
-          <div className="mt-1.5">
+        <div className="flex items-center justify-between mt-1.5">
+          {hasHighlights ? (
             <span className="text-xs text-blue-400 flex items-center gap-0.5">
               <Link2 size={9} />
               {highlightIds.length} destaque{highlightIds.length !== 1 ? 's' : ''}
             </span>
-          </div>
-        )}
+          ) : <span />}
+          <Tooltip content={`Criado: ${formatDateTime(documento.dataCriacao)}`}>
+            <span className="text-xs text-gray-400 cursor-default">{formatDateTime(documento.dataAtualizacao)}</span>
+          </Tooltip>
+        </div>
       </div>
     </div>
   );

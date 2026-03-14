@@ -5,6 +5,13 @@ import { useToast } from '../../contexts/ToastContext';
 import { Link2, FileText, Eye, CreditCard as Edit2, Trash2, Circle, Clock, CheckCircle2, Check } from 'lucide-react';
 import { Tooltip } from '../ui';
 
+function formatDateTime(date: Date | string | undefined): string {
+  if (!date) return '';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
 type StatusState = 'pendente' | 'calculado' | 'concluido';
 
 const getStatusFromLancamento = (lancamento: VerbaLancamento): StatusState => {
@@ -192,12 +199,17 @@ const VerbaLancamentoCard: React.FC<VerbaLancamentoCardProps> = ({
           </button>
         ) : <div />}
 
-        {hasHighlights && (
-          <span className="text-xs text-blue-400 flex items-center gap-0.5">
-            <Link2 size={9} />
-            {highlightIds.length}
-          </span>
-        )}
+        <div className="flex items-center gap-2 text-xs text-gray-400 ml-auto pl-2 flex-shrink-0">
+          {hasHighlights && (
+            <span className="flex items-center gap-0.5 text-blue-400">
+              <Link2 size={9} />
+              {highlightIds.length}
+            </span>
+          )}
+          <Tooltip content={`Criado: ${formatDateTime(lancamento.dataCriacao)}`}>
+            <span className="cursor-default">{formatDateTime(lancamento.dataAtualizacao)}</span>
+          </Tooltip>
+        </div>
       </div>
     </div>
   );
