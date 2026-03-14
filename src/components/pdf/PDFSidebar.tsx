@@ -20,6 +20,7 @@ import { useDebounce, useDecisions, useVerbas, useDocumentos, OperationResult } 
 import DecisionCard from './DecisionCard';
 import VerbaLancamentoCard from './VerbaLancamentoCard';
 import DocumentoCard from './DocumentoCard';
+import CommentCard from './CommentCard';
 import PDFBookmarkPanel from './PDFBookmarkPanel';
 import PDFDecisionFormInline from './PDFDecisionFormInline';
 import PDFVerbaFormInline from './PDFVerbaFormInline';
@@ -27,7 +28,7 @@ import PDFDocumentoFormInline from './PDFDocumentoFormInline';
 import VerbaDetailModal from './VerbaDetailModal';
 import DecisionDetailModal from './DecisionDetailModal';
 import DocumentoDetailModal from './DocumentoDetailModal';
-import { Search, ChevronDown, ChevronUp, ChevronsLeftRight, ChevronsRightLeft, Scale, DollarSign, FileText, Plus, CheckCircle2, Circle, Clock, Layers } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ChevronsLeftRight, ChevronsRightLeft, Scale, DollarSign, FileText, Plus, CheckCircle2, Circle, Clock, Layers, MessageCircle } from 'lucide-react';
 import { RenameService } from '../../services/rename.service';
 
 interface GroupProgressStats {
@@ -157,7 +158,8 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     startEditVerba,
     startEditDocumento,
     cancelForm,
-    removeHighlight
+    removeHighlight,
+    removeComment,
   } = usePDFViewer();
 
   const toast = useToast();
@@ -173,6 +175,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   const [isDocumentoModalOpen, setIsDocumentoModalOpen] = useState(false);
   const [decisionSearchQuery, setDecisionSearchQuery] = useState('');
   const [documentoSearchQuery, setDocumentoSearchQuery] = useState('');
+  const [commentSearchQuery, setCommentSearchQuery] = useState('');
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -180,6 +183,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const debouncedDecisionSearchQuery = useDebounce(decisionSearchQuery, 300);
   const debouncedDocumentoSearchQuery = useDebounce(documentoSearchQuery, 300);
+  const debouncedCommentSearchQuery = useDebounce(commentSearchQuery, 300);
 
   useEffect(() => {
     const savedGrouping = localStorage.getItem('pdf-sidebar-group-by-tipo');
@@ -399,6 +403,20 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     processDocumentos.filter(d => !d.paginaVinculada),
     [processDocumentos]
   );
+
+  const sortedComments = useMemo(() => {
+    return [...state.comments].sort((a, b) => a.pageNumber - b.pageNumber);
+  }, [state.comments]);
+
+  const filteredComments = useMemo(() => {
+    if (!debouncedCommentSearchQuery.trim()) return sortedComments;
+    const query = debouncedCommentSearchQuery.toLowerCase();
+    return sortedComments.filter(c => c.content.toLowerCase().includes(query));
+  }, [sortedComments, debouncedCommentSearchQuery]);
+
+  const handleDeleteComment = useCallback(async (commentId: string) => {
+    removeComment(commentId);
+  }, [removeComment]);
 
   const handleEditDecision = useCallback((decisionId: string) => {
     startEditDecision(decisionId);
@@ -758,6 +776,24 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
             <span>Docs</span>
             <span className="px-1.5 py-0.5 text-xs bg-gray-200 rounded-full">
               {processDocumentos.length}
+            </span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setSidebarTab('comments')}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+            state.sidebarTab === 'comments'
+              ? 'text-teal-600 border-b-2 border-teal-600 bg-teal-50'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+          }`}
+          aria-label="Aba de Comentarios"
+        >
+          <div className="flex items-center justify-center space-x-2">
+            <MessageCircle size={16} />
+            <span>Notas</span>
+            <span className="px-1.5 py-0.5 text-xs bg-gray-200 rounded-full">
+              {state.comments.length}
             </span>
           </div>
         </button>
@@ -1304,6 +1340,73 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                 hasPrevious={currentDocumentoIndex > 0}
                 hasNext={currentDocumentoIndex < filteredDocumentos.length - 1}
               />
+            )}
+          </div>
+        )}
+
+        {/* Comments Tab */}
+        {state.sidebarTab === 'comments' && (
+          <div>
+            {/* Search Bar */}
+            <div className="mb-4 space-y-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
+                <input
+                  type="text"
+                  placeholder="Buscar comentarios..."
+                  value={commentSearchQuery}
+                  onChange={(e) => setCommentSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                />
+              </div>
+              {commentSearchQuery && (
+                <div className="text-xs text-gray-500">
+                  {filteredComments.length} resultado(s) encontrado(s)
+                </div>
+              )}
+            </div>
+
+            {/* Comment List */}
+            {filteredComments.length > 0 && (
+              <div className="space-y-2">
+                {filteredComments.map(comment => (
+                  <CommentCard
+                    key={comment.id}
+                    comment={comment}
+                    onDelete={handleDeleteComment}
+                    isHighlighted={state.selectedCommentId === comment.id}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {state.comments.length === 0 && (
+              <div className="text-center py-12">
+                <MessageCircle className="mx-auto text-gray-300 mb-3" size={48} />
+                <p className="text-sm text-gray-600 mb-2">
+                  Nenhum comentario adicionado
+                </p>
+                <p className="text-xs text-gray-400">
+                  Ative o modo de anotacao no visualizador para adicionar comentarios ao PDF
+                </p>
+              </div>
+            )}
+
+            {/* No Results */}
+            {commentSearchQuery && filteredComments.length === 0 && state.comments.length > 0 && (
+              <div className="text-center py-12">
+                <Search className="mx-auto text-gray-400 mb-3" size={48} />
+                <p className="text-sm text-gray-600 mb-2">
+                  Nenhum resultado encontrado
+                </p>
+                <button
+                  onClick={() => setCommentSearchQuery('')}
+                  className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+                >
+                  Limpar busca
+                </button>
+              </div>
             )}
           </div>
         )}

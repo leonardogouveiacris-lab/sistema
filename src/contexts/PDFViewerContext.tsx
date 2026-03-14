@@ -55,7 +55,7 @@ export type FormMode =
 /**
  * Abas disponíveis no sidebar
  */
-export type SidebarTab = 'bookmarks' | 'decisions' | 'verbas' | 'documentos' | 'documentoLancamentos';
+export type SidebarTab = 'bookmarks' | 'decisions' | 'verbas' | 'documentos' | 'documentoLancamentos' | 'comments';
 
 /**
  * Modos de visualização do PDF
