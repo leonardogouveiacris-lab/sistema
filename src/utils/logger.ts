@@ -79,21 +79,6 @@ class Logger {
     return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[this.minLevel];
   }
 
-  private emitToRemoteCollector(
-    level: LogLevel,
-    message: string,
-    context?: LogContext,
-    data?: LogData,
-    error?: LogError
-  ): void {
-    // Future integration point for remote log collection (Sentry, Datadog, etc.).
-    void level;
-    void message;
-    void context;
-    void data;
-    void error;
-  }
-
   private log(
     level: LogLevel,
     message: string,
@@ -116,8 +101,6 @@ class Logger {
     if (error !== undefined) {
       extra.push(error);
     }
-
-    this.emitToRemoteCollector(level, message, context, data, error);
 
     if (!this.consoleEnabled) {
       return;

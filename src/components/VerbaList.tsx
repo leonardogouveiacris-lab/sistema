@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { DollarSign, Scale, Search, Trash2, Edit2, Calculator, ClipboardCheck } from 'lucide-react';
+import { DollarSign, Scale, Search, Trash2, CreditCard as Edit2, Calculator, ClipboardCheck } from 'lucide-react';
 import { Verba, VerbaLancamento, VerbaFilter, NewVerbaLancamento, ChecklistStats, ChecklistStatus } from '../types/Verba';
 import { Decision } from '../types/Decision';
 import VerbaEditModal from './VerbaEditModal';
@@ -49,15 +49,15 @@ const VerbaList: React.FC<VerbaListProps> = ({
       const aPagina = a.paginaVinculada;
       const bPagina = b.paginaVinculada;
 
-      if (aPagina != null && bPagina != null) {
+      if (aPagina !== null && aPagina !== undefined && bPagina !== null && bPagina !== undefined) {
         return aPagina - bPagina;
       }
 
-      if (aPagina != null) {
+      if (aPagina !== null && aPagina !== undefined) {
         return -1;
       }
 
-      if (bPagina != null) {
+      if (bPagina !== null && bPagina !== undefined) {
         return 1;
       }
 

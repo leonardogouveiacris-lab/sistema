@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { throttle } from '../utils/performance';
 
 export interface ResponsiveBreakpoint {
@@ -132,14 +132,24 @@ export const useResponsivePanel = () => {
     setConfig(prev => (isSameConfig(prev, nextConfig) ? prev : nextConfig));
   }, []);
 
-  const throttledHandleResize = useCallback(throttle(handleResize, RESIZE_THROTTLE_MS), [handleResize]);
+  const handleResizeRef = useRef(handleResize);
+  handleResizeRef.current = handleResize;
+
+  const throttledHandleResizeRef = useRef<ReturnType<typeof throttle> | null>(null);
+  if (throttledHandleResizeRef.current === null) {
+    throttledHandleResizeRef.current = throttle(
+      (...args: Parameters<typeof handleResize>) => handleResizeRef.current(...args),
+      RESIZE_THROTTLE_MS
+    );
+  }
 
   useEffect(() => {
     handleResize();
 
-    window.addEventListener('resize', throttledHandleResize);
-    return () => window.removeEventListener('resize', throttledHandleResize);
-  }, [handleResize, throttledHandleResize]);
+    const throttled = throttledHandleResizeRef.current!;
+    window.addEventListener('resize', throttled);
+    return () => window.removeEventListener('resize', throttled);
+  }, [handleResize]);
 
   const calculatePanelWidth = useCallback((percent?: number): number => {
     const effectivePercent = percent ?? config.panelWidthPercent;

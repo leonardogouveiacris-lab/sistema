@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback, useMemo, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useCallback, useMemo, useState, useRef, ReactNode } from 'react';
 import { ToastContainer, ToastData, ToastType } from '../components/ui/Toast';
 
 interface ToastContextValue {
@@ -12,22 +12,17 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 
 const MAX_TOASTS = 5;
 
-let toastIdCounter = 0;
-
-const generateId = () => {
-  toastIdCounter += 1;
-  return `toast-${toastIdCounter}-${Date.now()}`;
-};
-
 interface ToastProviderProps {
   children: ReactNode;
 }
 
 export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastData[]>([]);
+  const counterRef = useRef(0);
 
   const addToast = useCallback((type: ToastType, message: string, duration?: number) => {
-    const id = generateId();
+    counterRef.current += 1;
+    const id = `toast-${counterRef.current}-${Date.now()}`;
     const newToast: ToastData = { id, type, message, duration };
 
     setToasts((prev) => {

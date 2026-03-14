@@ -178,7 +178,12 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
         };
         try {
           await DecisionsService.create(newDecisionData);
-        } catch {
+        } catch (importErr) {
+          logger.warn(
+            `Ignorando entrada de backup duplicada ou inválida: ${decisionData.idDecisao}`,
+            'DecisionContext.importBackup',
+            { error: importErr instanceof Error ? importErr.message : String(importErr) }
+          );
         }
       }
       const allDecisions = await DecisionsService.getAll();

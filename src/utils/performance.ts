@@ -71,9 +71,12 @@ export function throttle<T extends (...args: any[]) => any>(
  * @param keyFn - Optional function to generate cache key from arguments
  * @returns Memoized function
  */
+const MEMOIZE_MAX_CACHE_SIZE = 256;
+
 export function memoize<T extends (...args: any[]) => any>(
   fn: T,
-  keyFn?: (...args: Parameters<T>) => string
+  keyFn?: (...args: Parameters<T>) => string,
+  maxSize: number = MEMOIZE_MAX_CACHE_SIZE
 ): T {
   const cache = new Map<string, ReturnType<T>>();
 
@@ -81,10 +84,21 @@ export function memoize<T extends (...args: any[]) => any>(
     const key = keyFn ? keyFn(...args) : JSON.stringify(args);
 
     if (cache.has(key)) {
-      return cache.get(key)!;
+      const value = cache.get(key)!;
+      cache.delete(key);
+      cache.set(key, value);
+      return value;
     }
 
     const result = fn(...args);
+
+    if (cache.size >= maxSize) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey !== undefined) {
+        cache.delete(oldestKey);
+      }
+    }
+
     cache.set(key, result);
     return result;
   }) as T;

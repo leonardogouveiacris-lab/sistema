@@ -243,7 +243,12 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           };
           try {
             await VerbasService.createVerbaComLancamento(newVerbaData);
-          } catch {
+          } catch (importErr) {
+            logger.warn(
+              `Ignorando entrada de backup duplicada ou inválida: ${verbaData.tipoVerba}`,
+              'VerbaContext.importBackup',
+              { error: importErr instanceof Error ? importErr.message : String(importErr) }
+            );
           }
         }
       }

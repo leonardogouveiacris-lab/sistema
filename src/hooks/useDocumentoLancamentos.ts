@@ -18,7 +18,7 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
   const [documentos, setDocumentos] = useState<DocumentoLancamento[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const isLocalUpdate = useRef(false);
+  const pendingLocalOpsRef = useRef(0);
 
   const fetchDocumentos = useCallback(async () => {
     if (!processId) {
@@ -46,8 +46,7 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
   }, [fetchDocumentos]);
 
   const handleRealtimeInsert = useCallback((newDoc: DocumentoLancamento) => {
-    if (isLocalUpdate.current) {
-      isLocalUpdate.current = false;
+    if (pendingLocalOpsRef.current > 0) {
       return;
     }
     if (newDoc.processId === processId) {
@@ -59,8 +58,7 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
   }, [processId]);
 
   const handleRealtimeUpdate = useCallback((updatedDoc: DocumentoLancamento) => {
-    if (isLocalUpdate.current) {
-      isLocalUpdate.current = false;
+    if (pendingLocalOpsRef.current > 0) {
       return;
     }
     if (updatedDoc.processId === processId) {
@@ -69,8 +67,7 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
   }, [processId]);
 
   const handleRealtimeDelete = useCallback(({ id }: { id: string }) => {
-    if (isLocalUpdate.current) {
-      isLocalUpdate.current = false;
+    if (pendingLocalOpsRef.current > 0) {
       return;
     }
     setDocumentos(prev => prev.filter(d => d.id !== id));
@@ -84,28 +81,29 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
     enabled: !!processId
   });
 
-  const createDocumento = async (input: DocumentoLancamentoCreateInput): Promise<DocumentoLancamento | null> => {
+  const createDocumento = useCallback(async (input: DocumentoLancamentoCreateInput): Promise<DocumentoLancamento | null> => {
     try {
       setError(null);
-      isLocalUpdate.current = true;
+      pendingLocalOpsRef.current += 1;
 
       const newDocumento = await documentoLancamentoService.create(input);
       setDocumentos(prev => [newDocumento, ...prev]);
 
       return newDocumento;
     } catch (err) {
-      isLocalUpdate.current = false;
       const errorMessage = err instanceof Error ? err.message : 'Failed to create document launch';
       setError(errorMessage);
       logger.error(errorMessage, 'useDocumentoLancamentos.createDocumento');
       return null;
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  };
+  }, []);
 
-  const updateDocumento = async (id: string, input: DocumentoLancamentoUpdateInput): Promise<DocumentoLancamento | null> => {
+  const updateDocumento = useCallback(async (id: string, input: DocumentoLancamentoUpdateInput): Promise<DocumentoLancamento | null> => {
     try {
       setError(null);
-      isLocalUpdate.current = true;
+      pendingLocalOpsRef.current += 1;
 
       const updatedDocumento = await documentoLancamentoService.update(id, input);
       setDocumentos(prev =>
@@ -114,35 +112,37 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
 
       return updatedDocumento;
     } catch (err) {
-      isLocalUpdate.current = false;
       const errorMessage = err instanceof Error ? err.message : 'Failed to update document launch';
       setError(errorMessage);
       logger.error(errorMessage, 'useDocumentoLancamentos.updateDocumento');
       return null;
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  };
+  }, []);
 
-  const deleteDocumento = async (id: string): Promise<boolean> => {
+  const deleteDocumento = useCallback(async (id: string): Promise<boolean> => {
     try {
       setError(null);
-      isLocalUpdate.current = true;
+      pendingLocalOpsRef.current += 1;
 
       await documentoLancamentoService.delete(id);
       setDocumentos(prev => prev.filter(doc => doc.id !== id));
 
       return true;
     } catch (err) {
-      isLocalUpdate.current = false;
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete document launch';
       setError(errorMessage);
       logger.error(errorMessage, 'useDocumentoLancamentos.deleteDocumento');
       return false;
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  };
+  }, []);
 
-  const refreshDocumentos = async (): Promise<void> => {
+  const refreshDocumentos = useCallback(async (): Promise<void> => {
     await fetchDocumentos();
-  };
+  }, [fetchDocumentos]);
 
   return {
     documentos,

@@ -41,7 +41,6 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const progressResetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -50,10 +49,6 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
 
       if (progressResetTimeoutRef.current) {
         clearTimeout(progressResetTimeoutRef.current);
-      }
-
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
       }
     };
   }, []);
@@ -113,23 +108,23 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
     setError(null);
     setUploadProgress(0);
 
-    let progressInterval: ReturnType<typeof setInterval> | null = null;
-
     try {
-      progressInterval = setInterval(() => {
-        if (!isMountedRef.current) return;
-        setUploadProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
-      progressIntervalRef.current = progressInterval;
+      if (isMountedRef.current) {
+        setUploadProgress(30);
+      }
 
       const result = await ProcessDocumentService.uploadDocument(processId, file, undefined, displayName);
 
       if (isMountedRef.current) {
-        setUploadProgress(100);
+        setUploadProgress(90);
       }
 
       if (result.success && result.document) {
         await loadDocuments(processId);
+
+        if (isMountedRef.current) {
+          setUploadProgress(100);
+        }
 
         if (progressResetTimeoutRef.current) {
           clearTimeout(progressResetTimeoutRef.current);
@@ -167,12 +162,6 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
         error: errorMessage
       };
     } finally {
-      if (progressInterval) {
-        clearInterval(progressInterval);
-      }
-
-      progressIntervalRef.current = null;
-
       if (isMountedRef.current) {
         setIsLoading(false);
       }

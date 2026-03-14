@@ -6,6 +6,8 @@
 import { PROCESS_CONSTANTS } from '../types/Process';
 import { DECISION_CONSTANTS } from '../types/Decision';
 import { VERBA_CONSTANTS } from '../types/Verba';
+import type { NewProcess } from '../types/Process';
+import type { NewDecision } from '../types/Decision';
 import type { NewVerbaComLancamento } from '../types/Verba';
 
 /**
@@ -61,7 +63,7 @@ class ValidationUtils {
   /**
    * Valida dados de um novo processo
    */
-  static validateNewProcess(data: any): ValidationResult {
+  static validateNewProcess(data: Partial<NewProcess> & Record<string, unknown>): ValidationResult {
     const errors: Record<string, string> = {};
 
     // Validação do número do processo
@@ -98,7 +100,7 @@ class ValidationUtils {
   /**
    * Valida dados de uma nova decisão
    */
-  static validateNewDecision(data: any): ValidationResult {
+  static validateNewDecision(data: Partial<NewDecision> & Record<string, unknown>): ValidationResult {
     const errors: Record<string, string> = {};
 
     // Validação do tipo de decisão
@@ -193,7 +195,7 @@ class ValidationUtils {
    * Valida dados de uma nova verba (compatibilidade com versão anterior)
    * @deprecated Use validateNewVerbaComLancamento para nova estrutura hierárquica
    */
-  static validateNewVerba(data: any): ValidationResult {
+  static validateNewVerba(data: Partial<NewVerbaComLancamento> & Record<string, unknown>): ValidationResult {
     // Converte dados antigos para nova estrutura
     const newStructureData: NewVerbaComLancamento = {
       tipoVerba: data.tipoVerba,
