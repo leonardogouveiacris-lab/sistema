@@ -13,7 +13,9 @@ import {
 import { EmptyState } from './components/ui';
 import { AlertTriangle } from 'lucide-react';
 import FloatingPDFViewer from './components/FloatingPDFViewer';
+import FloatingTableViewer from './components/FloatingTableViewer';
 import { PDFViewerProvider } from './contexts/PDFViewerContext';
+import { TableViewerProvider } from './contexts/TableViewerContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { VerbaProvider } from './contexts/VerbaContext';
 import { DecisionProvider } from './contexts/DecisionContext';
@@ -434,6 +436,7 @@ function AppContent() {
         {renderContent()}
       </main>
       <FloatingPDFViewer processId={selectedProcess?.id} />
+      <FloatingTableViewer processId={selectedProcess?.id} />
     </div>
   );
 }
@@ -445,7 +448,9 @@ function App() {
         <VerbaProvider>
           <DocumentoProvider>
             <PDFViewerProvider>
-              <AppContent />
+              <TableViewerProvider>
+                <AppContent />
+              </TableViewerProvider>
             </PDFViewerProvider>
           </DocumentoProvider>
         </VerbaProvider>

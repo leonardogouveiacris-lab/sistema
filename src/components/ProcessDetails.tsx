@@ -7,8 +7,8 @@ import DecisionList from './DecisionList';
 import ProcessVerbaList from './ProcessVerbaList';
 import ProcessDocumentoList from './ProcessDocumentoList';
 import ProcessDocumentManager from './ProcessDocumentManager';
-import { TabelaTab } from './table';
-import { AlertTriangle, ArrowLeft, Trash2, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Trash2, CheckCircle2, Clock, AlertCircle, Table as TableIcon } from 'lucide-react';
+import { useTableViewer } from '../contexts/TableViewerContext';
 
 const getStatusVerbasBadge = (status: StatusVerbas) => {
   switch (status) {
@@ -62,6 +62,7 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
   onUpdateProcess,
   onRemoveProcess
 }) => {
+  const { openTableViewer } = useTableViewer();
   const [isEditingBasicInfo, setIsEditingBasicInfo] = React.useState(false);
   const [isSavingBasicInfo, setIsSavingBasicInfo] = React.useState(false);
   const [editData, setEditData] = React.useState({
@@ -206,14 +207,25 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
       {/* Gerenciamento de documentos PDF */}
       <ProcessDocumentManager processId={process.id} processNumber={process.numeroProcesso} />
 
-      {/* Tabela de dados importada */}
-      <div id="process-tabela-section" className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-semibold text-gray-900">Tabela de Dados</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Importe planilhas Excel ou CSV para referenciar valores em Verbas e Decisões</p>
-        </div>
-        <div className="min-h-[200px]">
-          <TabelaTab processId={process.id} />
+      {/* Tabela de dados - abre em painel flutuante */}
+      <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-slate-100 rounded-lg border border-slate-200">
+              <TableIcon size={18} className="text-slate-600" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Tabela de Dados</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Planilhas Excel ou CSV importadas para o processo</p>
+            </div>
+          </div>
+          <button
+            onClick={() => openTableViewer(process.id)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-700 hover:bg-slate-800 rounded-lg transition-colors duration-200"
+          >
+            <TableIcon size={15} />
+            Abrir Tabela
+          </button>
         </div>
       </div>
 
