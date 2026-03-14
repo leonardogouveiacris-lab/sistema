@@ -7,6 +7,7 @@ import DecisionList from './DecisionList';
 import ProcessVerbaList from './ProcessVerbaList';
 import ProcessDocumentoList from './ProcessDocumentoList';
 import ProcessDocumentManager from './ProcessDocumentManager';
+import { TabelaTab } from './table';
 import { AlertTriangle, ArrowLeft, Trash2, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 
 const getStatusVerbasBadge = (status: StatusVerbas) => {
@@ -204,6 +205,17 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
 
       {/* Gerenciamento de documentos PDF */}
       <ProcessDocumentManager processId={process.id} processNumber={process.numeroProcesso} />
+
+      {/* Tabela de dados importada */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900">Tabela de Dados</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Importe planilhas Excel ou CSV para referenciar valores em Verbas e Decisões</p>
+        </div>
+        <div className="min-h-[200px]">
+          <TabelaTab processId={process.id} />
+        </div>
+      </div>
 
       {/* Informações principais do processo */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">

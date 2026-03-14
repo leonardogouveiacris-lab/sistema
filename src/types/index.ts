@@ -16,3 +16,4 @@ export * from './DocumentoLancamento';
 export * from './PDFBookmark';
 export * from './Highlight';
 export * from './PDFComment';
+export * from './ProcessTable';

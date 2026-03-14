@@ -189,6 +189,68 @@ export interface Database {
         Insert: Omit<ProcessDocumentRecord, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<ProcessDocumentRecord, 'id' | 'created_at'>>;
       };
+
+      // Tabelas para importação de planilhas
+      process_tables: {
+        Row: {
+          id: string;
+          process_id: string;
+          name: string;
+          total_rows: number;
+          total_columns: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: { process_id: string; name: string; total_rows: number; total_columns: number };
+        Update: Partial<{ name: string; total_rows: number; total_columns: number }>;
+      };
+
+      process_table_columns: {
+        Row: {
+          id: string;
+          table_id: string;
+          column_letter: string;
+          column_index: number;
+          header_name: string;
+          column_type: 'data' | 'formula';
+          formula_expression: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          table_id: string;
+          column_letter: string;
+          column_index: number;
+          header_name: string;
+          column_type: 'data' | 'formula';
+          formula_expression?: string | null;
+        };
+        Update: Partial<{ header_name: string; formula_expression: string | null }>;
+      };
+
+      process_table_rows: {
+        Row: {
+          id: string;
+          table_id: string;
+          row_index: number;
+          created_at: string;
+        };
+        Insert: { table_id: string; row_index: number };
+        Update: never;
+      };
+
+      process_table_cells: {
+        Row: {
+          id: string;
+          row_id: string;
+          column_id: string;
+          cell_value: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: { row_id: string; column_id: string; cell_value?: string | null };
+        Update: Partial<{ cell_value: string | null }>;
+      };
     };
     
     // Views (consultas pré-definidas)
