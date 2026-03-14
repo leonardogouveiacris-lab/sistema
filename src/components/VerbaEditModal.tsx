@@ -5,6 +5,7 @@ import { CustomDropdown, RichTextEditor, ExpandedTextModal } from './ui';
 import { DynamicEnumType } from '../services/dynamicEnum.service';
 import { useTipoVerbas } from '../hooks/useTipoVerbas';
 import { useToast } from '../contexts/ToastContext';
+import { useLancamentosForReference } from '../hooks/useLancamentosForReference';
 import logger from '../utils/logger';
 import { Save, CreditCard as Edit2, BookOpen, AlertTriangle, Trash2, Calendar, Clock, Check, X } from 'lucide-react';
 
@@ -53,6 +54,7 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
   } = useTipoVerbas(verba.processId);
 
   const toast = useToast();
+  const referenceItems = useLancamentosForReference(verba.processId);
 
   const [formData, setFormData] = useState<NewVerbaLancamento>({
     decisaoVinculada: '',
@@ -365,6 +367,7 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
               rows={4}
               onExpand={() => handleExpandText('fundamentacao', 'Fundamentação')}
               fieldType="fundamentacao"
+              referenceItems={referenceItems}
             />
 
             <RichTextEditor
@@ -375,6 +378,7 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
               rows={4}
               onExpand={() => handleExpandText('comentariosCalculistas', 'Comentários')}
               fieldType="comentariosCalculistas"
+              referenceItems={referenceItems}
             />
 
             <div className="pt-3 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-400">

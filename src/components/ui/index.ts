@@ -11,3 +11,5 @@ export { default as ExpandedTextModal } from './ExpandedTextModal';
 export { default as Toast, ToastContainer } from './Toast';
 export type { ToastData, ToastType } from './Toast';
 export { default as Tooltip } from './Tooltip';
+export { default as LancamentoReferencePicker } from './LancamentoReferencePicker';
+export { default as LancamentoRefRenderer } from './LancamentoRefRenderer';

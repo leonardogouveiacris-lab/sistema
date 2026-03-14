@@ -3,6 +3,7 @@ import { FileText, X, Save, AlertTriangle, Trash2, Calendar, Clock } from 'lucid
 import { DocumentoLancamento, DocumentoLancamentoCreateInput, DocumentoLancamentoUpdateInput } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { RichTextEditor, ExpandedTextModal } from './ui';
+import { useLancamentosForReference } from '../hooks/useLancamentosForReference';
 import logger from '../utils/logger';
 
 const TIPO_BADGE_COLORS: Record<string, string> = {
@@ -36,6 +37,7 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
   onDelete,
 }) => {
   const toast = useToast();
+  const referenceItems = useLancamentosForReference(processId);
   const [tipoDocumento, setTipoDocumento] = useState('');
   const [comentarios, setComentarios] = useState('');
   const [paginaVinculada, setPaginaVinculada] = useState('');
@@ -233,6 +235,7 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
           onChange={setComentarios}
           rows={3}
           onExpand={handleExpandText}
+          referenceItems={referenceItems}
         />
 
         {isEditing && (

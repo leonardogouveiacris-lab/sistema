@@ -11,6 +11,7 @@ import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useTipoVerbas } from '../../hooks/useTipoVerbas';
 import { useToast } from '../../contexts/ToastContext';
+import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
 import { Save, X, BookOpen, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock, Check, CreditCard as Edit2 } from 'lucide-react';
 
 interface PDFVerbaFormInlineProps {
@@ -52,6 +53,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
   const { tipos: tiposDisponiveis, isLoading: isTiposLoading, forcarRecarregamento, excluirTipo, renomearTipo } = useTipoVerbas(processId);
   const toast = useToast();
   const isEditMode = !!editingVerba;
+  const referenceItems = useLancamentosForReference(processId);
 
   const [formData, setFormData] = useState<NewVerbaComLancamento>({
     tipoVerba: editingVerba?.verba.tipoVerba || '',
@@ -531,6 +533,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
           rows={3}
           onExpand={() => handleExpandText('fundamentacao', 'Fundamentação')}
           fieldType="fundamentacao"
+          referenceItems={referenceItems}
         />
 
         <RichTextEditor
@@ -541,6 +544,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
           rows={3}
           onExpand={() => handleExpandText('comentariosCalculistas', 'Comentários')}
           fieldType="comentariosCalculistas"
+          referenceItems={referenceItems}
         />
 
         {isEditMode && (editingVerba?.lancamento.createdAt || editingVerba?.lancamento.updatedAt) && (

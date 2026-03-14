@@ -1,36 +1,25 @@
-/**
- * Componente RichTextEditor - Editor de texto rico com normalização de colagem
- * 
- * Normaliza automaticamente texto colado apenas nos campos:
- * - Fundamentação (data-field="fundamentacao")
- * - Comentários Calculistas (data-field="comentarios")
- */
-
-import React, { useMemo, useRef, useEffect, useImperativeHandle, forwardRef } from "react";
-import ReactQuill, { Quill } from "react-quill";
+import React, { useMemo, useRef, useEffect, useImperativeHandle, forwardRef, useState, useCallback } from "react";
+import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { EditorRef, InsertionField, usePDFViewer } from '../../contexts/PDFViewerContext';
 import { Maximize2 } from 'lucide-react';
+import LancamentoReferencePicker from './LancamentoReferencePicker';
+import { LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 
-/**
- * Props do componente RichTextEditor
- */
 interface RichTextEditorProps {
-  label?: string;                   // Label do campo (opcional)
-  placeholder: string;              // Texto de placeholder
-  value: string;                   // Valor atual do editor
-  onChange: (value: string) => void; // Callback para mudanças no conteúdo
-  required?: boolean;              // Se o campo é obrigatório
-  error?: string;                  // Mensagem de erro (se houver)
-  rows?: number;                   // Número de linhas (usado para calcular altura)
-  onExpand?: () => void;           // Callback para expandir o editor (opcional)
-  className?: string;              // Classes CSS adicionais
-  fieldType?: InsertionField;      // Tipo do campo para registro no contexto PDF
+  label?: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  error?: string;
+  rows?: number;
+  onExpand?: () => void;
+  className?: string;
+  fieldType?: InsertionField;
+  referenceItems?: LancamentoReferenceItem[];
 }
 
-/**
- * Componente RichTextEditor
- */
 const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
   label,
   placeholder,
@@ -41,56 +30,39 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
   rows = 4,
   onExpand,
   className = "",
-  fieldType
+  fieldType,
+  referenceItems = [],
 }, ref) => {
   const quillRef = useRef<ReactQuill>(null);
   const { registerEditor, unregisterEditor } = usePDFViewer();
 
-  /**
-   * Configuração dos módulos do ReactQuill
-   */
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const triggerIndexRef = useRef<number | null>(null);
+
   const modules = useMemo(() => ({
     toolbar: [
-      // Primeiro grupo: Formatação básica de texto
       ['bold', 'italic', 'underline'],
-      
-      // Segundo grupo: Listas
       [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      
-      // Terceiro grupo: Links e limpeza
       ['link', 'clean']
     ],
   }), []);
 
-  /**
-   * Configuração dos formatos permitidos no ReactQuill
-   */
   const formats = useMemo(() => [
     'bold', 'italic', 'underline',
     'list', 'bullet',
     'link'
   ], []);
 
-
-  /**
-   * Expõe métodos através da ref
-   */
   useImperativeHandle(ref, () => ({
     insertText: (text: string) => {
       const editor = quillRef.current?.getEditor();
       if (!editor) return;
-
-      // Obtém a posição atual do cursor
       const selection = editor.getSelection();
       const index = selection ? selection.index : editor.getLength();
-
-      // Insere o texto na posição do cursor
       editor.insertText(index, text, 'user');
-
-      // Move o cursor para o final do texto inserido
       editor.setSelection(index + text.length, 0);
-
-      // Atualiza o valor através do onChange
       const newContent = editor.root.innerHTML;
       onChange(newContent);
     },
@@ -99,9 +71,6 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     }
   }), [onChange]);
 
-  /**
-   * Effect para registrar/desregistrar editor no contexto PDF
-   */
   useEffect(() => {
     if (!fieldType) return;
 
@@ -109,12 +78,10 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       insertText: (text: string) => {
         const editor = quillRef.current?.getEditor();
         if (!editor) return;
-
         const selection = editor.getSelection();
         const index = selection ? selection.index : editor.getLength();
         editor.insertText(index, text, 'user');
         editor.setSelection(index + text.length, 0);
-
         const newContent = editor.root.innerHTML;
         onChange(newContent);
       },
@@ -124,40 +91,146 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     };
 
     registerEditor(fieldType, editorRef);
-
-    return () => {
-      unregisterEditor(fieldType);
-    };
+    return () => { unregisterEditor(fieldType); };
   }, [fieldType, registerEditor, unregisterEditor, onChange]);
 
-  /**
-   * Handler para mudanças no conteúdo do editor
-   */
-  const handleChange = (content: string) => {
-    onChange(content);
-  };
+  const getCaretRect = useCallback((): DOMRect | null => {
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return null;
+    const selection = editor.getSelection();
+    if (!selection) return null;
+    const bounds = editor.getBounds(selection.index);
+    if (!bounds) return null;
+    const editorEl = editor.root;
+    const editorRect = editorEl.getBoundingClientRect();
+    return new DOMRect(
+      editorRect.left + bounds.left,
+      editorRect.top + bounds.top,
+      bounds.width || 8,
+      bounds.height || 16,
+    );
+  }, []);
 
-  /**
-   * Classes CSS condicionais para o container
-   */
+  const closePicker = useCallback(() => {
+    setPickerOpen(false);
+    setPickerQuery('');
+    triggerIndexRef.current = null;
+  }, []);
+
+  const openPicker = useCallback((triggerIndex: number) => {
+    triggerIndexRef.current = triggerIndex;
+    setPickerQuery('');
+    const rect = getCaretRect();
+    setAnchorRect(rect);
+    setPickerOpen(true);
+  }, [getCaretRect]);
+
+  useEffect(() => {
+    if (!referenceItems.length) return;
+
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (pickerOpen) {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          closePicker();
+          return;
+        }
+        return;
+      }
+
+      if (e.key === '=' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const selection = editor.getSelection();
+        if (selection) {
+          e.preventDefault();
+          openPicker(selection.index);
+        }
+      }
+    };
+
+    const handleTextChange = () => {
+      if (!pickerOpen || triggerIndexRef.current === null) return;
+
+      const selection = editor.getSelection();
+      if (!selection) {
+        closePicker();
+        return;
+      }
+
+      const currentIndex = selection.index;
+      const triggerIdx = triggerIndexRef.current;
+
+      if (currentIndex < triggerIdx) {
+        closePicker();
+        return;
+      }
+
+      const text = editor.getText(triggerIdx, currentIndex - triggerIdx);
+      setPickerQuery(text);
+      const rect = getCaretRect();
+      if (rect) setAnchorRect(rect);
+    };
+
+    editor.root.addEventListener('keydown', handleKeyDown, true);
+    editor.on('text-change', handleTextChange);
+
+    return () => {
+      editor.root.removeEventListener('keydown', handleKeyDown, true);
+      editor.off('text-change', handleTextChange);
+    };
+  }, [pickerOpen, openPicker, closePicker, getCaretRect, referenceItems.length]);
+
+  const handleReferenceSelect = useCallback((item: LancamentoReferenceItem) => {
+    const editor = quillRef.current?.getEditor();
+    if (!editor || triggerIndexRef.current === null) {
+      closePicker();
+      return;
+    }
+
+    const triggerIdx = triggerIndexRef.current;
+    const selection = editor.getSelection();
+    const currentIdx = selection ? selection.index : triggerIdx;
+    const typedLength = currentIdx - triggerIdx;
+
+    editor.deleteText(triggerIdx, typedLength, 'user');
+
+    const chipHtml = buildChipHtml(item);
+
+    const delta = editor.clipboard.convert({ html: chipHtml + '&nbsp;' });
+    editor.updateContents(
+      new (editor.constructor as any).import('delta')()
+        .retain(triggerIdx)
+        .concat(delta),
+      'user'
+    );
+
+    const newLen = triggerIdx + delta.length();
+    editor.setSelection(newLen, 0);
+
+    setTimeout(() => {
+      const newContent = editor.root.innerHTML;
+      onChange(newContent);
+    }, 0);
+
+    closePicker();
+  }, [onChange, closePicker]);
+
   const containerClasses = useMemo(() => {
     const baseClasses = 'border rounded-md transition-all duration-200';
     const errorClasses = error ? 'border-red-500' : 'border-gray-300';
-    
     return `${baseClasses} ${errorClasses} ${className}`.trim();
   }, [error, className]);
 
   return (
     <div>
-      {/* Label do campo com indicador de obrigatório */}
       {label && (
         <div className="flex items-center justify-between mb-1">
           <label className="block text-sm font-medium text-gray-700">
             {label}
             {required && <span className="text-red-500 ml-1">*</span>}
           </label>
-          
-          {/* Botão de expandir (se callback fornecido) */}
           {onExpand && (
             <button
               type="button"
@@ -172,57 +245,94 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
         </div>
       )}
 
-      {/* Container do editor */}
       <div className={containerClasses}>
         <ReactQuill
           ref={quillRef}
           theme="snow"
           value={value}
-          onChange={handleChange}
+          onChange={onChange}
           placeholder={placeholder}
           modules={modules}
           formats={formats}
           preserveWhitespace={true}
-          style={{
-            backgroundColor: 'white'
-          }}
+          style={{ backgroundColor: 'white' }}
         />
       </div>
 
-      {/* Mensagem de erro (se houver) */}
       {error && (
         <p className="text-red-500 text-xs mt-1" role="alert">
           {error}
         </p>
       )}
-      
-      {/* Estilos específicos para o editor */}
-      <style jsx>{`
+
+      {pickerOpen && referenceItems.length > 0 && (
+        <LancamentoReferencePicker
+          items={referenceItems}
+          query={pickerQuery}
+          anchorRect={anchorRect}
+          onSelect={handleReferenceSelect}
+          onClose={closePicker}
+        />
+      )}
+
+      <style>{`
         .ql-container {
           min-height: ${rows * 1.5}em;
           max-height: ${rows * 3}em;
           overflow-y: auto;
         }
-        
         .ql-editor {
           min-height: ${rows * 1.2}em;
           padding: 12px 15px;
         }
-        
         .ql-toolbar {
           border-bottom: 1px solid #ccc;
           position: relative;
           z-index: 1;
         }
-        
         .ql-container {
           position: relative;
           z-index: 0;
+        }
+        .lancamento-ref-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          padding: 1px 6px;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          font-weight: 500;
+          cursor: pointer;
+          text-decoration: none;
+          user-select: none;
+          white-space: nowrap;
+        }
+        .lancamento-ref-chip[data-type="verba"] {
+          background: #dcfce7;
+          color: #15803d;
+          border: 1px solid #86efac;
+        }
+        .lancamento-ref-chip[data-type="documento"] {
+          background: #cffafe;
+          color: #0e7490;
+          border: 1px solid #67e8f9;
+        }
+        .lancamento-ref-chip:hover {
+          filter: brightness(0.95);
         }
       `}</style>
     </div>
   );
 });
+
+function buildChipHtml(item: LancamentoReferenceItem): string {
+  const icon = item.type === 'verba' ? '⬡' : '⬜';
+  const label = item.sublabel
+    ? `${item.label} · ${item.sublabel}`
+    : item.label;
+  const page = item.paginaVinculada ? ` p.${item.paginaVinculada}` : '';
+  return `<span class="lancamento-ref-chip" data-type="${item.type}" data-id="${item.id}" data-ref="lancamento" contenteditable="false">${icon} ${label}${page}</span>`;
+}
 
 RichTextEditor.displayName = 'RichTextEditor';
 

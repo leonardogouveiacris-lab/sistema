@@ -10,10 +10,12 @@
  * - Maintains PDF visibility in background
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { Verba, VerbaLancamento } from '../../types/Verba';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
-import { X, ChevronLeft, ChevronRight, Edit2, Trash2, FileText } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, CreditCard as Edit2, Trash2, FileText } from 'lucide-react';
+import { LancamentoRefRenderer } from '../ui';
+import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 
 interface VerbaDetailModalProps {
   verba: Verba;
@@ -40,7 +42,17 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
   hasPrevious = false,
   hasNext = false
 }) => {
-  const { navigateToPageWithHighlight } = usePDFViewer();
+  const { navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
+  const referenceItems = useLancamentosForReference(verba.processId);
+
+  const handleRefNavigate = useCallback((item: LancamentoReferenceItem) => {
+    if (item.highlightIds?.length && item.paginaVinculada) {
+      scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
+    } else if (item.paginaVinculada) {
+      navigateToPageWithHighlight(item.paginaVinculada, item.id);
+    }
+    onClose();
+  }, [navigateToPageWithHighlight, scrollToMultipleHighlights, onClose]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -169,9 +181,11 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
               <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
                 Fundamentação
               </h3>
-              <div
-                className="prose prose-sm max-w-none text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-200"
-                dangerouslySetInnerHTML={{ __html: lancamento.fundamentacao }}
+              <LancamentoRefRenderer
+                html={lancamento.fundamentacao}
+                referenceItems={referenceItems}
+                onNavigate={handleRefNavigate}
+                className="text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-200"
               />
             </div>
           )}
@@ -182,9 +196,11 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
               <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
                 Comentários
               </h3>
-              <div
-                className="prose prose-sm max-w-none text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-200"
-                dangerouslySetInnerHTML={{ __html: lancamento.comentariosCalculistas }}
+              <LancamentoRefRenderer
+                html={lancamento.comentariosCalculistas}
+                referenceItems={referenceItems}
+                onNavigate={handleRefNavigate}
+                className="text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-200"
               />
             </div>
           )}

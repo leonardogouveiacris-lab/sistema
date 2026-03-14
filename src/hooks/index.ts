@@ -23,3 +23,5 @@ export { useVerbaContext as useVerbas } from '../contexts/VerbaContext';
 export { useDocumentoContext as useDocumentos } from '../contexts/DocumentoContext';
 
 export type { OperationResult } from '../contexts/VerbaContext';
+export { useLancamentosForReference } from './useLancamentosForReference';
+export type { LancamentoReferenceItem, LancamentoRefType } from './useLancamentosForReference';

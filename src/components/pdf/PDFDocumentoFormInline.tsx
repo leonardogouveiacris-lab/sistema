@@ -8,6 +8,7 @@ import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { useDynamicEnums } from '../../hooks/useDynamicEnums';
+import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
 import { Save, X, FileText, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock } from 'lucide-react';
 
 interface PDFDocumentoFormInlineProps {
@@ -49,6 +50,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   const { state, clearHighlightIdsToLink, getCurrentDocument } = usePDFViewer();
   const { refreshEnumValues } = useDynamicEnums();
   const isEditMode = !!editingDocumento;
+  const referenceItems = useLancamentosForReference(processId);
 
   const [formData, setFormData] = useState<NewDocumento>({
     tipoDocumento: editingDocumento?.tipoDocumento || '',
@@ -322,6 +324,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           rows={3}
           onExpand={handleExpandText}
           fieldType="comentariosDocumento"
+          referenceItems={referenceItems}
         />
 
         {isEditMode && (editingDocumento?.createdAt || editingDocumento?.updatedAt) && (

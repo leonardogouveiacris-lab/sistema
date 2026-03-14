@@ -8,6 +8,7 @@ import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useDynamicEnums } from '../../hooks/useDynamicEnums';
+import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
 import { Save, X, Scale, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock } from 'lucide-react';
 
 interface PDFDecisionFormInlineProps {
@@ -46,6 +47,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
   const { state } = usePDFViewer();
   const { refreshEnumValues } = useDynamicEnums();
   const isEditMode = !!editingDecision;
+  const referenceItems = useLancamentosForReference(processId);
 
   const [formData, setFormData] = useState<NewDecision>({
     tipoDecisao: editingDecision?.tipoDecisao || '',
@@ -281,6 +283,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           rows={3}
           onExpand={handleExpandText}
           fieldType="comentariosDecisao"
+          referenceItems={referenceItems}
         />
 
         {isEditMode && (editingDecision?.createdAt || editingDecision?.updatedAt) && (
