@@ -4,6 +4,7 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { X, ChevronLeft, ChevronRight, CreditCard as Edit2, Trash2, FileText, File, Calendar, Clock } from 'lucide-react';
 import { LancamentoRefRenderer } from '../ui';
 import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
+import { useProcessTable } from '../../hooks/useProcessTable';
 import { useDraggablePanel } from '../../hooks/useDraggablePanel';
 
 interface DocumentoDetailModalProps {
@@ -30,10 +31,13 @@ const DocumentoDetailModal: React.FC<DocumentoDetailModalProps> = ({
   hasNext = false
 }) => {
   const { navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
-  const referenceItems = useLancamentosForReference(documento.processId);
+  const { table: processTable } = useProcessTable(documento.processId);
+  const referenceItems = useLancamentosForReference(documento.processId, processTable);
 
   const handleRefNavigate = useCallback((item: LancamentoReferenceItem) => {
-    if (item.highlightIds?.length && item.paginaVinculada) {
+    if (item.type === 'tabela') {
+      document.getElementById('process-tabela-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (item.highlightIds?.length && item.paginaVinculada) {
       scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
     } else if (item.paginaVinculada) {
       navigateToPageWithHighlight(item.paginaVinculada, item.id);

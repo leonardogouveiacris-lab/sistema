@@ -207,7 +207,7 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
       <ProcessDocumentManager processId={process.id} processNumber={process.numeroProcesso} />
 
       {/* Tabela de dados importada */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div id="process-tabela-section" className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-900">Tabela de Dados</h3>
           <p className="text-xs text-gray-500 mt-0.5">Importe planilhas Excel ou CSV para referenciar valores em Verbas e Decisões</p>

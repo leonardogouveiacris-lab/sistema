@@ -5,6 +5,7 @@ import { X, ChevronLeft, ChevronRight, CreditCard as Edit2, Trash2, FileText, Co
 import { LancamentoRefRenderer } from '../ui';
 import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 import { useDraggablePanel } from '../../hooks/useDraggablePanel';
+import { useProcessTable } from '../../hooks/useProcessTable';
 
 interface VerbaDetailModalProps {
   verba: Verba;
@@ -41,15 +42,22 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
   hasNext = false
 }) => {
   const { navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
-  const referenceItems = useLancamentosForReference(verba.processId);
+  const { table: processTable } = useProcessTable(verba.processId);
+  const referenceItems = useLancamentosForReference(verba.processId, processTable);
 
   const handleRefNavigate = useCallback((item: LancamentoReferenceItem) => {
-    if (item.highlightIds?.length && item.paginaVinculada) {
+    if (item.type === 'tabela') {
+      onClose();
+      setTimeout(() => {
+        document.getElementById('process-tabela-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    } else if (item.highlightIds?.length && item.paginaVinculada) {
       scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
+      onClose();
     } else if (item.paginaVinculada) {
       navigateToPageWithHighlight(item.paginaVinculada, item.id);
+      onClose();
     }
-    onClose();
   }, [navigateToPageWithHighlight, scrollToMultipleHighlights, onClose]);
 
   useEffect(() => {

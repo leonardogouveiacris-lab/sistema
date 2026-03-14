@@ -9,6 +9,7 @@ import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useDynamicEnums } from '../../hooks/useDynamicEnums';
 import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
+import { useProcessTable } from '../../hooks/useProcessTable';
 import { Save, X, Scale, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock } from 'lucide-react';
 
 interface PDFDecisionFormInlineProps {
@@ -47,10 +48,13 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
   const { state, navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
   const { refreshEnumValues } = useDynamicEnums();
   const isEditMode = !!editingDecision;
-  const referenceItems = useLancamentosForReference(processId);
+  const { table: processTable } = useProcessTable(processId);
+  const referenceItems = useLancamentosForReference(processId, processTable);
 
   const handleReferenceClick = useCallback((item: LancamentoReferenceItem) => {
-    if (item.highlightIds?.length && item.paginaVinculada) {
+    if (item.type === 'tabela') {
+      document.getElementById('process-tabela-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (item.highlightIds?.length && item.paginaVinculada) {
       scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
     } else if (item.paginaVinculada) {
       navigateToPageWithHighlight(item.paginaVinculada, item.id);

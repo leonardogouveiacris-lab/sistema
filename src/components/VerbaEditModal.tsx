@@ -6,6 +6,7 @@ import { DynamicEnumType } from '../services/dynamicEnum.service';
 import { useTipoVerbas } from '../hooks/useTipoVerbas';
 import { useToast } from '../contexts/ToastContext';
 import { useLancamentosForReference } from '../hooks/useLancamentosForReference';
+import { useProcessTable } from '../hooks/useProcessTable';
 import logger from '../utils/logger';
 import { Save, CreditCard as Edit2, BookOpen, AlertTriangle, Trash2, Calendar, Clock, Check, X } from 'lucide-react';
 
@@ -54,7 +55,8 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
   } = useTipoVerbas(verba.processId);
 
   const toast = useToast();
-  const referenceItems = useLancamentosForReference(verba.processId);
+  const { table: processTable } = useProcessTable(verba.processId);
+  const referenceItems = useLancamentosForReference(verba.processId, processTable);
 
   const [formData, setFormData] = useState<NewVerbaLancamento>({
     decisaoVinculada: '',

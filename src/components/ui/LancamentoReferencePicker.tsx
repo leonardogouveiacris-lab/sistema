@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FileText, Link2, Search, Scale } from 'lucide-react';
+import { FileText, Link2, Search, Scale, Table } from 'lucide-react';
 import { LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 
 interface LancamentoReferencePickerProps {
@@ -128,25 +128,34 @@ const LancamentoReferencePicker: React.FC<LancamentoReferencePickerProps> = ({
                 }`}
               >
                 <div className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center ${
-                  item.type === 'verba' ? 'bg-green-100' : item.type === 'decisao' ? 'bg-amber-100' : 'bg-cyan-100'
+                  item.type === 'verba' ? 'bg-green-100' : item.type === 'decisao' ? 'bg-amber-100' : item.type === 'tabela' ? 'bg-sky-100' : 'bg-cyan-100'
                 }`}>
                   {item.type === 'verba'
                     ? <Link2 size={11} className="text-green-600" />
                     : item.type === 'decisao'
                       ? <Scale size={11} className="text-amber-600" />
-                      : <FileText size={11} className="text-cyan-600" />
+                      : item.type === 'tabela'
+                        ? <Table size={11} className="text-sky-600" />
+                        : <FileText size={11} className="text-cyan-600" />
                   }
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-medium text-gray-800 truncate">{item.label}</span>
-                    {item.sublabel && (
+                    {item.type === 'tabela' ? (
+                      <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 bg-sky-100 text-sky-700">
+                        Col. {item.tableColumnLetter}
+                      </span>
+                    ) : item.sublabel && (
                       <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${getBadgeColor(item.sublabel)}`}>
                         {item.sublabel}
                       </span>
                     )}
                   </div>
-                  {item.paginaVinculada && (
+                  {item.type === 'tabela' && item.tableName && (
+                    <span className="text-xs text-gray-400">{item.tableName}</span>
+                  )}
+                  {item.type !== 'tabela' && item.paginaVinculada && (
                     <span className="text-xs text-gray-400">p.{item.paginaVinculada}</span>
                   )}
                 </div>

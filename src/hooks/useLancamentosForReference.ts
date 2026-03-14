@@ -2,8 +2,9 @@ import { useMemo } from 'react';
 import { useVerbaContext } from '../contexts/VerbaContext';
 import { useDocumentoContext } from '../contexts/DocumentoContext';
 import { useDecisionContext } from '../contexts/DecisionContext';
+import { ProcessTable } from '../types/ProcessTable';
 
-export type LancamentoRefType = 'verba' | 'documento' | 'decisao';
+export type LancamentoRefType = 'verba' | 'documento' | 'decisao' | 'tabela';
 
 export interface LancamentoReferenceItem {
   id: string;
@@ -13,9 +14,11 @@ export interface LancamentoReferenceItem {
   paginaVinculada?: number;
   highlightIds?: string[];
   processDocumentId?: string;
+  tableColumnLetter?: string;
+  tableName?: string;
 }
 
-export function useLancamentosForReference(processId: string): LancamentoReferenceItem[] {
+export function useLancamentosForReference(processId: string, processTable?: ProcessTable | null): LancamentoReferenceItem[] {
   const { verbas } = useVerbaContext();
   const { documentos } = useDocumentoContext();
   const { decisions } = useDecisionContext();
@@ -66,6 +69,19 @@ export function useLancamentosForReference(processId: string): LancamentoReferen
         });
       });
 
+    if (processTable) {
+      processTable.columns.forEach(col => {
+        items.push({
+          id: `table-col-${col.id}`,
+          type: 'tabela',
+          label: col.headerName || `Col. ${col.letter}`,
+          sublabel: `Col. ${col.letter}`,
+          tableColumnLetter: col.letter,
+          tableName: processTable.name,
+        });
+      });
+    }
+
     return items;
-  }, [verbas, documentos, decisions, processId]);
+  }, [verbas, documentos, decisions, processId, processTable]);
 }

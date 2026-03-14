@@ -4,6 +4,7 @@ import { DocumentoLancamento, DocumentoLancamentoCreateInput, DocumentoLancament
 import { useToast } from '../contexts/ToastContext';
 import { RichTextEditor, ExpandedTextModal } from './ui';
 import { useLancamentosForReference } from '../hooks/useLancamentosForReference';
+import { useProcessTable } from '../hooks/useProcessTable';
 import logger from '../utils/logger';
 
 const TIPO_BADGE_COLORS: Record<string, string> = {
@@ -37,7 +38,8 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
   onDelete,
 }) => {
   const toast = useToast();
-  const referenceItems = useLancamentosForReference(processId);
+  const { table: processTable } = useProcessTable(processId);
+  const referenceItems = useLancamentosForReference(processId, processTable);
   const [tipoDocumento, setTipoDocumento] = useState('');
   const [comentarios, setComentarios] = useState('');
   const [paginaVinculada, setPaginaVinculada] = useState('');

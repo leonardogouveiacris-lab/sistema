@@ -257,6 +257,8 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       label: item.label,
       sublabel: item.sublabel,
       paginaVinculada: item.paginaVinculada,
+      tableColumnLetter: item.tableColumnLetter,
+      tableName: item.tableName,
     }, 'user');
 
     editor.insertText(triggerIdx + 1, ' ', 'user');
@@ -378,6 +380,11 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
           background: #fef9c3;
           color: #854d0e;
           border: 1px solid #fde047;
+        }
+        .lancamento-ref-chip[data-type="tabela"] {
+          background: #e0f2fe;
+          color: #0369a1;
+          border: 1px solid #7dd3fc;
         }
         .lancamento-ref-chip:hover {
           filter: brightness(0.95);

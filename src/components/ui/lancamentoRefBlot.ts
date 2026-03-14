@@ -8,6 +8,8 @@ interface LancamentoRefValue {
   label: string;
   sublabel?: string;
   paginaVinculada?: number;
+  tableColumnLetter?: string;
+  tableName?: string;
 }
 
 class LancamentoRefBlot extends Embed {
@@ -22,12 +24,23 @@ class LancamentoRefBlot extends Embed {
     node.setAttribute('data-type', value.type);
     node.setAttribute('contenteditable', 'false');
 
-    const icon = value.type === 'verba' ? '⬡' : value.type === 'decisao' ? '◈' : '⬜';
-    const label = value.sublabel
-      ? `${value.label} · ${value.sublabel}`
-      : value.label;
-    const page = value.paginaVinculada ? ` p.${value.paginaVinculada}` : '';
-    node.textContent = `${icon} ${label}${page}`;
+    if (value.type === 'tabela') {
+      const colLetter = value.tableColumnLetter || value.sublabel || '';
+      node.textContent = `⊞ Col. ${colLetter}`;
+      if (value.tableColumnLetter) {
+        node.setAttribute('data-column-letter', value.tableColumnLetter);
+      }
+      if (value.tableName) {
+        node.setAttribute('data-table-name', value.tableName);
+      }
+    } else {
+      const icon = value.type === 'verba' ? '⬡' : value.type === 'decisao' ? '◈' : '⬜';
+      const label = value.sublabel
+        ? `${value.label} · ${value.sublabel}`
+        : value.label;
+      const page = value.paginaVinculada ? ` p.${value.paginaVinculada}` : '';
+      node.textContent = `${icon} ${label}${page}`;
+    }
 
     if (value.paginaVinculada !== undefined) {
       node.setAttribute('data-pagina', String(value.paginaVinculada));
@@ -49,6 +62,8 @@ class LancamentoRefBlot extends Embed {
       paginaVinculada: node.getAttribute('data-pagina')
         ? Number(node.getAttribute('data-pagina'))
         : undefined,
+      tableColumnLetter: node.getAttribute('data-column-letter') || undefined,
+      tableName: node.getAttribute('data-table-name') || undefined,
     };
   }
 }

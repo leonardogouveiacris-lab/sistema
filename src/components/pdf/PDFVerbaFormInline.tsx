@@ -12,6 +12,7 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useTipoVerbas } from '../../hooks/useTipoVerbas';
 import { useToast } from '../../contexts/ToastContext';
 import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
+import { useProcessTable } from '../../hooks/useProcessTable';
 import { Save, X, BookOpen, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock, Check, CreditCard as Edit2 } from 'lucide-react';
 
 interface PDFVerbaFormInlineProps {
@@ -53,10 +54,13 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
   const { tipos: tiposDisponiveis, isLoading: isTiposLoading, forcarRecarregamento, excluirTipo, renomearTipo } = useTipoVerbas(processId);
   const toast = useToast();
   const isEditMode = !!editingVerba;
-  const referenceItems = useLancamentosForReference(processId);
+  const { table: processTable } = useProcessTable(processId);
+  const referenceItems = useLancamentosForReference(processId, processTable);
 
   const handleReferenceClick = useCallback((item: LancamentoReferenceItem) => {
-    if (item.highlightIds?.length && item.paginaVinculada) {
+    if (item.type === 'tabela') {
+      document.getElementById('process-tabela-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (item.highlightIds?.length && item.paginaVinculada) {
       scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
     } else if (item.paginaVinculada) {
       navigateToPageWithHighlight(item.paginaVinculada, item.id);
