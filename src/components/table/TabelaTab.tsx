@@ -19,6 +19,7 @@ export function TabelaTab({ processId }: TabelaTabProps) {
     editCell,
     addFormula,
     editFormula,
+    renameColumnHeader,
     removeColumn,
     removeTable,
   } = useProcessTable(processId);
@@ -121,6 +122,7 @@ export function TabelaTab({ processId }: TabelaTabProps) {
           onEditCell={editCell}
           onAddFormula={handleAddFormula}
           onEditFormula={handleEditFormula}
+          onRenameColumn={renameColumnHeader}
           onDeleteColumn={removeColumn}
           onReplaceTable={() => setShowReplaceUpload(true)}
           onDeleteTable={() => setShowDeleteConfirm(true)}

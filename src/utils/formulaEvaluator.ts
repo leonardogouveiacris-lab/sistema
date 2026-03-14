@@ -118,6 +118,13 @@ export function validateFormulaExpression(
 export function formatFormulaResult(value: string): string {
   const n = parseFloat(value);
   if (isNaN(n)) return value;
-  if (Number.isInteger(n)) return String(n);
-  return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export function formatCellNumber(value: string | null): string {
+  if (value === null || value === '') return '';
+  const cleaned = String(value).replace(/[^\d.,-]/g, '').replace(',', '.');
+  const n = parseFloat(cleaned);
+  if (isNaN(n)) return value ?? '';
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

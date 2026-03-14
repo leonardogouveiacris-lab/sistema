@@ -286,6 +286,17 @@ export async function updateFormulaColumn(
   if (error) throw error;
 }
 
+export async function renameColumn(columnId: string, headerName: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase não configurado');
+
+  const { error } = await supabase
+    .from('process_table_columns')
+    .update({ header_name: headerName })
+    .eq('id', columnId);
+
+  if (error) throw error;
+}
+
 export async function deleteColumn(columnId: string, tableId: string): Promise<void> {
   if (!supabase) throw new Error('Supabase não configurado');
 

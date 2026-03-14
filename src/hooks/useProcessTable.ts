@@ -10,6 +10,7 @@ import {
   deleteColumn,
   deleteProcessTable,
   updateTableName,
+  renameColumn,
 } from '../services/tableImport.service';
 
 interface UseProcessTableReturn {
@@ -21,6 +22,7 @@ interface UseProcessTableReturn {
   editCell: (rowId: string, columnId: string, value: string | null) => Promise<void>;
   addFormula: (def: FormulaColumnDef) => Promise<void>;
   editFormula: (columnId: string, headerName: string, expression: string) => Promise<void>;
+  renameColumnHeader: (columnId: string, headerName: string) => Promise<void>;
   removeColumn: (columnId: string) => Promise<void>;
   removeTable: () => Promise<void>;
   renameTable: (name: string) => Promise<void>;
@@ -122,6 +124,22 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
     []
   );
 
+  const renameColumnHeader = useCallback(
+    async (columnId: string, headerName: string) => {
+      await renameColumn(columnId, headerName);
+      setTable((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          columns: prev.columns.map((col) =>
+            col.id !== columnId ? col : { ...col, headerName }
+          ),
+        };
+      });
+    },
+    []
+  );
+
   const removeColumn = useCallback(
     async (columnId: string) => {
       if (!table) return;
@@ -162,6 +180,7 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
     editCell,
     addFormula,
     editFormula,
+    renameColumnHeader,
     removeColumn,
     removeTable,
     renameTable,
