@@ -769,6 +769,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                 processId={processId}
                 onSave={handleSaveDecisionForm}
                 onCancel={cancelForm}
+                onDelete={state.formMode === 'edit-decision' ? async (id) => { await handleDeleteDecision(id); cancelForm(); return true; } : undefined}
                 editingDecision={editingDecision}
               />
             )}
@@ -957,6 +958,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                 decisions={decisions}
                 onSave={handleSaveVerbaForm}
                 onCancel={cancelForm}
+                onDelete={state.formMode === 'edit-verba' ? async (verbaId, lancamentoId) => { await handleDeleteVerba(verbaId, lancamentoId); cancelForm(); return true; } : undefined}
                 editingVerba={editingVerbaLancamento}
               />
             )}
@@ -1182,6 +1184,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                 processId={processId}
                 onSave={handleSaveDocumentoForm}
                 onCancel={cancelForm}
+                onDelete={state.formMode === 'edit-documento' ? async (id) => { await handleDeleteDocumento(id); cancelForm(); return true; } : undefined}
                 editingDocumento={editingDocumento}
               />
             )}

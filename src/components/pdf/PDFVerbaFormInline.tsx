@@ -9,13 +9,14 @@ import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useTipoVerbas } from '../../hooks/useTipoVerbas';
-import { Save, X, BookOpen, FileDigit } from 'lucide-react';
+import { Save, X, BookOpen, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock, Check, CreditCard as Edit2 } from 'lucide-react';
 
 interface PDFVerbaFormInlineProps {
   processId: string;
   decisions: Decision[];
   onSave: (verba: NewVerbaComLancamento) => Promise<boolean>;
   onCancel: () => void;
+  onDelete?: (verbaId: string, lancamentoId: string) => Promise<boolean>;
   editingVerba?: { verba: Verba; lancamento: VerbaLancamento } | null;
 }
 
@@ -31,11 +32,18 @@ function getSituacaoBadgeClass(situacao: string): string {
   return SITUACAO_BADGE_COLORS[situacao] || 'bg-gray-100 text-gray-700 border-gray-300';
 }
 
+function formatDate(date?: Date | string): string {
+  if (!date) return '';
+  const d = new Date(date);
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
   processId,
   decisions,
   onSave,
   onCancel,
+  onDelete,
   editingVerba = null
 }) => {
   const { state, clearHighlightIdsToLink, getCurrentDocument } = usePDFViewer();
@@ -50,12 +58,18 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
       situacao: editingVerba?.lancamento.situacao || '',
       fundamentacao: editingVerba?.lancamento.fundamentacao || '',
       comentariosCalculistas: editingVerba?.lancamento.comentariosCalculistas || '',
-      paginaVinculada: editingVerba?.lancamento.paginaVinculada || state.currentPage
+      paginaVinculada: editingVerba?.lancamento.paginaVinculada || state.currentPage,
+      checkCalculista: editingVerba?.lancamento.checkCalculista ?? false,
+      checkRevisor: editingVerba?.lancamento.checkRevisor ?? false,
     }
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isRenamingTipo, setIsRenamingTipo] = useState(false);
+  const [renameTipoValue, setRenameTipoValue] = useState(editingVerba?.verba.tipoVerba || '');
 
   const [expandedTextModal, setExpandedTextModal] = useState({
     isOpen: false,
@@ -108,7 +122,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleInputChange = (field: string, value: string | number) => {
+  const handleInputChange = (field: string, value: string | number | boolean) => {
     if (field === 'tipoVerba') {
       setFormData(prev => ({ ...prev, tipoVerba: value as string }));
     } else if (field === 'paginaVinculada') {
@@ -175,7 +189,9 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
               situacao: '',
               fundamentacao: '',
               comentariosCalculistas: '',
-              paginaVinculada: state.currentPage
+              paginaVinculada: state.currentPage,
+              checkCalculista: false,
+              checkRevisor: false,
             }
           });
           setErrors({});
@@ -186,6 +202,16 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
       setErrors({ form: errorMessage });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!editingVerba?.verba.id || !editingVerba?.lancamento.id || !onDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(editingVerba.verba.id, editingVerba.lancamento.id);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -217,71 +243,207 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
     handleCloseExpandedModal();
   }, [expandedTextModal.field, handleCloseExpandedModal]);
 
+  const handleConfirmRename = () => {
+    if (renameTipoValue.trim()) {
+      setFormData(prev => ({ ...prev, tipoVerba: renameTipoValue.trim() }));
+    }
+    setIsRenamingTipo(false);
+  };
+
+  const handleCancelRename = () => {
+    setRenameTipoValue(editingVerba?.verba.tipoVerba || formData.tipoVerba);
+    setIsRenamingTipo(false);
+  };
+
   const currentSituacao = formData.lancamento.situacao;
+  const checkCalculista = formData.lancamento.checkCalculista;
+  const checkRevisor = formData.lancamento.checkRevisor;
+
+  const checkCalculistaAt = editingVerba?.lancamento.checkCalculistaAt;
+  const checkRevisorAt = editingVerba?.lancamento.checkRevisorAt;
 
   return (
-    <div className="bg-white border border-green-200 rounded-xl shadow-sm mb-4 overflow-hidden">
-      <div className="px-4 pt-3.5 pb-3 border-b border-green-100 bg-green-50">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-start gap-2">
-            <div className="mt-0.5 p-1.5 bg-green-100 rounded-md flex-shrink-0">
-              <BookOpen size={13} className="text-green-700" />
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden">
+      <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={onCancel}
+            className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors flex-shrink-0"
+          >
+            <ArrowLeft size={13} />
+          </button>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="p-1.5 bg-green-100 rounded flex-shrink-0">
+              <BookOpen size={12} className="text-green-700" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-green-900">
-                  {isEditMode ? 'Editar Verba' : 'Nova Verba'}
-                </span>
-                {isEditMode && editingVerba?.verba.tipoVerba && (
-                  <span className="text-xs text-green-700 font-medium">{editingVerba.verba.tipoVerba}</span>
-                )}
+            <div className="min-w-0">
+              {isEditMode && isRenamingTipo ? (
+                <div className="flex items-center gap-1 mb-0.5">
+                  <input
+                    value={renameTipoValue}
+                    onChange={e => setRenameTipoValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleConfirmRename(); if (e.key === 'Escape') handleCancelRename(); }}
+                    className="text-xs font-bold text-gray-900 border-b border-blue-500 bg-transparent focus:outline-none"
+                    style={{ width: `${Math.max(renameTipoValue.length + 2, 12)}ch` }}
+                    autoFocus
+                  />
+                  <button onClick={handleConfirmRename} className="p-0.5 text-green-600 hover:text-green-700">
+                    <Check size={11} />
+                  </button>
+                  <button onClick={handleCancelRename} className="p-0.5 text-gray-400 hover:text-gray-600">
+                    <X size={11} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 mb-0.5">
+                  <span className="text-sm font-bold text-gray-900 truncate">
+                    {formData.tipoVerba || (isEditMode ? 'Editar Verba' : 'Nova Verba')}
+                  </span>
+                  {isEditMode && (
+                    <button
+                      onClick={() => { setRenameTipoValue(formData.tipoVerba); setIsRenamingTipo(true); }}
+                      className="p-0.5 text-gray-400 hover:text-blue-600 flex-shrink-0"
+                    >
+                      <Edit2 size={10} />
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="flex items-center gap-1 flex-wrap">
                 {currentSituacao && (
                   <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border ${getSituacaoBadgeClass(currentSituacao)}`}>
                     {currentSituacao}
                   </span>
                 )}
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <FileDigit size={10} className="text-green-500" />
-                <span className="text-xs text-green-600">
-                  p. {formData.lancamento.paginaVinculada || state.currentPage}
-                  {state.totalPages > 0 && <span className="text-green-400"> / {state.totalPages}</span>}
-                </span>
-                {errors.paginaVinculada && (
-                  <span className="text-red-500 text-xs">{errors.paginaVinculada}</span>
+                {(formData.lancamento.decisaoVinculada || formData.lancamento.paginaVinculada) && (
+                  <span className="text-xs text-gray-400">
+                    {formData.lancamento.decisaoVinculada && `· ${formData.lancamento.decisaoVinculada.split(' - ')[0]}`}
+                    {formData.lancamento.paginaVinculada ? ` · p.${formData.lancamento.paginaVinculada}` : ''}
+                  </span>
                 )}
               </div>
             </div>
           </div>
-          <button
-            onClick={onCancel}
-            className="p-1 text-green-500 hover:text-green-700 hover:bg-green-100 rounded transition-colors flex-shrink-0"
-          >
-            <X size={13} />
-          </button>
         </div>
+        <button
+          onClick={onCancel}
+          className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors flex-shrink-0"
+        >
+          <X size={13} />
+        </button>
       </div>
 
-      <div className="p-4 space-y-3">
+      <div className="p-3 space-y-2.5">
+        {isEditMode && isRenamingTipo && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-2 text-xs text-blue-700">
+            Renomear atualizará <strong>todos os lançamentos</strong> com este tipo.
+          </div>
+        )}
+
         {errors.form && (
           <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-xs text-red-700">{errors.form}</p>
           </div>
         )}
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500 flex-shrink-0">p.</span>
-          <input
-            type="number"
-            value={formData.lancamento.paginaVinculada || ''}
-            onChange={(e) => handleInputChange('paginaVinculada', parseInt(e.target.value) || 0)}
-            min={1}
-            max={state.totalPages}
-            className={`w-20 px-2 py-1 text-xs border rounded-md ${errors.paginaVinculada ? 'border-red-500' : 'border-gray-300'} focus:outline-none focus:ring-1 focus:ring-green-500`}
+        {!isEditMode && (
+          <CustomDropdown
+            label="Tipo de Verba"
+            placeholder={isTiposLoading ? "Carregando..." : "Selecione ou crie novo..."}
+            value={formData.tipoVerba}
+            options={tiposDisponiveis}
+            required={true}
+            error={errors.tipoVerba}
+            disabled={isTiposLoading}
+            onChange={(value) => handleInputChange('tipoVerba', value)}
+            allowCustomValues={true}
+            enumType={DynamicEnumType.TIPO_VERBA}
+            processId={processId}
+            onValueCreated={forcarRecarregamento}
           />
-          {state.totalPages > 0 && (
-            <span className="text-xs text-gray-400">de {state.totalPages}</span>
-          )}
+        )}
+
+        <CustomDropdown
+          label="Decisão Vinculada"
+          placeholder="Selecione..."
+          value={formData.lancamento.decisaoVinculada}
+          options={decisionOptions}
+          required={true}
+          error={errors.decisaoVinculada}
+          onChange={(value) => handleInputChange('decisaoVinculada', value)}
+        />
+
+        <CustomDropdown
+          label="Situação"
+          placeholder="Selecione ou crie nova..."
+          value={formData.lancamento.situacao}
+          required={true}
+          error={errors.situacao}
+          enumType={DynamicEnumType.SITUACAO_VERBA}
+          processId={processId}
+          onChange={(value) => handleInputChange('situacao', value)}
+          allowCustomValues={true}
+        />
+
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Página Vinculada</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={formData.lancamento.paginaVinculada || ''}
+              onChange={(e) => handleInputChange('paginaVinculada', parseInt(e.target.value) || 0)}
+              min={1}
+              max={state.totalPages}
+              className={`w-14 px-2 py-1.5 text-xs border rounded-md text-center ${errors.paginaVinculada ? 'border-red-500' : 'border-gray-300'} focus:outline-none focus:ring-1 focus:ring-green-500`}
+            />
+            {state.totalPages > 0 && (
+              <span className="text-xs text-gray-400">de {state.totalPages}</span>
+            )}
+            {errors.paginaVinculada && (
+              <span className="text-red-500 text-xs">{errors.paginaVinculada}</span>
+            )}
+          </div>
+        </div>
+
+        <div className="border border-gray-200 rounded-lg p-2.5 bg-gray-50">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Checklist de Aprovação</p>
+          <div className="space-y-1.5">
+            <div
+              className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${checkCalculista ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:border-gray-300'}`}
+              onClick={() => handleInputChange('checkCalculista', !checkCalculista)}
+            >
+              <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${checkCalculista ? 'bg-blue-600' : 'border-2 border-gray-300'}`}>
+                {checkCalculista && <Check size={9} className="text-white" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-medium ${checkCalculista ? 'text-blue-800' : 'text-gray-700'}`}>Calculista</p>
+                <p className="text-xs text-gray-400">
+                  {checkCalculista
+                    ? (checkCalculistaAt ? `Verificado em ${formatDate(checkCalculistaAt)}` : 'Verificado')
+                    : 'Aguardando'
+                  }
+                </p>
+              </div>
+            </div>
+
+            <div
+              className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${checkCalculista ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'} ${checkRevisor ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}
+              onClick={() => checkCalculista && handleInputChange('checkRevisor', !checkRevisor)}
+            >
+              <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${checkRevisor ? 'bg-green-600' : 'border-2 border-gray-300'}`}>
+                {checkRevisor && <Check size={9} className="text-white" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-medium ${checkRevisor ? 'text-green-800' : 'text-gray-700'}`}>Revisor</p>
+                <p className="text-xs text-gray-400">
+                  {checkRevisor
+                    ? (checkRevisorAt ? `Verificado em ${formatDate(checkRevisorAt)}` : 'Verificado')
+                    : checkCalculista ? 'Aguardando revisão' : 'Requer calculista'
+                  }
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {isEditMode && existingHighlightIds.length > 0 && (
@@ -306,43 +468,6 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
           </div>
         )}
 
-        <CustomDropdown
-          label="Tipo de Verba"
-          placeholder={isTiposLoading ? "Carregando..." : "Selecione ou crie novo..."}
-          value={formData.tipoVerba}
-          options={tiposDisponiveis}
-          required={true}
-          error={errors.tipoVerba}
-          disabled={isTiposLoading || isEditMode}
-          onChange={(value) => handleInputChange('tipoVerba', value)}
-          allowCustomValues={!isEditMode}
-          enumType={DynamicEnumType.TIPO_VERBA}
-          processId={processId}
-          onValueCreated={forcarRecarregamento}
-        />
-
-        <CustomDropdown
-          label="Decisão Vinculada"
-          placeholder="Selecione..."
-          value={formData.lancamento.decisaoVinculada}
-          options={decisionOptions}
-          required={true}
-          error={errors.decisaoVinculada}
-          onChange={(value) => handleInputChange('decisaoVinculada', value)}
-        />
-
-        <CustomDropdown
-          label="Situação"
-          placeholder="Selecione ou crie nova..."
-          value={formData.lancamento.situacao}
-          required={true}
-          error={errors.situacao}
-          enumType={DynamicEnumType.SITUACAO_VERBA}
-          processId={processId}
-          onChange={(value) => handleInputChange('situacao', value)}
-          allowCustomValues={true}
-        />
-
         <RichTextEditor
           label="Fundamentação"
           placeholder="Fundamentação jurídica..."
@@ -363,24 +488,85 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
           fieldType="comentariosCalculistas"
         />
 
-        <div className="flex gap-2 pt-1">
+        {isEditMode && (editingVerba?.lancamento.createdAt || editingVerba?.lancamento.updatedAt) && (
+          <div className="pt-2 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-400">
+            {editingVerba.lancamento.createdAt && (
+              <div className="flex items-center gap-1">
+                <Calendar size={10} />
+                <span>{formatDate(editingVerba.lancamento.createdAt)}</span>
+              </div>
+            )}
+            {editingVerba.lancamento.updatedAt && (
+              <div className="flex items-center gap-1">
+                <Clock size={10} />
+                <span>{formatDate(editingVerba.lancamento.updatedAt)}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showDeleteConfirm && (
+        <div className="mx-3 mb-2 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={13} className="text-red-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-xs font-medium text-red-800">Excluir este lançamento?</p>
+              <p className="text-xs text-red-600 mt-0.5">
+                {formData.tipoVerba}
+                {formData.lancamento.decisaoVinculada ? ` · ${formData.lancamento.decisaoVinculada.split(' - ')[0]}` : ''}
+                . Não pode ser desfeito.
+              </p>
+              <div className="flex gap-1.5 mt-2">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 py-1 text-xs font-medium text-red-700 bg-white border border-red-300 rounded"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="flex-1 py-1 text-xs font-medium text-white bg-red-600 rounded disabled:opacity-50"
+                >
+                  {isDeleting ? 'Excluindo...' : 'Excluir'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="px-3 py-2.5 border-t border-gray-100 flex items-center justify-between gap-2">
+        {isEditMode && onDelete ? (
+          <button
+            onClick={() => setShowDeleteConfirm(v => !v)}
+            disabled={isSaving || isDeleting}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${showDeleteConfirm ? 'bg-red-50 border-red-200 text-red-700' : 'text-red-500 border-red-200 hover:bg-red-50'}`}
+          >
+            <Trash2 size={12} /> Excluir
+          </button>
+        ) : (
+          <div />
+        )}
+        <div className="flex gap-1.5">
+          <button
+            onClick={onCancel}
+            disabled={isSaving}
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 border border-gray-300 rounded-md transition-colors"
+          >
+            Cancelar
+          </button>
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors"
+            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-md shadow-sm transition-colors"
           >
             {isSaving ? (
               <><span className="animate-spin text-xs">⟳</span><span>Salvando...</span></>
             ) : (
-              <><Save size={12} /><span>{isEditMode ? 'Salvar Alterações' : 'Salvar'}</span></>
+              <><Save size={11} /><span>Salvar</span></>
             )}
-          </button>
-          <button
-            onClick={onCancel}
-            disabled={isSaving}
-            className="flex-1 px-3 py-2 text-xs font-medium text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 border border-gray-300 rounded-lg transition-colors"
-          >
-            Cancelar
           </button>
         </div>
       </div>

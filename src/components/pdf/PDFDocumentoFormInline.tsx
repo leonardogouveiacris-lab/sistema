@@ -8,12 +8,13 @@ import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { useDynamicEnums } from '../../hooks/useDynamicEnums';
-import { Save, X, FileText, FileDigit } from 'lucide-react';
+import { Save, X, FileText, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock } from 'lucide-react';
 
 interface PDFDocumentoFormInlineProps {
   processId: string;
   onSave: (documento: NewDocumento) => Promise<boolean>;
   onCancel: () => void;
+  onDelete?: (id: string) => Promise<boolean>;
   editingDocumento?: Documento | null;
 }
 
@@ -32,10 +33,17 @@ function getTipoBadgeClass(tipo: string): string {
   return TIPO_BADGE_COLORS[tipo] || 'bg-gray-100 text-gray-700 border-gray-300';
 }
 
+function formatDate(date?: Date | string): string {
+  if (!date) return '';
+  const d = new Date(date);
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   processId,
   onSave,
   onCancel,
+  onDelete,
   editingDocumento = null
 }) => {
   const { state, clearHighlightIdsToLink, getCurrentDocument } = usePDFViewer();
@@ -51,6 +59,8 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [expandedTextModal, setExpandedTextModal] = useState({
     isOpen: false,
@@ -164,6 +174,16 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
     }
   };
 
+  const handleDelete = async () => {
+    if (!editingDocumento?.id || !onDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(editingDocumento.id);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleExpandText = useCallback(() => {
     setExpandedTextModal({
       isOpen: true,
@@ -184,59 +204,91 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   const currentTipo = formData.tipoDocumento;
 
   return (
-    <div className="bg-white border border-orange-200 rounded-xl shadow-sm mb-4 overflow-hidden">
-      <div className="px-4 pt-3.5 pb-3 border-b border-orange-100 bg-orange-50">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-start gap-2">
-            <div className="mt-0.5 p-1.5 bg-orange-100 rounded-md flex-shrink-0">
-              <FileText size={13} className="text-orange-700" />
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden">
+      <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={onCancel}
+            className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors flex-shrink-0"
+          >
+            <ArrowLeft size={13} />
+          </button>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="p-1.5 bg-orange-100 rounded flex-shrink-0">
+              <FileText size={12} className="text-orange-600" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-orange-900">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                <span className="text-sm font-bold text-gray-900 truncate">
                   {isEditMode ? 'Editar Documento' : 'Novo Documento'}
                 </span>
                 {currentTipo && (
-                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border ${getTipoBadgeClass(currentTipo)}`}>
+                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border flex-shrink-0 ${getTipoBadgeClass(currentTipo)}`}>
                     {currentTipo}
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <FileDigit size={10} className="text-orange-500" />
-                <span className="text-xs text-orange-600">
-                  p. {formData.paginaVinculada || state.currentPage}
-                  {state.totalPages > 0 && <span className="text-orange-400"> / {state.totalPages}</span>}
-                </span>
-                {errors.paginaVinculada && (
-                  <span className="text-red-500 text-xs">{errors.paginaVinculada}</span>
-                )}
-              </div>
+              {(formData.paginaVinculada || isEditMode) && (
+                <p className="text-xs text-gray-400 truncate">
+                  {formData.paginaVinculada ? `p. ${formData.paginaVinculada}` : ''}
+                  {formData.paginaVinculada && isEditMode && editingDocumento?.createdAt ? ' · ' : ''}
+                  {isEditMode && editingDocumento?.createdAt ? `Criado ${formatDate(editingDocumento.createdAt)}` : ''}
+                </p>
+              )}
             </div>
           </div>
-          <button
-            onClick={onCancel}
-            className="p-1 text-orange-500 hover:text-orange-700 hover:bg-orange-100 rounded transition-colors flex-shrink-0"
-          >
-            <X size={13} />
-          </button>
         </div>
+        <button
+          onClick={onCancel}
+          className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors flex-shrink-0"
+        >
+          <X size={13} />
+        </button>
       </div>
 
-      <div className="p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500 flex-shrink-0">p.</span>
-          <input
-            type="number"
-            value={formData.paginaVinculada || ''}
-            onChange={(e) => handleInputChange('paginaVinculada', parseInt(e.target.value) || 0)}
-            min={1}
-            max={state.totalPages}
-            className={`w-20 px-2 py-1 text-xs border rounded-md ${errors.paginaVinculada ? 'border-red-500' : 'border-gray-300'} focus:outline-none focus:ring-1 focus:ring-orange-500`}
-          />
-          {state.totalPages > 0 && (
-            <span className="text-xs text-gray-400">de {state.totalPages}</span>
-          )}
+      <div className="p-3 space-y-2.5">
+        {errors.processId && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-2">
+            <p className="text-red-700 text-xs">{errors.processId}</p>
+          </div>
+        )}
+        {errors.submit && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-2">
+            <p className="text-red-700 text-xs">{errors.submit}</p>
+          </div>
+        )}
+
+        <CustomDropdown
+          label="Tipo de Documento"
+          placeholder="Selecione ou digite..."
+          value={formData.tipoDocumento}
+          required={true}
+          error={errors.tipoDocumento}
+          onChange={(value) => handleInputChange('tipoDocumento', value)}
+          allowCustomValues={true}
+          enumType={DynamicEnumType.TIPO_DOCUMENTO}
+          processId={processId}
+          onValueCreated={() => refreshEnumValues(DynamicEnumType.TIPO_DOCUMENTO)}
+        />
+
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Página Vinculada</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={formData.paginaVinculada || ''}
+              onChange={(e) => handleInputChange('paginaVinculada', parseInt(e.target.value) || 0)}
+              min={1}
+              max={state.totalPages}
+              className={`w-14 px-2 py-1.5 text-xs border rounded-md text-center ${errors.paginaVinculada ? 'border-red-500' : 'border-gray-300'} focus:outline-none focus:ring-1 focus:ring-orange-500`}
+            />
+            {state.totalPages > 0 && (
+              <span className="text-xs text-gray-400">de {state.totalPages}</span>
+            )}
+            {errors.paginaVinculada && (
+              <span className="text-red-500 text-xs">{errors.paginaVinculada}</span>
+            )}
+          </div>
         </div>
 
         {isEditMode && existingHighlightIds.length > 0 && (
@@ -261,19 +313,6 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           </div>
         )}
 
-        <CustomDropdown
-          label="Tipo de Documento"
-          placeholder="Selecione ou digite..."
-          value={formData.tipoDocumento}
-          required={true}
-          error={errors.tipoDocumento}
-          onChange={(value) => handleInputChange('tipoDocumento', value)}
-          allowCustomValues={true}
-          enumType={DynamicEnumType.TIPO_DOCUMENTO}
-          processId={processId}
-          onValueCreated={() => refreshEnumValues(DynamicEnumType.TIPO_DOCUMENTO)}
-        />
-
         <RichTextEditor
           label="Comentários"
           placeholder="Comentários sobre o documento..."
@@ -284,35 +323,86 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           fieldType="comentariosDocumento"
         />
 
-        {errors.processId && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-2">
-            <p className="text-red-700 text-xs">{errors.processId}</p>
+        {isEditMode && (editingDocumento?.createdAt || editingDocumento?.updatedAt) && (
+          <div className="pt-2 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-400">
+            {editingDocumento.createdAt && (
+              <div className="flex items-center gap-1">
+                <Calendar size={10} />
+                <span>{formatDate(editingDocumento.createdAt)}</span>
+              </div>
+            )}
+            {editingDocumento.updatedAt && (
+              <div className="flex items-center gap-1">
+                <Clock size={10} />
+                <span>{formatDate(editingDocumento.updatedAt)}</span>
+              </div>
+            )}
           </div>
         )}
-        {errors.submit && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-2">
-            <p className="text-red-700 text-xs">{errors.submit}</p>
-          </div>
-        )}
+      </div>
 
-        <div className="flex gap-2 pt-1">
+      {showDeleteConfirm && (
+        <div className="mx-3 mb-2 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={13} className="text-red-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-xs font-medium text-red-800">
+                Excluir "{editingDocumento?.tipoDocumento}"?
+              </p>
+              <p className="text-xs text-red-600 mt-0.5">
+                {formData.paginaVinculada ? `Documento da p. ${formData.paginaVinculada}. ` : ''}
+                Não pode ser desfeito.
+              </p>
+              <div className="flex gap-1.5 mt-2">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 py-1 text-xs font-medium text-red-700 bg-white border border-red-300 rounded"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="flex-1 py-1 text-xs font-medium text-white bg-red-600 rounded disabled:opacity-50"
+                >
+                  {isDeleting ? 'Excluindo...' : 'Excluir'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="px-3 py-2.5 border-t border-gray-100 flex items-center justify-between gap-2">
+        {isEditMode && onDelete ? (
+          <button
+            onClick={() => setShowDeleteConfirm(v => !v)}
+            disabled={isSaving || isDeleting}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${showDeleteConfirm ? 'bg-red-50 border-red-200 text-red-700' : 'text-red-500 border-red-200 hover:bg-red-50'}`}
+          >
+            <Trash2 size={12} /> Excluir
+          </button>
+        ) : (
+          <div />
+        )}
+        <div className="flex gap-1.5">
+          <button
+            onClick={onCancel}
+            disabled={isSaving}
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 border border-gray-300 rounded-md transition-colors"
+          >
+            Cancelar
+          </button>
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors"
+            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 rounded-md shadow-sm transition-colors"
           >
             {isSaving ? (
               <><span className="animate-spin text-xs">⟳</span><span>Salvando...</span></>
             ) : (
-              <><Save size={12} /><span>{isEditMode ? 'Salvar Alterações' : 'Salvar'}</span></>
+              <><Save size={11} /><span>Salvar</span></>
             )}
-          </button>
-          <button
-            onClick={onCancel}
-            disabled={isSaving}
-            className="flex-1 px-3 py-2 text-xs font-medium text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 border border-gray-300 rounded-lg transition-colors"
-          >
-            Cancelar
           </button>
         </div>
       </div>
