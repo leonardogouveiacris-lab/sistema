@@ -85,6 +85,27 @@ const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
     return colors[tipo] || 'bg-gray-100 text-gray-800 border-gray-300';
   };
 
+  const getSafeDate = (dateValue?: string | Date | null): Date | null => {
+    if (!dateValue) return null;
+
+    const parsedDate = new Date(dateValue);
+    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+  };
+
+  const formatDateTime = (dateValue?: string | Date | null): string => {
+    const validDate = getSafeDate(dateValue);
+    return validDate ? validDate.toLocaleString('pt-BR') : 'Data indisponível';
+  };
+
+  const createdAtDate = getSafeDate(decision.dataCriacao);
+  const updatedAtDate = getSafeDate(decision.dataAtualizacao);
+  const createdAtTimestamp = createdAtDate?.getTime();
+  const updatedAtTimestamp = updatedAtDate?.getTime();
+  const shouldShowUpdatedAt =
+    createdAtTimestamp !== undefined &&
+    updatedAtTimestamp !== undefined &&
+    updatedAtTimestamp !== createdAtTimestamp;
+
   if (!isOpen) return null;
 
   return (
@@ -170,11 +191,11 @@ const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
           {/* Timestamps */}
           <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-200">
             <p className="mb-1">
-              <span className="font-medium">Criado em:</span> {new Date(decision.createdAt).toLocaleString('pt-BR')}
+              <span className="font-medium">Criado em:</span> {formatDateTime(decision.dataCriacao)}
             </p>
-            {decision.updatedAt !== decision.createdAt && (
+            {shouldShowUpdatedAt && (
               <p>
-                <span className="font-medium">Atualizado em:</span> {new Date(decision.updatedAt).toLocaleString('pt-BR')}
+                <span className="font-medium">Atualizado em:</span> {formatDateTime(decision.dataAtualizacao)}
               </p>
             )}
           </div>

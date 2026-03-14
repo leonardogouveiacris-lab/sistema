@@ -8,6 +8,7 @@ import { Verba } from '../types/Verba';
 import { Decision } from '../types/Decision';
 import { DocumentoLancamento } from '../types/DocumentoLancamento';
 import HTMLTemplate from './htmlTemplate';
+import { buildPaginaSortKey, sortByPagina } from './sortByPagina';
 import {
   formatarData,
   calcularResumoSituacoes,
@@ -75,7 +76,7 @@ class HTMLFormatter {
         <div class="flex items-start justify-between mb-2">
           <div class="flex items-center space-x-2">
             <span class="text-xs font-medium text-gray-500">#${index}</span>
-            ${lancamento.paginaVinculada ? `
+            ${lancamento.paginaVinculada != null ? `
               <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium text-cyan-700 bg-cyan-100 rounded">
                 p.${lancamento.paginaVinculada}
               </span>
@@ -138,12 +139,13 @@ class HTMLFormatter {
    * Otimizado com array.join()
    */
   static generateVerbaHTML(verba: Verba, index: number): string {
-    const temMudancaSituacao = this.hasMudancaSituacao(verba.lancamentos);
-    const resumoSituacoes = this.generateResumoSituacoes(verba.lancamentos);
-    const numLanc = verba.lancamentos.length;
+    const lancamentosOrdenados = [...verba.lancamentos].sort((a, b) => sortByPagina(a, b));
+    const temMudancaSituacao = this.hasMudancaSituacao(lancamentosOrdenados);
+    const resumoSituacoes = this.generateResumoSituacoes(lancamentosOrdenados);
+    const numLanc = lancamentosOrdenados.length;
     const plural = numLanc !== 1 ? 's' : '';
 
-    const lancamentosHTML = verba.lancamentos
+    const lancamentosHTML = lancamentosOrdenados
       .map((lancamento, lancIndex) => this.generateLancamentoHTML(lancamento, lancIndex + 1))
       .join('');
 
@@ -207,10 +209,11 @@ class HTMLFormatter {
       `;
     }
 
-    // Ordena verbas alfabeticamente por tipo
-    const verbasOrdenadas = [...verbas].sort((a, b) =>
-      a.tipoVerba.localeCompare(b.tipoVerba, 'pt-BR')
-    );
+    const verbasOrdenadas = [...verbas].sort((a, b) => {
+      const sortKeyA = buildPaginaSortKey(a.lancamentos, a.dataCriacao);
+      const sortKeyB = buildPaginaSortKey(b.lancamentos, b.dataCriacao);
+      return sortByPagina(sortKeyA, sortKeyB, { newestFirst: false });
+    });
 
     // Gera HTML para cada verba
     const verbasHTML = verbasOrdenadas
@@ -343,7 +346,9 @@ class HTMLFormatter {
       return '';
     }
 
-    const documentosHTML = documentos
+    const documentosOrdenados = [...documentos].sort((a, b) => sortByPagina(a, b));
+
+    const documentosHTML = documentosOrdenados
       .map((doc, index) => this.generateDocumentoLancamentoHTML(doc, index + 1))
       .join('');
 
@@ -437,7 +442,9 @@ class HTMLFormatter {
       return '';
     }
 
-    const decisionsHTML = decisions
+    const decisionsOrdenadas = [...decisions].sort((a, b) => sortByPagina(a, b));
+
+    const decisionsHTML = decisionsOrdenadas
       .map((decision, index) => this.generateDecisionHTML(decision, index + 1))
       .join('');
 

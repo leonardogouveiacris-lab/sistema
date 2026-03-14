@@ -53,3 +53,5 @@ export * from './errorHandler';    // ErrorType, SystemError, etc.
 export * from './tipoVerbaNormalizer'; // TipoValidationResult, etc.
 export * from './textFormatter';   // TextFormatterOptions, etc.
 export * from './performance';     // debounce, throttle, etc.
+// Utilitário compartilhado de ordenação
+export * from './sortByPagina';
