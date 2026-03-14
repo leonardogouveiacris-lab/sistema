@@ -773,7 +773,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
         >
           <div className="flex items-center justify-center gap-1.5">
             <FileText size={15} />
-            {state.sidebarTab === 'documentos' && <span>Docs</span>}
+            {state.sidebarTab === 'documentos' && <span>Documentos</span>}
             <span className="px-1.5 py-0.5 text-xs bg-gray-200 rounded-full">
               {processDocumentos.length}
             </span>
