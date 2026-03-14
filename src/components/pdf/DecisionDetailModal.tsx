@@ -10,10 +10,12 @@
  * - Maintains PDF visibility in background
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { Decision } from '../../types/Decision';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
-import { X, ChevronLeft, ChevronRight, Edit2, Trash2, FileText } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, CreditCard as Edit2, Trash2, FileText } from 'lucide-react';
+import { LancamentoRefRenderer } from '../ui';
+import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 
 interface DecisionDetailModalProps {
   decision: Decision;
@@ -38,7 +40,17 @@ const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
   hasPrevious = false,
   hasNext = false
 }) => {
-  const { navigateToPageWithHighlight } = usePDFViewer();
+  const { navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
+  const referenceItems = useLancamentosForReference(decision.processId);
+
+  const handleRefNavigate = useCallback((item: LancamentoReferenceItem) => {
+    if (item.highlightIds?.length && item.paginaVinculada) {
+      scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
+    } else if (item.paginaVinculada) {
+      navigateToPageWithHighlight(item.paginaVinculada, item.id);
+    }
+    onClose();
+  }, [navigateToPageWithHighlight, scrollToMultipleHighlights, onClose]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -168,9 +180,11 @@ const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
               <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
                 Resumo
               </h3>
-              <div
-                className="prose prose-sm max-w-none text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-200"
-                dangerouslySetInnerHTML={{ __html: decision.resumo }}
+              <LancamentoRefRenderer
+                html={decision.resumo}
+                referenceItems={referenceItems}
+                onNavigate={handleRefNavigate}
+                className="text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-200"
               />
             </div>
           )}
@@ -181,9 +195,11 @@ const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
               <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
                 Observações
               </h3>
-              <div
-                className="prose prose-sm max-w-none text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-200"
-                dangerouslySetInnerHTML={{ __html: decision.observacoes }}
+              <LancamentoRefRenderer
+                html={decision.observacoes}
+                referenceItems={referenceItems}
+                onNavigate={handleRefNavigate}
+                className="text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-200"
               />
             </div>
           )}
