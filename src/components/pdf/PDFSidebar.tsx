@@ -754,9 +754,10 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                   </div>
                   <button
                     onClick={startCreateDecision}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                    className="flex items-center gap-1 px-2 py-1.5 bg-white hover:bg-blue-50 border border-blue-300 text-blue-700 rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                    title="Nova Decisão"
                   >
-                    <Plus size={13} />
+                    <Scale size={12} />
                     <span>Decisão</span>
                   </button>
                 </div>
@@ -891,62 +892,53 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                   <button
                     onClick={startCreateVerba}
                     className="flex items-center gap-1 px-2 py-1.5 bg-white hover:bg-green-50 border border-green-300 text-green-700 rounded-lg text-xs font-medium transition-colors flex-shrink-0"
-                    title="Nova Verba (tipo)"
+                    title="Nova Verba"
                   >
                     <Layers size={12} />
                     <span>Verba</span>
                   </button>
                   <button
-                    onClick={startCreateVerba}
-                    className="flex items-center gap-1 px-2 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
-                    title="Novo Lançamento"
-                  >
-                    <Plus size={12} />
-                    <span>Lançto.</span>
-                  </button>
-                  <button
                     onClick={() => setGroupByTipoVerba(!groupByTipoVerba)}
-                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-all whitespace-nowrap ${
+                    className={`p-1.5 rounded-lg border transition-all flex-shrink-0 ${
                       groupByTipoVerba
-                        ? 'bg-green-100 text-green-700 border-green-300 shadow-sm'
-                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                        ? 'bg-green-100 text-green-700 border-green-300'
+                        : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'
                     }`}
                     title="Agrupar por Tipo de Verba"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="3" width="7" height="7" rx="1"/>
                       <rect x="14" y="3" width="7" height="7" rx="1"/>
                       <rect x="3" y="14" width="7" height="7" rx="1"/>
                       <rect x="14" y="14" width="7" height="7" rx="1"/>
                     </svg>
-                    <span className="hidden sm:inline">Agrupar</span>
                   </button>
                   {groupByTipoVerba && allTipoVerbas.length > 0 && (
-                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden flex-shrink-0">
                       <button
                         onClick={expandAllGroups}
                         disabled={allGroupsExpanded}
-                        className={`p-2 transition-colors ${
+                        className={`p-1.5 transition-colors ${
                           allGroupsExpanded
                             ? 'text-gray-300 cursor-not-allowed'
                             : 'text-green-600 hover:bg-green-50'
                         }`}
                         title="Expandir Todos"
                       >
-                        <ChevronsLeftRight size={14} />
+                        <ChevronsLeftRight size={12} />
                       </button>
-                      <div className="w-px h-5 bg-gray-200" />
+                      <div className="w-px h-4 bg-gray-200" />
                       <button
                         onClick={collapseAllGroups}
                         disabled={allGroupsCollapsed}
-                        className={`p-2 transition-colors ${
+                        className={`p-1.5 transition-colors ${
                           allGroupsCollapsed
                             ? 'text-gray-300 cursor-not-allowed'
                             : 'text-green-600 hover:bg-green-50'
                         }`}
                         title="Recolher Todos"
                       >
-                        <ChevronsRightLeft size={14} />
+                        <ChevronsRightLeft size={12} />
                       </button>
                     </div>
                   )}
@@ -1169,9 +1161,10 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                   </div>
                   <button
                     onClick={startCreateDocumento}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                    className="flex items-center gap-1 px-2 py-1.5 bg-white hover:bg-orange-50 border border-orange-300 text-orange-600 rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                    title="Novo Documento"
                   >
-                    <Plus size={13} />
+                    <FileText size={12} />
                     <span>Documento</span>
                   </button>
                 </div>
