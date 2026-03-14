@@ -27,7 +27,7 @@ import PDFDocumentoFormInline from './PDFDocumentoFormInline';
 import VerbaDetailModal from './VerbaDetailModal';
 import DecisionDetailModal from './DecisionDetailModal';
 import DocumentoDetailModal from './DocumentoDetailModal';
-import { Search, ChevronDown, ChevronUp, ChevronsLeftRight, ChevronsRightLeft, Scale, DollarSign, FileText, Plus, CheckCircle2, Circle, Clock } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ChevronsLeftRight, ChevronsRightLeft, Scale, DollarSign, FileText, Plus, CheckCircle2, Circle, Clock, Layers } from 'lucide-react';
 import { RenameService } from '../../services/rename.service';
 
 interface GroupProgressStats {
@@ -738,35 +738,30 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
         {/* Decisions Tab */}
         {state.sidebarTab === 'decisions' && (
           <div>
-            {/* Create Button */}
-            {state.formMode === 'view' && (
-              <button
-                onClick={startCreateDecision}
-                className="group w-full mb-4 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center space-x-2 hover:scale-[1.02] active:scale-[0.98]"
-              >
-                <Plus size={18} className="transition-transform duration-200 group-hover:rotate-90" />
-                <span>Nova Decisao</span>
-              </button>
-            )}
-
             {/* Controls Bar */}
             {state.formMode === 'view' && (
-              <div className="mb-4 space-y-3">
-                {/* Search */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="Buscar decisoes..."
-                    value={decisionSearchQuery}
-                    onChange={(e) => setDecisionSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+              <div className="mb-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
+                    <input
+                      type="text"
+                      placeholder="Buscar decisoes..."
+                      value={decisionSearchQuery}
+                      onChange={(e) => setDecisionSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <button
+                    onClick={startCreateDecision}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                  >
+                    <Plus size={13} />
+                    <span>Decisão</span>
+                  </button>
                 </div>
-
-                {/* Results count */}
                 {decisionSearchQuery && (
-                  <div className="text-xs text-gray-600">
+                  <div className="text-xs text-gray-500">
                     {filteredDecisions.length} resultado(s) encontrado(s)
                   </div>
                 )}
@@ -878,32 +873,37 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
         {/* Verbas Tab */}
         {state.sidebarTab === 'verbas' && (
           <div>
-            {/* Create Button */}
-            {state.formMode === 'view' && (
-              <button
-                onClick={startCreateVerba}
-                className="group w-full mb-4 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center space-x-2 hover:scale-[1.02] active:scale-[0.98]"
-              >
-                <Plus size={18} className="transition-transform duration-200 group-hover:rotate-90" />
-                <span>Nova Verba</span>
-              </button>
-            )}
-
             {/* Controls Bar */}
             {state.formMode === 'view' && (
               <div className="mb-4 space-y-2">
                 {/* Search with Grouping */}
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
                     <input
                       type="text"
                       placeholder="Buscar verbas..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     />
                   </div>
+                  <button
+                    onClick={startCreateVerba}
+                    className="flex items-center gap-1 px-2 py-1.5 bg-white hover:bg-green-50 border border-green-300 text-green-700 rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                    title="Nova Verba (tipo)"
+                  >
+                    <Layers size={12} />
+                    <span>Verba</span>
+                  </button>
+                  <button
+                    onClick={startCreateVerba}
+                    className="flex items-center gap-1 px-2 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                    title="Novo Lançamento"
+                  >
+                    <Plus size={12} />
+                    <span>Lançto.</span>
+                  </button>
                   <button
                     onClick={() => setGroupByTipoVerba(!groupByTipoVerba)}
                     className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-all whitespace-nowrap ${
@@ -1153,35 +1153,30 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
         {/* Documentos Tab */}
         {state.sidebarTab === 'documentos' && (
           <div>
-            {/* Create Button */}
-            {state.formMode === 'view' && (
-              <button
-                onClick={startCreateDocumento}
-                className="group w-full mb-4 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center space-x-2 hover:scale-[1.02] active:scale-[0.98]"
-              >
-                <Plus size={18} className="transition-transform duration-200 group-hover:rotate-90" />
-                <span>Novo Documento</span>
-              </button>
-            )}
-
             {/* Controls Bar */}
             {state.formMode === 'view' && (
-              <div className="mb-4 space-y-3">
-                {/* Search */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="Buscar documentos..."
-                    value={documentoSearchQuery}
-                    onChange={(e) => setDocumentoSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                  />
+              <div className="mb-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
+                    <input
+                      type="text"
+                      placeholder="Buscar documentos..."
+                      value={documentoSearchQuery}
+                      onChange={(e) => setDocumentoSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    />
+                  </div>
+                  <button
+                    onClick={startCreateDocumento}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+                  >
+                    <Plus size={13} />
+                    <span>Documento</span>
+                  </button>
                 </div>
-
-                {/* Results count */}
                 {documentoSearchQuery && (
-                  <div className="text-xs text-gray-600">
+                  <div className="text-xs text-gray-500">
                     {filteredDocumentos.length} resultado(s) encontrado(s)
                   </div>
                 )}
