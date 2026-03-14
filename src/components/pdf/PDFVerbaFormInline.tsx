@@ -6,9 +6,11 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { NewVerbaComLancamento, VerbaLancamento, Verba } from '../../types/Verba';
 import { Decision } from '../../types/Decision';
 import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
+import { DropdownItemAction } from '../ui/CustomDropdown';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useTipoVerbas } from '../../hooks/useTipoVerbas';
+import { useToast } from '../../contexts/ToastContext';
 import { Save, X, BookOpen, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock, Check, CreditCard as Edit2 } from 'lucide-react';
 
 interface PDFVerbaFormInlineProps {
@@ -47,7 +49,8 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
   editingVerba = null
 }) => {
   const { state, clearHighlightIdsToLink, getCurrentDocument } = usePDFViewer();
-  const { tipos: tiposDisponiveis, isLoading: isTiposLoading, forcarRecarregamento } = useTipoVerbas(processId);
+  const { tipos: tiposDisponiveis, isLoading: isTiposLoading, forcarRecarregamento, excluirTipo, renomearTipo } = useTipoVerbas(processId);
+  const toast = useToast();
   const isEditMode = !!editingVerba;
 
   const [formData, setFormData] = useState<NewVerbaComLancamento>({
@@ -70,6 +73,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isRenamingTipo, setIsRenamingTipo] = useState(false);
   const [renameTipoValue, setRenameTipoValue] = useState(editingVerba?.verba.tipoVerba || '');
+  const [deletingTipo, setDeletingTipo] = useState<string | null>(null);
 
   const [expandedTextModal, setExpandedTextModal] = useState({
     isOpen: false,
@@ -77,6 +81,26 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
     title: '',
     content: ''
   });
+
+  useEffect(() => {
+    setFormData({
+      tipoVerba: editingVerba?.verba.tipoVerba || '',
+      processId,
+      lancamento: {
+        decisaoVinculada: editingVerba?.lancamento.decisaoVinculada || '',
+        situacao: editingVerba?.lancamento.situacao || '',
+        fundamentacao: editingVerba?.lancamento.fundamentacao || '',
+        comentariosCalculistas: editingVerba?.lancamento.comentariosCalculistas || '',
+        paginaVinculada: editingVerba?.lancamento.paginaVinculada || state.currentPage,
+        checkCalculista: editingVerba?.lancamento.checkCalculista ?? false,
+        checkRevisor: editingVerba?.lancamento.checkRevisor ?? false,
+      }
+    });
+    setErrors({});
+    setShowDeleteConfirm(false);
+    setRenameTipoValue(editingVerba?.verba.tipoVerba || '');
+    setIsRenamingTipo(false);
+  }, [editingVerba?.lancamento.id]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -262,6 +286,36 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
   const checkCalculistaAt = editingVerba?.lancamento.checkCalculistaAt;
   const checkRevisorAt = editingVerba?.lancamento.checkRevisorAt;
 
+  const handleExcluirTipo = useCallback(async (tipo: string) => {
+    setDeletingTipo(tipo);
+    try {
+      const result = await excluirTipo(tipo, processId);
+      if (result.success) {
+        toast.success(result.message);
+        if (formData.tipoVerba === tipo) {
+          setFormData(prev => ({ ...prev, tipoVerba: '' }));
+        }
+        await forcarRecarregamento();
+      } else {
+        toast.error(result.message);
+      }
+    } finally {
+      setDeletingTipo(null);
+    }
+  }, [excluirTipo, processId, toast, formData.tipoVerba, forcarRecarregamento]);
+
+  const handleEditarTipo = useCallback((tipo: string) => {
+    setIsRenamingTipo(true);
+    setRenameTipoValue(tipo);
+    setFormData(prev => ({ ...prev, tipoVerba: tipo }));
+  }, []);
+
+  const tipoItemActions: DropdownItemAction = useMemo(() => ({
+    onEdit: handleEditarTipo,
+    onDelete: handleExcluirTipo,
+    isDeleting: (option) => deletingTipo === option
+  }), [handleEditarTipo, handleExcluirTipo, deletingTipo]);
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden">
       <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-2">
@@ -360,6 +414,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
             enumType={DynamicEnumType.TIPO_VERBA}
             processId={processId}
             onValueCreated={forcarRecarregamento}
+            itemActions={tipoItemActions}
           />
         )}
 

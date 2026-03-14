@@ -28,12 +28,13 @@ interface UseTipoVerbasReturn {
   tipos: string[];
   isLoading: boolean;
   error: string | null;
-  
+
   // Operações principais
   carregarTipos: (processId?: string) => Promise<void>;
   criarTipo: (tipo: string, processId?: string) => Promise<CreateTipoResult>;
   renomearTipo: (tipoAntigo: string, tipoNovo: string, processId?: string) => Promise<RenameResult>;
-  
+  excluirTipo: (tipo: string, processId?: string) => Promise<{ success: boolean; message: string; totalLancamentos?: number }>;
+
   // Utilitários
   validarTipo: (tipo: string) => { isValid: boolean; errorMessage?: string };
   obterEstatisticas: (tipo: string) => Promise<TipoStats>;
@@ -119,9 +120,30 @@ export const useTipoVerbas = (processId?: string): UseTipoVerbasReturn => {
     }
   }, [carregarTipos]);
 
+  const excluirTipo = useCallback(async (
+    tipo: string,
+    processId?: string
+  ): Promise<{ success: boolean; message: string; totalLancamentos?: number }> => {
+    try {
+      setError(null);
+      const resultado = await TipoVerbaService.removerTipo(tipo, processId);
+      if (resultado.success) {
+        await carregarTipos(processId);
+      } else {
+        setError(resultado.message);
+      }
+      return resultado;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao excluir tipo';
+      setError(errorMessage);
+      logger.error(errorMessage, 'useTipoVerbas.excluirTipo');
+      return { success: false, message: errorMessage };
+    }
+  }, [carregarTipos]);
+
   /**
    * Executa renomeação de tipo
-   * 
+   *
    * @param tipoAntigo - Tipo atual
    * @param tipoNovo - Novo tipo
    * @param processId - ID do processo (opcional)
@@ -194,17 +216,13 @@ export const useTipoVerbas = (processId?: string): UseTipoVerbasReturn => {
 
   // ===== RETORNO DO HOOK =====
   return {
-    // Estado atual
     tipos,
     isLoading,
     error,
-    
-    // Operações principais
     carregarTipos,
     criarTipo,
     renomearTipo,
-    
-    // Utilitários
+    excluirTipo,
     validarTipo,
     obterEstatisticas,
     forcarRecarregamento

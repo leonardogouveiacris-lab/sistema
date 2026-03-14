@@ -60,26 +60,27 @@ const TipoVerbaManagementModal: React.FC<TipoVerbaManagementModalProps> = ({
     carregarTipos,
     criarTipo,
     renomearTipo,
+    excluirTipo,
     validarTipo,
     obterEstatisticas,
     forcarRecarregamento
-  } = useTipoVerbas(processId); // Passa processId se fornecido
+  } = useTipoVerbas(processId);
 
   const toast = useToast();
 
-  // Estados do modal
   const [activeTab, setActiveTab] = useState<ManagementTab>(ManagementTab.LIST);
   const [tipoStats, setTipoStats] = useState<TipoStats[]>([]);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
-  
-  // Estados para criação de novo tipo
+
   const [newTipoName, setNewTipoName] = useState('');
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
-  
-  // Estados para renomeação
+
   const [selectedTipoForRename, setSelectedTipoForRename] = useState('');
   const [renameNewName, setRenameNewName] = useState('');
   const [renameErrors, setRenameErrors] = useState<Record<string, string>>({});
+
+  const [confirmDeleteTipo, setConfirmDeleteTipo] = useState<string | null>(null);
+  const [isDeletingTipo, setIsDeletingTipo] = useState(false);
 
   /**
    * Carregamento inicial quando o modal abre
@@ -285,9 +286,27 @@ const TipoVerbaManagementModal: React.FC<TipoVerbaManagementModalProps> = ({
   const handleExecuteRenameTipo = useCallback(async () => {
     await handleRenameTipo();
   }, [handleRenameTipo]);
-  /**
-   * Formata data para exibição
-   */
+  const handleDeleteTipo = useCallback(async (tipo: string) => {
+    setIsDeletingTipo(true);
+    try {
+      const result = await excluirTipo(tipo, processId);
+      if (result.success) {
+        toast.success(result.message);
+        setConfirmDeleteTipo(null);
+        await forcarRecarregamento();
+        await loadStatsForAllTipos();
+        if (onTipoUpdated) onTipoUpdated();
+      } else {
+        toast.error(result.message);
+        setConfirmDeleteTipo(null);
+      }
+    } catch (err) {
+      toast.error('Erro ao excluir tipo.');
+    } finally {
+      setIsDeletingTipo(false);
+    }
+  }, [excluirTipo, processId, toast, forcarRecarregamento, loadStatsForAllTipos, onTipoUpdated]);
+
   const formatDate = useCallback((date: Date): string => {
     return date.toLocaleDateString('pt-BR');
   }, []);
@@ -340,9 +359,48 @@ const TipoVerbaManagementModal: React.FC<TipoVerbaManagementModalProps> = ({
                   <div className="text-xs text-gray-500 mt-1">
                     Primeiro uso: {formatDate(stats.primeiraOcorrencia)}
                   </div>
+
+                  {confirmDeleteTipo === stats.tipoVerba && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-xs font-medium text-red-800 mb-1.5">
+                        Excluir "{stats.tipoVerba}"?
+                        {stats.totalLancamentos > 0 && (
+                          <span className="block text-red-600 font-normal mt-0.5">
+                            Possui {stats.totalLancamentos} lançamento{stats.totalLancamentos > 1 ? 's' : ''} — exclusão bloqueada.
+                          </span>
+                        )}
+                      </p>
+                      {stats.totalLancamentos === 0 && (
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => setConfirmDeleteTipo(null)}
+                            disabled={isDeletingTipo}
+                            className="flex-1 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTipo(stats.tipoVerba)}
+                            disabled={isDeletingTipo}
+                            className="flex-1 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 disabled:opacity-50"
+                          >
+                            {isDeletingTipo ? 'Excluindo...' : 'Confirmar'}
+                          </button>
+                        </div>
+                      )}
+                      {stats.totalLancamentos > 0 && (
+                        <button
+                          onClick={() => setConfirmDeleteTipo(null)}
+                          className="w-full py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                        >
+                          Fechar
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
-                
-                <div className="flex items-center space-x-2">
+
+                <div className="flex items-center space-x-2 flex-shrink-0 ml-3">
                   <button
                     onClick={() => {
                       setSelectedTipoForRename(stats.tipoVerba);
@@ -352,6 +410,16 @@ const TipoVerbaManagementModal: React.FC<TipoVerbaManagementModalProps> = ({
                     className="px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100"
                   >
                     Renomear
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteTipo(prev => prev === stats.tipoVerba ? null : stats.tipoVerba)}
+                    className={`px-2 py-1 text-xs font-medium rounded border transition-colors ${
+                      confirmDeleteTipo === stats.tipoVerba
+                        ? 'text-red-700 bg-red-100 border-red-300'
+                        : 'text-red-600 bg-red-50 border-red-200 hover:bg-red-100'
+                    }`}
+                  >
+                    Excluir
                   </button>
                 </div>
               </div>

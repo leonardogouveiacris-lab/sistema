@@ -6,9 +6,16 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { CreditCard as Edit2, Trash2 } from 'lucide-react';
 import { useDynamicEnums } from '../../hooks/useDynamicEnums';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import logger from '../../utils/logger';
+
+export interface DropdownItemAction {
+  onEdit?: (option: string) => void;
+  onDelete?: (option: string) => void;
+  isDeleting?: (option: string) => boolean;
+}
 
 interface CustomDropdownProps {
   label: string;
@@ -23,6 +30,7 @@ interface CustomDropdownProps {
   onChange: (value: string) => void;
   allowCustomValues?: boolean;
   onValueCreated?: () => void | Promise<void>;
+  itemActions?: DropdownItemAction;
 }
 
 /**
@@ -41,7 +49,8 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
   processId,
   onChange,
   allowCustomValues = false,
-  onValueCreated
+  onValueCreated,
+  itemActions
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
@@ -49,6 +58,7 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
   const [combinedOptions, setCombinedOptions] = useState<readonly string[]>(options || []);
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
+  const [confirmDeleteOption, setConfirmDeleteOption] = useState<string | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -113,15 +123,11 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
     );
   }, [customInput, combinedOptions, allowCustomValues]);
 
-  /**
-   * Classes CSS do container principal
-   * Memoizadas para evitar recalculo
-   */
   const containerClasses = useMemo(() => {
     const baseClasses = 'relative w-full border rounded-md focus-within:ring-2 focus-within:ring-blue-500 transition-all duration-200';
     const errorClasses = error ? 'border-red-500 focus-within:ring-red-500' : 'border-gray-300';
     const disabledClasses = disabled ? 'opacity-50 cursor-not-allowed' : '';
-    
+
     return `${baseClasses} ${errorClasses} ${disabledClasses}`.trim();
   }, [error, disabled]);
 
@@ -135,22 +141,17 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
     return `${baseClasses} ${stateClasses} ${disabledClasses}`.trim();
   }, [isOpen, isDisabled]);
 
-  /**
-   * Sincroniza valor interno com prop externa
-   */
   useEffect(() => {
     setInputValue(value);
     setCustomInput('');
   }, [value]);
 
-  /**
-   * Gerencia cliques fora do componente
-   */
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
         setCustomInput('');
+        setConfirmDeleteOption(null);
       }
     };
 
@@ -160,9 +161,6 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
     }
   }, [isOpen]);
 
-  /**
-   * Foca no input quando dropdown abre em modo de entrada customizada
-   */
   useEffect(() => {
     if (isOpen && allowCustomValues && inputRef.current) {
       inputRef.current.focus();
@@ -174,29 +172,20 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
     setIsOpen(true);
   }, [isDisabled]);
 
-  /**
-   * Fecha o dropdown
-   */
   const handleClose = useCallback(() => {
     setIsOpen(false);
     setCustomInput('');
+    setConfirmDeleteOption(null);
   }, []);
 
-  /**
-   * Seleciona uma opção da lista
-   *
-   * @param option - Opção selecionada pelo usuário
-   */
   const handleSelectOption = useCallback((option: string) => {
     setInputValue(option);
     onChange(option);
     setCustomInput('');
     setIsOpen(false);
+    setConfirmDeleteOption(null);
   }, [onChange]);
 
-  /**
-   * Manipula mudança no input de entrada customizada
-   */
   const handleCustomInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setCustomInput(e.target.value);
   }, []);
@@ -252,10 +241,6 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
     }
   }, [customInput, allowCustomValues, isCreatingCustom, enumType, addCustomValue, processId, onChange, onValueCreated, reloadCombinedValues]);
 
-  /**
-   * Lida com teclas pressionadas no botão
-   * Simplificado apenas para navegação do dropdown
-   */
   const handleButtonKeyDown = useCallback((e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'Enter':
@@ -268,14 +253,12 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
           e.preventDefault();
           setIsOpen(false);
           setCustomInput('');
+          setConfirmDeleteOption(null);
         }
         break;
     }
   }, [handleOpen, isOpen]);
 
-  /**
-   * Lida com teclas pressionadas no input customizado
-   */
   const handleInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && isNewValue && customInput.trim()) {
       e.preventDefault();
@@ -284,18 +267,50 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
       e.preventDefault();
       setCustomInput('');
       setIsOpen(false);
+      setConfirmDeleteOption(null);
     }
   }, [isNewValue, customInput, handleCreateCustomValue]);
 
+  const handleEditClick = useCallback((e: React.MouseEvent, option: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (itemActions?.onEdit) {
+      itemActions.onEdit(option);
+      setIsOpen(false);
+      setConfirmDeleteOption(null);
+    }
+  }, [itemActions]);
+
+  const handleDeleteClick = useCallback((e: React.MouseEvent, option: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setConfirmDeleteOption(prev => prev === option ? null : option);
+  }, []);
+
+  const handleConfirmDelete = useCallback((e: React.MouseEvent, option: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (itemActions?.onDelete) {
+      itemActions.onDelete(option);
+      setConfirmDeleteOption(null);
+    }
+  }, [itemActions]);
+
+  const handleCancelDelete = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setConfirmDeleteOption(null);
+  }, []);
+
+  const hasItemActions = !!(itemActions?.onEdit || itemActions?.onDelete);
+
   return (
     <div>
-      {/* Label do campo */}
       <label className="block text-sm font-medium text-gray-700 mb-1">
         {label}
         {required && <span className="text-red-500 ml-1">*</span>}
       </label>
 
-      {/* Container principal do dropdown */}
       <div ref={dropdownRef} className={containerClasses}>
         <button
           type="button"
@@ -328,7 +343,6 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
             role="listbox"
             aria-label={`Opções para ${label}`}
           >
-            {/* Input de busca/criação customizada */}
             {allowCustomValues && (
               <div className="p-2 border-b border-gray-200 bg-gray-50">
                 <input
@@ -341,7 +355,6 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
 
-                {/* Botão para criar novo valor */}
                 {isNewValue && customInput.trim() && (
                   <button
                     type="button"
@@ -365,23 +378,75 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
               </div>
             )}
 
-            {/* Lista de opções disponíveis */}
             <div className="overflow-y-auto max-h-60">
               {filteredOptions.length > 0 ? (
                 filteredOptions.map((option, index) => (
-                  <button
-                    key={`${option}-${index}`}
-                    type="button"
-                    onClick={() => handleSelectOption(option)}
-                    className={`
-                      w-full px-3 py-2 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none text-sm
-                      ${value === option ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-900'}
-                    `}
-                    role="option"
-                    aria-selected={value === option}
-                  >
-                    {option}
-                  </button>
+                  <div key={`${option}-${index}`} className="group relative">
+                    {confirmDeleteOption === option ? (
+                      <div className="px-3 py-2 bg-red-50 border-b border-red-100">
+                        <p className="text-xs font-medium text-red-700 mb-1.5">Excluir "{option}"?</p>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => handleCancelDelete(e)}
+                            className="flex-1 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleConfirmDelete(e, option)}
+                            disabled={itemActions?.isDeleting?.(option)}
+                            className="flex-1 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 disabled:opacity-50 transition-colors"
+                          >
+                            {itemActions?.isDeleting?.(option) ? 'Excluindo...' : 'Excluir'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`flex items-center ${hasItemActions ? 'pr-1' : ''} ${value === option ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectOption(option)}
+                          className={`
+                            flex-1 px-3 py-2 text-left focus:outline-none text-sm min-w-0 truncate
+                            ${value === option ? 'text-blue-600 font-medium' : 'text-gray-900'}
+                          `}
+                          role="option"
+                          aria-selected={value === option}
+                        >
+                          {option}
+                        </button>
+
+                        {hasItemActions && (
+                          <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity pr-1">
+                            {itemActions?.onEdit && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleEditClick(e, option)}
+                                className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                                title={`Editar "${option}"`}
+                                tabIndex={-1}
+                              >
+                                <Edit2 size={11} />
+                              </button>
+                            )}
+                            {itemActions?.onDelete && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteClick(e, option)}
+                                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                title={`Excluir "${option}"`}
+                                tabIndex={-1}
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 ))
               ) : (
                 <div className="px-3 py-2 text-gray-500 text-center text-sm" role="option">
@@ -396,7 +461,6 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
         )}
       </div>
 
-      {/* Mensagem de erro */}
       {error && (
         <p className="text-red-500 text-xs mt-1" role="alert">
           {error}

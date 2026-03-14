@@ -416,8 +416,79 @@ export class TipoVerbaService {
   }
 
   /**
+   * Remove um tipo personalizado da tabela custom_enum_values
+   * Bloqueia exclusão se houver verbas/lançamentos vinculados
+   *
+   * @param tipo - Tipo a ser removido
+   * @param processId - ID do processo (opcional)
+   * @returns Promise com sucesso/erro
+   */
+  static async removerTipo(tipo: string, processId?: string): Promise<{ success: boolean; message: string; totalLancamentos?: number }> {
+    try {
+      const tipoNormalizado = TipoVerbaNormalizer.normalize(tipo);
+
+      if (!supabase) {
+        return { success: false, message: 'Supabase não disponível' };
+      }
+
+      let verbasQuery = supabase
+        .from('verbas')
+        .select('id, verba_lancamentos(id)')
+        .eq('tipo_verba', tipoNormalizado);
+
+      if (processId) {
+        verbasQuery = verbasQuery.eq('process_id', processId);
+      }
+
+      const { data: verbas, error: verbasError } = await verbasQuery;
+
+      if (verbasError) {
+        throw new Error(`Erro ao verificar uso: ${verbasError.message}`);
+      }
+
+      type VerbaComLancamentos = { id: string; verba_lancamentos: Array<{ id: string }> | null };
+      const verbasEncontradas = (verbas || []) as VerbaComLancamentos[];
+      const totalLancamentos = verbasEncontradas.reduce((acc, v) => acc + (v.verba_lancamentos?.length || 0), 0);
+
+      if (totalLancamentos > 0) {
+        return {
+          success: false,
+          message: `Este tipo possui ${totalLancamentos} lançamento${totalLancamentos > 1 ? 's' : ''} vinculado${totalLancamentos > 1 ? 's' : ''}. Remova os lançamentos antes de excluir o tipo.`,
+          totalLancamentos
+        };
+      }
+
+      const { error: deleteError } = await supabase
+        .from('custom_enum_values')
+        .delete()
+        .eq('enum_name', 'tipo_verba')
+        .eq('enum_value', tipoNormalizado);
+
+      if (deleteError) {
+        throw new Error(`Erro ao remover tipo: ${deleteError.message}`);
+      }
+
+      this.limparCache();
+
+      return { success: true, message: `Tipo "${tipoNormalizado}" removido com sucesso`, totalLancamentos: 0 };
+
+    } catch (error) {
+      logger.errorWithException(
+        `Falha ao remover tipo: "${tipo}"`,
+        error as Error,
+        'TipoVerbaService.removerTipo',
+        { tipo, processId }
+      );
+      return {
+        success: false,
+        message: `Erro ao remover tipo: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
+      };
+    }
+  }
+
+  /**
    * Verifica se um tipo está sendo usado no sistema
-   * 
+   *
    * @param tipo - Tipo a ser verificado
    * @param processId - ID do processo (opcional) para escopo limitado
    * @returns Promise<boolean> - true se está sendo usado
