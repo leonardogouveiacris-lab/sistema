@@ -728,16 +728,16 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       <div className="flex border-b border-gray-200 bg-white">
         <button
           onClick={() => setSidebarTab('decisions')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 px-2 py-3 text-sm font-medium transition-colors ${
             state.sidebarTab === 'decisions'
               ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
           }`}
           aria-label="Aba de Decisões Judiciais"
         >
-          <div className="flex items-center justify-center space-x-2">
-            <Scale size={16} />
-            <span>Decisões</span>
+          <div className="flex items-center justify-center gap-1.5">
+            <Scale size={15} />
+            {state.sidebarTab === 'decisions' && <span>Decisões</span>}
             <span className="px-1.5 py-0.5 text-xs bg-gray-200 rounded-full">
               {processDecisions.length}
             </span>
@@ -746,16 +746,16 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
 
         <button
           onClick={() => setSidebarTab('verbas')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 px-2 py-3 text-sm font-medium transition-colors ${
             state.sidebarTab === 'verbas'
               ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
           }`}
           aria-label="Aba de Verbas"
         >
-          <div className="flex items-center justify-center space-x-2">
-            <DollarSign size={16} />
-            <span>Verbas</span>
+          <div className="flex items-center justify-center gap-1.5">
+            <DollarSign size={15} />
+            {state.sidebarTab === 'verbas' && <span>Verbas</span>}
             <span className="px-1.5 py-0.5 text-xs bg-gray-200 rounded-full">
               {allLancamentos.length}
             </span>
@@ -764,16 +764,16 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
 
         <button
           onClick={() => setSidebarTab('documentos')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 px-2 py-3 text-sm font-medium transition-colors ${
             state.sidebarTab === 'documentos'
               ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
           }`}
           aria-label="Aba de Documentos"
         >
-          <div className="flex items-center justify-center space-x-2">
-            <FileText size={16} />
-            <span>Docs</span>
+          <div className="flex items-center justify-center gap-1.5">
+            <FileText size={15} />
+            {state.sidebarTab === 'documentos' && <span>Docs</span>}
             <span className="px-1.5 py-0.5 text-xs bg-gray-200 rounded-full">
               {processDocumentos.length}
             </span>
@@ -782,16 +782,16 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
 
         <button
           onClick={() => setSidebarTab('comments')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 px-2 py-3 text-sm font-medium transition-colors ${
             state.sidebarTab === 'comments'
               ? 'text-teal-600 border-b-2 border-teal-600 bg-teal-50'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
           }`}
           aria-label="Aba de Comentarios"
         >
-          <div className="flex items-center justify-center space-x-2">
-            <MessageCircle size={16} />
-            <span>Notas</span>
+          <div className="flex items-center justify-center gap-1.5">
+            <MessageCircle size={15} />
+            {state.sidebarTab === 'comments' && <span>Notas</span>}
             <span className="px-1.5 py-0.5 text-xs bg-gray-200 rounded-full">
               {state.comments.length}
             </span>
