@@ -171,6 +171,27 @@ const VerbaLancamentoCard: React.FC<VerbaLancamentoCardProps> = ({
         )}
       </div>
 
+      <div className={`flex items-center gap-2 px-3 pt-1.5 pb-0.5 text-xs text-gray-400 ${isHighlighted ? 'bg-green-50/60' : 'bg-gray-50'}`}>
+        {hasHighlights && (
+          <span className="flex items-center gap-0.5 text-blue-400">
+            <Link2 size={9} />
+            {highlightIds.length}
+          </span>
+        )}
+        <Tooltip content={`Criado em: ${formatDateTime(lancamento.dataCriacao)}`}>
+          <span className="cursor-default flex items-center gap-1">
+            <Calendar size={10} className="flex-shrink-0" />
+            {formatDateTime(lancamento.dataCriacao)}
+          </span>
+        </Tooltip>
+        <Tooltip content={`Atualizado em: ${formatDateTime(lancamento.dataAtualizacao)}`}>
+          <span className="cursor-default flex items-center gap-1">
+            <Clock size={10} className="flex-shrink-0" />
+            {formatDateTime(lancamento.dataAtualizacao)}
+          </span>
+        </Tooltip>
+      </div>
+
       <div className={`flex items-center justify-between px-3 py-1.5 border-t ${isHighlighted ? 'border-green-200 bg-green-50/60' : 'border-gray-100 bg-gray-50'}`}>
         {onToggleCheck ? (
           <button
@@ -199,26 +220,7 @@ const VerbaLancamentoCard: React.FC<VerbaLancamentoCardProps> = ({
           </button>
         ) : <div />}
 
-        <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
-          {hasHighlights && (
-            <span className="flex items-center gap-0.5 text-blue-400">
-              <Link2 size={9} />
-              {highlightIds.length}
-            </span>
-          )}
-          <Tooltip content={`Criado em: ${formatDateTime(lancamento.dataCriacao)}`}>
-            <span className="cursor-default flex items-center gap-1">
-              <Calendar size={10} className="flex-shrink-0" />
-              {formatDateTime(lancamento.dataCriacao)}
-            </span>
-          </Tooltip>
-          <Tooltip content={`Atualizado em: ${formatDateTime(lancamento.dataAtualizacao)}`}>
-            <span className="cursor-default flex items-center gap-1">
-              <Clock size={10} className="flex-shrink-0" />
-              {formatDateTime(lancamento.dataAtualizacao)}
-            </span>
-          </Tooltip>
-        </div>
+        <div />
       </div>
     </div>
   );

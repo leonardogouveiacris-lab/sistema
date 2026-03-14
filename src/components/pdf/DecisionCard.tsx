@@ -122,21 +122,21 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
             {preview}
           </p>
         )}
+      </div>
 
-        <div className="flex items-center gap-3 mt-2">
-          <Tooltip content={`Criado em: ${formatDateTime(decision.dataCriacao)}`}>
-            <span className="text-xs text-gray-400 cursor-default flex items-center gap-1">
-              <Calendar size={10} className="flex-shrink-0" />
-              {formatDateTime(decision.dataCriacao)}
-            </span>
-          </Tooltip>
-          <Tooltip content={`Atualizado em: ${formatDateTime(decision.dataAtualizacao)}`}>
-            <span className="text-xs text-gray-400 cursor-default flex items-center gap-1">
-              <Clock size={10} className="flex-shrink-0" />
-              {formatDateTime(decision.dataAtualizacao)}
-            </span>
-          </Tooltip>
-        </div>
+      <div className={`flex items-center gap-2 px-3 pt-1.5 pb-1 text-xs text-gray-400 border-t ${isHighlighted ? 'border-blue-200 bg-blue-50/60' : 'border-gray-100 bg-gray-50'}`}>
+        <Tooltip content={`Criado em: ${formatDateTime(decision.dataCriacao)}`}>
+          <span className="cursor-default flex items-center gap-1">
+            <Calendar size={10} className="flex-shrink-0" />
+            {formatDateTime(decision.dataCriacao)}
+          </span>
+        </Tooltip>
+        <Tooltip content={`Atualizado em: ${formatDateTime(decision.dataAtualizacao)}`}>
+          <span className="cursor-default flex items-center gap-1">
+            <Clock size={10} className="flex-shrink-0" />
+            {formatDateTime(decision.dataAtualizacao)}
+          </span>
+        </Tooltip>
       </div>
     </div>
   );

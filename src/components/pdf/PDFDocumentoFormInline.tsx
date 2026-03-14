@@ -219,12 +219,13 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                <span className="text-sm font-bold text-gray-900 truncate">
-                  {isEditMode ? 'Editar Documento' : 'Novo Documento'}
-                </span>
-                {currentTipo && (
+                {currentTipo ? (
                   <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border flex-shrink-0 ${getTipoBadgeClass(currentTipo)}`}>
                     {currentTipo}
+                  </span>
+                ) : (
+                  <span className="text-sm font-bold text-gray-900 truncate">
+                    {isEditMode ? 'Editar Documento' : 'Novo Documento'}
                   </span>
                 )}
               </div>

@@ -124,27 +124,27 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
             {preview}
           </p>
         )}
+      </div>
 
-        <div className="flex items-center gap-3 mt-2">
-          {hasHighlights && (
-            <span className="text-xs text-blue-400 flex items-center gap-0.5 mr-auto">
-              <Link2 size={9} />
-              {highlightIds.length} destaque{highlightIds.length !== 1 ? 's' : ''}
-            </span>
-          )}
-          <Tooltip content={`Criado em: ${formatDateTime(documento.dataCriacao)}`}>
-            <span className="text-xs text-gray-400 cursor-default flex items-center gap-1">
-              <Calendar size={10} className="flex-shrink-0" />
-              {formatDateTime(documento.dataCriacao)}
-            </span>
-          </Tooltip>
-          <Tooltip content={`Atualizado em: ${formatDateTime(documento.dataAtualizacao)}`}>
-            <span className="text-xs text-gray-400 cursor-default flex items-center gap-1">
-              <Clock size={10} className="flex-shrink-0" />
-              {formatDateTime(documento.dataAtualizacao)}
-            </span>
-          </Tooltip>
-        </div>
+      <div className={`flex items-center gap-2 px-3 pt-1.5 pb-1 text-xs text-gray-400 border-t ${isHighlighted ? 'border-orange-200 bg-orange-50/60' : 'border-gray-100 bg-gray-50'}`}>
+        {hasHighlights && (
+          <span className="flex items-center gap-0.5 text-blue-400 mr-1">
+            <Link2 size={9} />
+            {highlightIds.length}
+          </span>
+        )}
+        <Tooltip content={`Criado em: ${formatDateTime(documento.dataCriacao)}`}>
+          <span className="cursor-default flex items-center gap-1">
+            <Calendar size={10} className="flex-shrink-0" />
+            {formatDateTime(documento.dataCriacao)}
+          </span>
+        </Tooltip>
+        <Tooltip content={`Atualizado em: ${formatDateTime(documento.dataAtualizacao)}`}>
+          <span className="cursor-default flex items-center gap-1">
+            <Clock size={10} className="flex-shrink-0" />
+            {formatDateTime(documento.dataAtualizacao)}
+          </span>
+        </Tooltip>
       </div>
     </div>
   );
