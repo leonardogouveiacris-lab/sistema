@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Documento } from '../../types/Documento';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
-import { FileText, Eye, Edit2, Trash2, Calendar, Clock } from 'lucide-react';
+import { FileText, Eye, CreditCard as Edit2, Trash2, Link2 } from 'lucide-react';
 import { Tooltip } from '../ui';
 
 interface DocumentoCardProps {
@@ -10,6 +10,33 @@ interface DocumentoCardProps {
   onDelete: (documentoId: string) => void;
   onViewDetails?: (documentoId: string) => void;
   isHighlighted?: boolean;
+}
+
+const TIPO_BADGE_COLORS: Record<string, string> = {
+  'Petição Inicial': 'bg-blue-100 text-blue-800 border-blue-300',
+  'Contestação': 'bg-red-100 text-red-800 border-red-300',
+  'Réplica': 'bg-teal-100 text-teal-800 border-teal-300',
+  'Laudo Pericial': 'bg-amber-100 text-amber-800 border-amber-300',
+  'Recurso': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  'Contrato': 'bg-orange-100 text-orange-800 border-orange-300',
+  'Sentença': 'bg-sky-100 text-sky-800 border-sky-300',
+  'Acordo': 'bg-green-100 text-green-800 border-green-300',
+};
+
+function getTipoBadge(tipo: string): string {
+  return TIPO_BADGE_COLORS[tipo] || 'bg-gray-100 text-gray-700 border-gray-300';
+}
+
+function stripHtml(html: string): string {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || div.innerText || '';
+}
+
+function previewText(html: string | undefined, max = 90): string {
+  if (!html) return '';
+  const t = stripHtml(html);
+  return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
 const DocumentoCard: React.FC<DocumentoCardProps> = ({
@@ -22,13 +49,14 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
   const { navigateToPageWithHighlight, scrollToMultipleHighlights, state } = usePDFViewer();
 
   const highlightIds = useMemo(() => {
-    const storedIds = documento.highlightIds || [];
-    const currentHighlightIds = new Set(state.highlights.map(h => h.id));
-    return storedIds.filter(id => currentHighlightIds.has(id));
+    const stored = documento.highlightIds || [];
+    const current = new Set(state.highlights.map(h => h.id));
+    return stored.filter(id => current.has(id));
   }, [documento.highlightIds, state.highlights]);
+
   const hasHighlights = highlightIds.length > 0;
 
-  const handleNavigateToPage = () => {
+  const handleNavigate = () => {
     if (hasHighlights && documento.paginaVinculada) {
       scrollToMultipleHighlights(highlightIds, documento.paginaVinculada);
     } else if (documento.paginaVinculada) {
@@ -36,114 +64,72 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
     }
   };
 
-  const handleDelete = () => {
-    onDelete(documento.id);
-  };
-
-  const stripHtml = (html: string): string => {
-    const temp = document.createElement('div');
-    temp.innerHTML = html;
-    return temp.textContent || temp.innerText || '';
-  };
-
-  const getPreviewText = (html: string | undefined, maxLength = 80): string => {
-    if (!html) return '';
-    const text = stripHtml(html);
-    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
-  };
-
-  const formatDate = (date: Date | string) => {
-    const dateObj = date instanceof Date ? date : new Date(date);
-    return dateObj.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: '2-digit'
-    });
-  };
-
-  const hasComments = documento.comentarios && stripHtml(documento.comentarios).trim() !== '';
-  const hasUpdate = documento.dataAtualizacao &&
-    new Date(documento.dataAtualizacao).getTime() !== new Date(documento.dataCriacao).getTime();
-
-  const tipoIsTruncated = documento.tipoDocumento && documento.tipoDocumento.length > 30;
+  const preview = previewText(documento.comentarios);
 
   return (
     <div
-      className={`
-        group border rounded-lg transition-all duration-200 p-3
-        ${isHighlighted ? 'border-orange-400 bg-orange-50 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'}
-      `}
+      className={`group relative border rounded-lg transition-all duration-150 overflow-hidden ${
+        isHighlighted
+          ? 'border-orange-400 bg-orange-50 shadow-sm'
+          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+      }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            {documento.paginaVinculada && (
-              <button
-                onClick={handleNavigateToPage}
-                className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-md transition-colors"
-                title={hasHighlights ? `Ir para ${highlightIds.length} trecho(s) destacado(s) na pagina ${documento.paginaVinculada}` : `Ir para pagina ${documento.paginaVinculada}`}
-              >
-                <FileText size={11} />
-                <span>p.{documento.paginaVinculada}</span>
-              </button>
-            )}
+      <div className="px-3 pt-2.5 pb-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+              {documento.paginaVinculada && (
+                <button
+                  onClick={handleNavigate}
+                  className="flex-shrink-0 flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded transition-colors"
+                  title={hasHighlights ? `${highlightIds.length} trecho(s) na p.${documento.paginaVinculada}` : `Ir para p.${documento.paginaVinculada}`}
+                >
+                  {hasHighlights ? <Link2 size={9} /> : <FileText size={9} />}
+                  <span>p.{documento.paginaVinculada}</span>
+                </button>
+              )}
+            </div>
+
+            <Tooltip content={documento.tipoDocumento}>
+              <p className="text-sm font-semibold text-gray-900 truncate leading-tight">
+                {documento.tipoDocumento}
+              </p>
+            </Tooltip>
+
+            <div className="mt-1">
+              <span className={`text-xs font-medium px-1.5 py-0.5 rounded border ${getTipoBadge(documento.tipoDocumento)}`}>
+                {documento.tipoDocumento}
+              </span>
+            </div>
           </div>
 
-          {tipoIsTruncated ? (
-            <Tooltip content={documento.tipoDocumento}>
-              <h4 className="font-semibold text-gray-900 text-sm truncate max-w-[200px]">
-                {documento.tipoDocumento}
-              </h4>
-            </Tooltip>
-          ) : (
-            <h4 className="font-semibold text-gray-900 text-sm">
-              {documento.tipoDocumento}
-            </h4>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
-          {onViewDetails && (
-            <button
-              onClick={() => onViewDetails(documento.id)}
-              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-              title="Ver detalhes"
-            >
-              <Eye size={14} />
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            {onViewDetails && (
+              <button onClick={() => onViewDetails(documento.id)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors" title="Ver detalhes">
+                <Eye size={13} />
+              </button>
+            )}
+            <button onClick={() => onEdit(documento.id)} className="p-1.5 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded transition-colors" title="Editar">
+              <Edit2 size={13} />
             </button>
-          )}
-          <button
-            onClick={() => onEdit(documento.id)}
-            className="p-1.5 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded-md transition-colors"
-            title="Editar"
-          >
-            <Edit2 size={14} />
-          </button>
-          <button
-            onClick={handleDelete}
-            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-            title="Excluir"
-          >
-            <Trash2 size={14} />
-          </button>
+            <button onClick={() => onDelete(documento.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Excluir">
+              <Trash2 size={13} />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {hasComments && (
-        <p className="text-xs text-gray-600 leading-relaxed line-clamp-2 mt-2 mb-2">
-          {getPreviewText(documento.comentarios, 100)}
-        </p>
-      )}
+        {preview && (
+          <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mt-1.5">
+            {preview}
+          </p>
+        )}
 
-      <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
-        <div className="flex items-center gap-1 text-gray-400">
-          <Calendar size={11} />
-          <span className="text-[10px]">{formatDate(documento.dataCriacao)}</span>
-        </div>
-        {hasUpdate && (
-          <div className="flex items-center gap-1 text-gray-400">
-            <Clock size={11} />
-            <span className="text-[10px]">{formatDate(documento.dataAtualizacao)}</span>
+        {hasHighlights && (
+          <div className="mt-1.5">
+            <span className="text-xs text-blue-400 flex items-center gap-0.5">
+              <Link2 size={9} />
+              {highlightIds.length} destaque{highlightIds.length !== 1 ? 's' : ''}
+            </span>
           </div>
         )}
       </div>
@@ -151,10 +137,10 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
   );
 };
 
-export default React.memo(DocumentoCard, (prevProps, nextProps) => {
+export default React.memo(DocumentoCard, (prev, next) => {
   return (
-    prevProps.documento.id === nextProps.documento.id &&
-    new Date(prevProps.documento.dataAtualizacao).getTime() === new Date(nextProps.documento.dataAtualizacao).getTime() &&
-    prevProps.isHighlighted === nextProps.isHighlighted
+    prev.documento.id === next.documento.id &&
+    new Date(prev.documento.dataAtualizacao).getTime() === new Date(next.documento.dataAtualizacao).getTime() &&
+    prev.isHighlighted === next.isHighlighted
   );
 });

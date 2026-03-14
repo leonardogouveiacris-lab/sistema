@@ -28,6 +28,7 @@ import VerbaDetailModal from './VerbaDetailModal';
 import DecisionDetailModal from './DecisionDetailModal';
 import DocumentoDetailModal from './DocumentoDetailModal';
 import { Search, ChevronDown, ChevronUp, ChevronsLeftRight, ChevronsRightLeft, Scale, DollarSign, FileText, Plus, CheckCircle2, Circle, Clock } from 'lucide-react';
+import { RenameService } from '../../services/rename.service';
 
 interface GroupProgressStats {
   total: number;
@@ -600,6 +601,15 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     if (isEdit && state.editingRecordId) {
       const item = allLancamentos.find(l => l.lancamento.id === state.editingRecordId);
       if (item) {
+        const oldTipo = item.verba.tipoVerba;
+        const newTipo = verba.tipoVerba;
+        if (newTipo && newTipo.trim() && newTipo.trim() !== oldTipo) {
+          const renameResult = await RenameService.renomearComAnalise(oldTipo, newTipo.trim(), processId);
+          if (!renameResult.success) {
+            toast.error(renameResult.message || 'Falha ao renomear tipo de verba.');
+            return false;
+          }
+        }
         const result = await onUpdateVerba(item.verba.id, state.editingRecordId, verba.lancamento, true);
         if (result.success) {
           cancelForm();
