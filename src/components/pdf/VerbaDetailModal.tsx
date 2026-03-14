@@ -77,18 +77,6 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
     onClose();
   };
 
-  const getSafeDate = (dateValue?: string | Date | null): Date | null => {
-    if (!dateValue) return null;
-
-    const parsedDate = new Date(dateValue);
-    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
-  };
-
-  const formatDateTime = (dateValue?: string | Date | null): string => {
-    const validDate = getSafeDate(dateValue);
-    return validDate ? validDate.toLocaleString('pt-BR') : 'Data indisponível';
-  };
-
   const getSituationColor = (situacao: string): string => {
     const colors: Record<string, string> = {
       'Deferida': 'bg-green-100 text-green-800 border-green-300',
@@ -100,15 +88,6 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
     };
     return colors[situacao] || 'bg-gray-100 text-gray-800 border-gray-300';
   };
-
-  const createdAtDate = getSafeDate(lancamento.dataCriacao);
-  const updatedAtDate = getSafeDate(lancamento.dataAtualizacao);
-  const createdAtTimestamp = createdAtDate?.getTime();
-  const updatedAtTimestamp = updatedAtDate?.getTime();
-  const shouldShowUpdatedAt =
-    createdAtTimestamp !== undefined &&
-    updatedAtTimestamp !== undefined &&
-    updatedAtTimestamp !== createdAtTimestamp;
 
   if (!isOpen) return null;
 
@@ -192,11 +171,11 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
           {/* Timestamps */}
           <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-200">
             <p className="mb-1">
-              <span className="font-medium">Criado em:</span> {formatDateTime(lancamento.dataCriacao)}
+              <span className="font-medium">Criado em:</span> {new Date(lancamento.createdAt).toLocaleString('pt-BR')}
             </p>
-            {shouldShowUpdatedAt && (
+            {lancamento.updatedAt !== lancamento.createdAt && (
               <p>
-                <span className="font-medium">Atualizado em:</span> {formatDateTime(lancamento.dataAtualizacao)}
+                <span className="font-medium">Atualizado em:</span> {new Date(lancamento.updatedAt).toLocaleString('pt-BR')}
               </p>
             )}
           </div>

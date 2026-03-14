@@ -3,13 +3,29 @@ import { Verba } from '../types/Verba';
 import { Decision } from '../types/Decision';
 import { DollarSign, Search, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import logger from '../utils/logger';
-import { buildPaginaSortKey, sortByPagina } from '../utils';
 
 const ITEMS_PER_PAGE = 5;
 
 
 const sortLancamentosByPagina = (lancamentos: Verba['lancamentos']): Verba['lancamentos'] => {
-  return [...lancamentos].sort((a, b) => sortByPagina(a, b, { newestFirst: false }));
+  return [...lancamentos].sort((a, b) => {
+    const aPagina = a.paginaVinculada;
+    const bPagina = b.paginaVinculada;
+
+    if (aPagina != null && bPagina != null) {
+      return aPagina - bPagina;
+    }
+
+    if (aPagina != null) {
+      return -1;
+    }
+
+    if (bPagina != null) {
+      return 1;
+    }
+
+    return new Date(a.dataCriacao).getTime() - new Date(b.dataCriacao).getTime();
+  });
 };
 
 interface ProcessVerbaListProps {
@@ -19,15 +35,6 @@ interface ProcessVerbaListProps {
   decisions: Decision[];
   onSelectVerba?: (verba: Verba) => void;
 }
-
-
-type VerbaComOrdenacao = Verba & {
-  lancamentosOrdenados: Verba['lancamentos'];
-  sortKey: {
-    paginaVinculada: number | null;
-    dataCriacao: Date | string | number;
-  };
-};
 
 const ProcessVerbaList: React.FC<ProcessVerbaListProps> = ({
   processId,
@@ -42,20 +49,8 @@ const ProcessVerbaList: React.FC<ProcessVerbaListProps> = ({
   const [groupByTipo, setGroupByTipo] = useState(true);
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
 
-  const processVerbas = useMemo<VerbaComOrdenacao[]>(() => {
-    return verbas
-      .filter(verba => verba.processId === processId)
-      .map(verba => {
-        const lancamentosOrdenados = sortLancamentosByPagina(verba.lancamentos);
-        const sortKey = buildPaginaSortKey(lancamentosOrdenados, verba.dataCriacao);
-
-        return {
-          ...verba,
-          lancamentosOrdenados,
-          sortKey,
-        };
-      })
-      .sort((a, b) => sortByPagina(a.sortKey, b.sortKey, { newestFirst: false }));
+  const processVerbas = useMemo(() => {
+    return verbas.filter(verba => verba.processId === processId);
   }, [verbas, processId]);
 
   const tiposUnicos = useMemo(() => {
@@ -84,7 +79,13 @@ const ProcessVerbaList: React.FC<ProcessVerbaListProps> = ({
       });
     }
 
-    return filtered;
+    return filtered.sort((a, b) => {
+      const aHasPagina = a.lancamentos.some(l => l.paginaVinculada);
+      const bHasPagina = b.lancamentos.some(l => l.paginaVinculada);
+      if (aHasPagina && !bHasPagina) return -1;
+      if (!aHasPagina && bHasPagina) return 1;
+      return new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime();
+    });
   }, [processVerbas, selectedTipo, searchQuery]);
 
   const visibleVerbas = useMemo(() => {
@@ -296,12 +297,12 @@ const ProcessVerbaList: React.FC<ProcessVerbaListProps> = ({
                       </div>
                     </div>
                     <div className="divide-y divide-gray-200">
-                      {verba.lancamentosOrdenados.map(lancamento => (
+                      {sortLancamentosByPagina(verba.lancamentos).map(lancamento => (
                         <div key={lancamento.id} className="p-4 hover:bg-gray-50 transition-colors">
                           <div className="flex items-start justify-between">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center space-x-2 mb-2">
-                                {lancamento.paginaVinculada != null && (
+                                {lancamento.paginaVinculada && (
                                   <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded">
                                     <DollarSign size={12} className="mr-1" />
                                     p.{lancamento.paginaVinculada}
@@ -353,7 +354,7 @@ const ProcessVerbaList: React.FC<ProcessVerbaListProps> = ({
           ) : (
             <div className="space-y-3">
               {filteredVerbas.flatMap(verba =>
-                verba.lancamentosOrdenados.map(lancamento => (
+                sortLancamentosByPagina(verba.lancamentos).map(lancamento => (
                   <div
                     key={lancamento.id}
                     className="border border-gray-200 rounded-lg p-4 hover:border-green-300 hover:bg-green-50 transition-all"
@@ -361,7 +362,7 @@ const ProcessVerbaList: React.FC<ProcessVerbaListProps> = ({
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2 mb-2">
-                          {lancamento.paginaVinculada != null && (
+                          {lancamento.paginaVinculada && (
                             <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded">
                               <DollarSign size={12} className="mr-1" />
                               p.{lancamento.paginaVinculada}

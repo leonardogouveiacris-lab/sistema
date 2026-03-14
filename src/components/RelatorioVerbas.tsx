@@ -23,9 +23,7 @@ import {
   verificarMudancaSituacao,
   formatarData,
   formatarDataCurta,
-  filtrarPorProcesso,
-  sortByPagina,
-  buildPaginaSortKey
+  filtrarPorProcesso
 } from '../utils';
 
 const ITEMS_PER_SECTION = 10;
@@ -83,48 +81,25 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
     return filtrarPorProcesso(decisions, processId);
   }, [decisions, processId]);
 
-  const decisionsDoProcessoOrdenadas = useMemo(() => {
-    return [...decisionsDoProcesso].sort(sortByPagina);
-  }, [decisionsDoProcesso]);
-
   const documentosDoProcesso = useMemo(() => {
     if (!processId) return [];
     return filtrarPorProcesso(documentos, processId);
   }, [documentos, processId]);
 
-  const documentosDoProcessoOrdenados = useMemo(() => {
-    return [...documentosDoProcesso].sort(sortByPagina);
-  }, [documentosDoProcesso]);
-
-  const verbasComLancamentosOrdenados = useMemo(() => {
-    return verbasAgrupadas
-      .map(verba => {
-        const lancamentosOrdenados = [...verba.lancamentos].sort(sortByPagina);
-        const sortKey = buildPaginaSortKey(lancamentosOrdenados, verba.dataCriacao);
-
-        return {
-          ...verba,
-          lancamentosOrdenados,
-          sortKey
-        };
-      })
-      .sort((a, b) => sortByPagina(a.sortKey, b.sortKey, { newestFirst: false }));
-  }, [verbasAgrupadas]);
-
   const visibleDecisions = useMemo(() => {
-    return decisionsDoProcessoOrdenadas.slice(0, visibleDecisionsCount);
-  }, [decisionsDoProcessoOrdenadas, visibleDecisionsCount]);
+    return decisionsDoProcesso.slice(0, visibleDecisionsCount);
+  }, [decisionsDoProcesso, visibleDecisionsCount]);
 
   const visibleDocumentos = useMemo(() => {
-    return documentosDoProcessoOrdenados.slice(0, visibleDocumentosCount);
-  }, [documentosDoProcessoOrdenados, visibleDocumentosCount]);
+    return documentosDoProcesso.slice(0, visibleDocumentosCount);
+  }, [documentosDoProcesso, visibleDocumentosCount]);
 
   const visibleVerbas = useMemo(() => {
-    return verbasComLancamentosOrdenados;
-  }, [verbasComLancamentosOrdenados]);
+    return verbasAgrupadas;
+  }, [verbasAgrupadas]);
 
-  const hasMoreDecisions = decisionsDoProcessoOrdenadas.length > visibleDecisionsCount;
-  const hasMoreDocumentos = documentosDoProcessoOrdenados.length > visibleDocumentosCount;
+  const hasMoreDecisions = decisionsDoProcesso.length > visibleDecisionsCount;
+  const hasMoreDocumentos = documentosDoProcesso.length > visibleDocumentosCount;
 
   const estatisticas = useMemo(() => {
     if (!selectedProcess) {
@@ -201,8 +176,8 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
       }), {});
       setExpandedVerbas(allExpanded);
 
-      setVisibleDecisionsCount(decisionsDoProcessoOrdenadas.length);
-      setVisibleDocumentosCount(documentosDoProcessoOrdenados.length);
+      setVisibleDecisionsCount(decisionsDoProcesso.length);
+      setVisibleDocumentosCount(documentosDoProcesso.length);
     };
 
     const handleAfterPrint = () => {
@@ -218,7 +193,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
       window.removeEventListener('beforeprint', handleBeforePrint);
       window.removeEventListener('afterprint', handleAfterPrint);
     };
-  }, [expandedVerbas, verbasAgrupadas, decisionsDoProcessoOrdenadas.length, documentosDoProcessoOrdenados.length]);
+  }, [expandedVerbas, verbasAgrupadas, decisionsDoProcesso.length, documentosDoProcesso.length]);
 
   const renderEmptyState = () => (
     <EmptyState
@@ -408,7 +383,6 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
           {visibleVerbas.map((verba, index) => {
             const isExpanded = expandedVerbas[verba.verbaId] ?? false;
             const temMudancaSituacao = verificarMudancaSituacao(verba);
-            const lancamentosOrdenados = verba.lancamentosOrdenados;
 
             return (
               <div
@@ -430,7 +404,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
                       )}
                     </div>
                     <div className="text-sm text-gray-500 mt-0.5 pl-6">
-                      {verba.lancamentosOrdenados.length} lancamento{verba.lancamentosOrdenados.length !== 1 ? 's' : ''} - {formatarResumoSituacoes(verba.resumoSituacoes)}
+                      {verba.lancamentos.length} lancamento{verba.lancamentos.length !== 1 ? 's' : ''} - {formatarResumoSituacoes(verba.resumoSituacoes)}
                     </div>
                   </div>
 
@@ -444,7 +418,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
                   style={{ display: isExpanded ? 'block' : 'none' }}
                 >
                   <div className="pl-6">
-                    {lancamentosOrdenados.map((lancamento, lancIndex) =>
+                    {verba.lancamentos.map((lancamento, lancIndex) =>
                       renderLancamentoCard(lancamento, lancIndex)
                     )}
                   </div>
@@ -459,7 +433,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
   };
 
   const renderDecisionsSection = () => {
-    if (decisionsDoProcessoOrdenadas.length === 0) {
+    if (decisionsDoProcesso.length === 0) {
       return null;
     }
 
@@ -474,7 +448,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
               Decisoes Judiciais
             </h2>
             <p className="text-sm text-gray-500">
-              {decisionsDoProcessoOrdenadas.length} decisao{decisionsDoProcessoOrdenadas.length !== 1 ? 'es' : ''} vinculada{decisionsDoProcessoOrdenadas.length !== 1 ? 's' : ''}
+              {decisionsDoProcesso.length} decisao{decisionsDoProcesso.length !== 1 ? 'es' : ''} vinculada{decisionsDoProcesso.length !== 1 ? 's' : ''}
             </p>
           </div>
         </div>
@@ -490,7 +464,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
                   <span className="text-gray-400 font-mono text-sm">{index + 1}.</span>
                   <span className="font-medium text-gray-900">{decision.tipoDecisao}</span>
                   <span className="text-sm text-gray-500">{decision.idDecisao}</span>
-                  {decision.paginaVinculada != null && (
+                  {decision.paginaVinculada && (
                     <span className="text-xs text-gray-400">p. {decision.paginaVinculada}</span>
                   )}
                 </div>
@@ -520,7 +494,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
               className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
             >
               <ChevronDown size={16} />
-              <span>Carregar mais ({decisionsDoProcessoOrdenadas.length - visibleDecisionsCount} restantes)</span>
+              <span>Carregar mais ({decisionsDoProcesso.length - visibleDecisionsCount} restantes)</span>
             </button>
           </div>
         )}
@@ -529,7 +503,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
   };
 
   const renderDocumentosSection = () => {
-    if (documentosDoProcessoOrdenados.length === 0) {
+    if (documentosDoProcesso.length === 0) {
       return null;
     }
 
@@ -544,7 +518,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
               Lancamentos de Documentos
             </h2>
             <p className="text-sm text-gray-500">
-              {documentosDoProcessoOrdenados.length} documento{documentosDoProcessoOrdenados.length !== 1 ? 's' : ''} vinculado{documentosDoProcessoOrdenados.length !== 1 ? 's' : ''}
+              {documentosDoProcesso.length} documento{documentosDoProcesso.length !== 1 ? 's' : ''} vinculado{documentosDoProcesso.length !== 1 ? 's' : ''}
             </p>
           </div>
         </div>
@@ -584,7 +558,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
               className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
             >
               <ChevronDown size={16} />
-              <span>Carregar mais ({documentosDoProcessoOrdenados.length - visibleDocumentosCount} restantes)</span>
+              <span>Carregar mais ({documentosDoProcesso.length - visibleDocumentosCount} restantes)</span>
             </button>
           </div>
         )}

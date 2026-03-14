@@ -4,7 +4,6 @@ import { Scale, Search, ChevronDown, ChevronUp, Filter, Edit2, Trash2 } from 'lu
 import DecisionEditModal from './DecisionEditModal';
 import logger from '../utils/logger';
 import { getPreviewText, hasLongText, PREVIEW_LENGTHS } from '../utils/previewText';
-import { sortByPagina } from '../utils/sortByPagina';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -60,7 +59,14 @@ const DecisionList: React.FC<DecisionListProps> = ({
       );
     }
 
-    return filtered.sort(sortByPagina);
+    return filtered.sort((a, b) => {
+      if (a.paginaVinculada && !b.paginaVinculada) return -1;
+      if (!a.paginaVinculada && b.paginaVinculada) return 1;
+      if (a.paginaVinculada && b.paginaVinculada) {
+        return a.paginaVinculada - b.paginaVinculada;
+      }
+      return new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime();
+    });
   }, [processDecisions, selectedTipo, searchQuery]);
 
   const visibleDecisions = useMemo(() => {
@@ -88,7 +94,7 @@ const DecisionList: React.FC<DecisionListProps> = ({
 
   const stats = useMemo(() => ({
     total: processDecisions.length,
-    comPaginaVinculada: processDecisions.filter(d => d.paginaVinculada != null).length,
+    comPaginaVinculada: processDecisions.filter(d => d.paginaVinculada).length,
     porTipo: processDecisions.reduce((acc, d) => {
       acc[d.tipoDecisao] = (acc[d.tipoDecisao] || 0) + 1;
       return acc;
@@ -173,7 +179,7 @@ const DecisionList: React.FC<DecisionListProps> = ({
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
             <div className="flex items-center space-x-2 mb-2">
-              {decision.paginaVinculada != null && (
+              {decision.paginaVinculada && (
                 <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded">
                   <Scale size={12} className="mr-1" />
                   p.{decision.paginaVinculada}
@@ -382,7 +388,7 @@ const DecisionList: React.FC<DecisionListProps> = ({
                           <div className="flex items-start justify-between">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center space-x-2 mb-2">
-                                {decision.paginaVinculada != null && (
+                                {decision.paginaVinculada && (
                                   <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded">
                                     <Scale size={12} className="mr-1" />
                                     p.{decision.paginaVinculada}
