@@ -24,4 +24,5 @@ export { useDocumentoContext as useDocumentos } from '../contexts/DocumentoConte
 
 export type { OperationResult } from '../contexts/VerbaContext';
 export { useLancamentosForReference } from './useLancamentosForReference';
+export { useDraggablePanel } from './useDraggablePanel';
 export type { LancamentoReferenceItem, LancamentoRefType } from './useLancamentosForReference';

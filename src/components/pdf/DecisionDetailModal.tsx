@@ -4,6 +4,7 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { X, ChevronLeft, ChevronRight, CreditCard as Edit2, Trash2, FileText, Scale, Calendar, Clock } from 'lucide-react';
 import { LancamentoRefRenderer } from '../ui';
 import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
+import { useDraggablePanel } from '../../hooks/useDraggablePanel';
 
 interface DecisionDetailModalProps {
   decision: Decision;
@@ -79,6 +80,8 @@ const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
     updatedAt !== null &&
     updatedAt.getTime() !== createdAt.getTime();
 
+  const { panelRef, style, onMouseDown } = useDraggablePanel();
+
   if (!isOpen) return null;
 
   return (
@@ -88,8 +91,18 @@ const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
         onClick={onClose}
       />
 
-      <div className="absolute right-4 top-4 pointer-events-auto w-[480px] bg-white shadow-2xl flex flex-col border border-gray-200 rounded-xl max-h-[calc(100vh-2rem)] overflow-hidden">
-        <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-blue-100 bg-blue-50 flex-shrink-0">
+      <div
+        ref={panelRef}
+        style={style}
+        className="absolute right-4 top-4 pointer-events-auto w-[480px] bg-white shadow-2xl flex flex-col border border-gray-200 rounded-xl max-h-[calc(100vh-2rem)] overflow-hidden relative"
+      >
+        <div
+          className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-blue-100 bg-blue-50 flex-shrink-0 cursor-grab active:cursor-grabbing select-none"
+          onMouseDown={onMouseDown}
+        >
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 flex gap-0.5">
+            <div className="w-8 h-1 rounded-full bg-blue-200" />
+          </div>
           <div className="flex-1 min-w-0 pr-3">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
