@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Decision, NewDecision } from '../types/Decision';
-import { Scale, Search, ChevronDown, ChevronUp, Filter, Edit2, Trash2 } from 'lucide-react';
+import { Scale, Search, ChevronDown, ChevronUp, Filter, CreditCard as Edit2, Trash2, AlertTriangle } from 'lucide-react';
 import DecisionEditModal from './DecisionEditModal';
 import logger from '../utils/logger';
 import { getPreviewText, hasLongText, PREVIEW_LENGTHS } from '../utils/previewText';
@@ -32,6 +32,7 @@ const DecisionList: React.FC<DecisionListProps> = ({
   const [editingDecision, setEditingDecision] = useState<Decision | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
 
   const processDecisions = useMemo(() => {
@@ -143,9 +144,10 @@ const DecisionList: React.FC<DecisionListProps> = ({
     }
   };
 
-  const handleDeleteDecision = (decision: Decision) => {
+  const handleDeleteDecision = async (decision: Decision) => {
     if (onRemoveDecision) {
-      onRemoveDecision(decision.id);
+      await onRemoveDecision(decision.id);
+      setDeletingCardId(null);
     }
   };
 
@@ -164,80 +166,106 @@ const DecisionList: React.FC<DecisionListProps> = ({
   const renderDecisionCard = (decision: Decision) => {
     const isCardExpanded = expandedCards.has(decision.id);
     const showExpandButton = decision.observacoes && hasLongText(decision.observacoes);
+    const isConfirmingDelete = deletingCardId === decision.id;
 
     return (
       <div
         key={decision.id}
-        className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:bg-blue-50 transition-all group"
+        className={`border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all group ${isConfirmingDelete ? 'border-red-200' : 'border-gray-200'}`}
       >
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center space-x-2 mb-2">
-              {decision.paginaVinculada != null && (
-                <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded">
-                  <Scale size={12} className="mr-1" />
-                  p.{decision.paginaVinculada}
-                </span>
-              )}
-              <span className="text-sm font-semibold text-gray-900">
-                {decision.tipoDecisao}
-              </span>
-            </div>
-            <div className="text-sm text-gray-700 mb-2">
-              <span className="font-medium">ID:</span> {decision.idDecisao}
-              <span className="mx-2">-</span>
-              <span className="font-medium">Situacao:</span> {decision.situacao}
-            </div>
-            {decision.observacoes && (
-              <div className="mb-2">
-                {!isCardExpanded ? (
-                  <p className="text-xs text-gray-600 italic leading-relaxed">
-                    {getPreviewText(decision.observacoes, PREVIEW_LENGTHS.LIST_VIEW)}
-                  </p>
-                ) : (
-                  <p className="text-xs text-gray-700 leading-relaxed">
-                    {decision.observacoes}
-                  </p>
+        <div className="p-4 bg-white">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                {decision.paginaVinculada != null && (
+                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-md">
+                    <Scale size={11} className="mr-1" />
+                    p.{decision.paginaVinculada}
+                  </span>
                 )}
-                {showExpandButton && (
+                <span className="text-sm font-semibold text-gray-900">{decision.tipoDecisao}</span>
+              </div>
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <span className="text-sm text-gray-700 font-medium">{decision.idDecisao}</span>
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-gray-100 text-gray-700 border-gray-300">
+                  {decision.situacao}
+                </span>
+              </div>
+              {decision.observacoes && (
+                <div className="mb-2">
+                  {!isCardExpanded ? (
+                    <p className="text-xs text-gray-600 italic leading-relaxed">
+                      {getPreviewText(decision.observacoes, PREVIEW_LENGTHS.LIST_VIEW)}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-700 leading-relaxed">{decision.observacoes}</p>
+                  )}
+                  {showExpandButton && (
+                    <button
+                      onClick={() => toggleCardExpansion(decision.id)}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-medium mt-1"
+                    >
+                      {isCardExpanded ? 'Ver menos' : 'Ver mais'}
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="text-xs text-gray-400">
+                {new Date(decision.dataCriacao).toLocaleDateString('pt-BR')} às{' '}
+                {new Date(decision.dataCriacao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+
+            {(onUpdateDecision || onRemoveDecision) && (
+              <div className="flex items-center gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                {onUpdateDecision && (
                   <button
-                    onClick={() => toggleCardExpansion(decision.id)}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-medium mt-1"
+                    onClick={() => handleEditDecision(decision)}
+                    className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
+                    title="Editar decisão"
                   >
-                    {isCardExpanded ? 'Ver menos' : 'Ver mais'}
+                    <Edit2 size={14} />
+                  </button>
+                )}
+                {onRemoveDecision && (
+                  <button
+                    onClick={() => setDeletingCardId(isConfirmingDelete ? null : decision.id)}
+                    className={`p-1.5 rounded-md transition-colors ${isConfirmingDelete ? 'text-red-700 bg-red-100' : 'text-red-400 hover:text-red-600 hover:bg-red-50'}`}
+                    title="Excluir decisão"
+                  >
+                    <Trash2 size={14} />
                   </button>
                 )}
               </div>
             )}
-            <div className="text-xs text-gray-500">
-              Cadastrado em {new Date(decision.dataCriacao).toLocaleDateString('pt-BR')} as{' '}
-              {new Date(decision.dataCriacao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </div>
+
+        {isConfirmingDelete && (
+          <div className="mx-3 mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={13} className="text-red-500 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-xs font-medium text-red-800">Excluir "{decision.idDecisao}"?</p>
+                <p className="text-xs text-red-600 mt-0.5">Esta ação não pode ser desfeita.</p>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => setDeletingCardId(null)}
+                    className="flex-1 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleDeleteDecision(decision)}
+                    className="flex-1 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700"
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-
-          {(onUpdateDecision || onRemoveDecision) && (
-            <div className="flex items-center space-x-2 ml-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-              {onUpdateDecision && (
-                <button
-                  onClick={() => handleEditDecision(decision)}
-                  className="p-2 text-blue-600 hover:bg-blue-100 rounded transition-colors"
-                  title="Editar decisao"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-              )}
-              {onRemoveDecision && (
-                <button
-                  onClick={() => handleDeleteDecision(decision)}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                  title="Excluir decisao"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     );
   };

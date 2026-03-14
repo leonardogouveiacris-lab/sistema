@@ -1,14 +1,3 @@
-/**
- * Componente VerbaEditModal - Modal para edição de lançamentos de verbas
- * 
- * Funcionalidades:
- * - Carrega dados do lançamento selecionado
- * - Permite editar todos os campos do lançamento
- * - Validação de campos obrigatórios
- * - Modal responsivo com backdrop
- * - Integração com o design system
- */
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Verba, VerbaLancamento, NewVerbaLancamento } from '../types/Verba';
 import { Decision } from '../types/Decision';
@@ -17,11 +6,8 @@ import { DynamicEnumType } from '../services/dynamicEnum.service';
 import { useTipoVerbas } from '../hooks/useTipoVerbas';
 import { useToast } from '../contexts/ToastContext';
 import logger from '../utils/logger';
-import { Save, Edit2 } from 'lucide-react';
+import { Save, CreditCard as Edit2, BookOpen, AlertTriangle, Trash2, Calendar, Clock, Check, X } from 'lucide-react';
 
-/**
- * Props do componente VerbaEditModal
- */
 interface VerbaEditModalProps {
   verba: Verba;
   lancamento: VerbaLancamento;
@@ -29,13 +15,24 @@ interface VerbaEditModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedData: Partial<NewVerbaLancamento>) => Promise<void> | void;
+  onDelete?: () => Promise<void> | void;
   onVerbasUpdated?: () => void;
   onForceRefreshVerbas?: () => Promise<void>;
 }
 
-/**
- * Componente VerbaEditModal
- */
+const SITUACAO_BADGE_COLORS: Record<string, string> = {
+  'Deferida': 'bg-green-100 text-green-800 border-green-300',
+  'Indeferida': 'bg-red-100 text-red-800 border-red-300',
+  'Parcialmente Deferida': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  'Em Análise': 'bg-blue-100 text-blue-800 border-blue-300',
+  'Reformada': 'bg-sky-100 text-sky-800 border-sky-300',
+  'Excluída': 'bg-red-100 text-red-800 border-red-300',
+};
+
+function getSituacaoBadgeClass(situacao: string): string {
+  return SITUACAO_BADGE_COLORS[situacao] || 'bg-gray-100 text-gray-700 border-gray-300';
+}
+
 const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
   verba,
   lancamento,
@@ -43,22 +40,20 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  onDelete,
   onVerbasUpdated,
   onForceRefreshVerbas
 }) => {
-  // Hook simplificado para tipos de verba - contextualizado por processo
   const {
-    tipos: tiposDisponiveis,
     isLoading: isTiposLoading,
     error: tiposError,
     carregarTipos,
     validarTipo,
     renomearTipo
-  } = useTipoVerbas(verba.processId); // Passa processId da verba diretamente para o hook
+  } = useTipoVerbas(verba.processId);
 
   const toast = useToast();
 
-  // Estado do formulário de edição
   const [formData, setFormData] = useState<NewVerbaLancamento>({
     decisaoVinculada: '',
     situacao: '',
@@ -66,13 +61,11 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
     comentariosCalculistas: ''
   });
 
-  // Estado de validação para mostrar erros
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // Estado de carregamento durante salvamento
   const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // Estados para o modal de texto expandido
   const [expandedTextModal, setExpandedTextModal] = useState({
     isOpen: false,
     field: '',
@@ -80,23 +73,14 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
     content: ''
   });
 
-  // Estado para gerenciamento de renomeação de tipo
   const [isRenamingTipo, setIsRenamingTipo] = useState(false);
   const [newTipoName, setNewTipoName] = useState('');
 
-  /**
-   * Filtra decisões do processo da verba e formata para dropdown
-   * Memoizado para performance
-   */
   const decisionOptions = useMemo(() => {
     const processDecisions = decisions.filter(d => d.processId === verba.processId);
     return processDecisions.map(d => `${d.idDecisao} - ${d.tipoDecisao}`);
   }, [decisions, verba.processId]);
 
-  /**
-   * Effect para carregar dados do lançamento quando o modal abrir
-   * Popula o formulário com os dados existentes
-   */
   useEffect(() => {
     if (lancamento && isOpen) {
       setFormData({
@@ -108,13 +92,10 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
       setErrors({});
       setIsRenamingTipo(false);
       setNewTipoName('');
+      setShowDeleteConfirm(false);
     }
   }, [lancamento, verba, isOpen]);
 
-  /**
-   * Valida se todos os campos obrigatórios estão preenchidos
-   * Usa validação simplificada para lançamentos
-   */
   const validateForm = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
 
@@ -130,38 +111,23 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
     return Object.keys(newErrors).length === 0;
   }, [formData]);
 
-  /**
-   * Lida com mudanças nos campos do formulário
-   * Remove erros quando o usuário começar a digitar
-   */
   const handleInputChange = useCallback((field: keyof NewVerbaLancamento, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // Remove erro do campo quando o usuário começar a digitar
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
   }, [errors]);
 
-  /**
-   * Handler para iniciar o processo de renomeação de tipo
-   */
   const handleStartRenameTipo = useCallback(() => {
     setIsRenamingTipo(true);
     setNewTipoName(verba.tipoVerba);
   }, [verba.tipoVerba]);
 
-  /**
-   * Handler para cancelar renomeação de tipo
-   */
   const handleCancelRenameTipo = useCallback(() => {
     setIsRenamingTipo(false);
     setNewTipoName('');
   }, []);
 
-  /**
-   * Handler para executar renomeação de tipo
-   */
   const handleExecuteRenameTipo = useCallback(async () => {
     try {
       if (!newTipoName.trim() || newTipoName.trim() === verba.tipoVerba) {
@@ -212,10 +178,6 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
     }
   }, [newTipoName, verba.tipoVerba, verba.processId, validarTipo, renomearTipo, carregarTipos, onClose, handleCancelRenameTipo, onForceRefreshVerbas, toast]);
 
-  /**
-   * Processa o salvamento das alterações
-   * Valida o formulário e chama o callback de salvamento
-   */
   const handleSave = useCallback(async () => {
     if (validateForm()) {
       setIsSaving(true);
@@ -229,15 +191,21 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
     }
   }, [formData, validateForm, onSave]);
 
-  const handleClose = useCallback(() => {
-    onClose();
-  }, [onClose]);
+  const handleDelete = useCallback(async () => {
+    if (!onDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDelete();
+      onClose();
+    } catch (error) {
+      logger.error('Falha ao excluir lançamento', 'VerbaEditModal.handleDelete');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [onDelete, onClose]);
 
-  /**
-   * Handler para abrir modal de texto expandido
-   */
   const handleExpandText = useCallback((field: string, title: string) => {
-    const content = field === 'fundamentacao' 
+    const content = field === 'fundamentacao'
       ? formData.fundamentacao || ''
       : formData.comentariosCalculistas || '';
 
@@ -249,242 +217,238 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
     });
   }, [formData]);
 
-  /**
-   * Handler para fechar modal de texto expandido
-   */
   const handleCloseExpandedModal = useCallback(() => {
-    setExpandedTextModal({
-      isOpen: false,
-      field: '',
-      title: '',
-      content: ''
-    });
+    setExpandedTextModal({ isOpen: false, field: '', title: '', content: '' });
   }, []);
 
-  /**
-   * Handler para salvar texto do modal expandido
-   */
   const handleSaveExpandedText = useCallback((content: string) => {
     handleInputChange(expandedTextModal.field as keyof NewVerbaLancamento, content);
     handleCloseExpandedModal();
   }, [expandedTextModal.field, handleInputChange, handleCloseExpandedModal]);
 
-  /**
-   * Lida com teclas pressionadas no modal
-   * Escape: fecha o modal, Enter: salva (se não estiver em textarea)
-   */
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
-      handleClose();
+      onClose();
     } else if (e.key === 'Enter' && e.target !== document.querySelector('textarea')) {
       e.preventDefault();
       handleSave();
     }
-  }, [handleClose, handleSave]);
+  }, [onClose, handleSave]);
 
-  // Não renderiza nada se o modal não estiver aberto
   if (!isOpen) {
     return null;
   }
 
+  const currentSituacao = formData.situacao || lancamento.situacao;
+  const badgeClass = getSituacaoBadgeClass(currentSituacao);
+
   return (
     <>
-      {/* Backdrop do modal */}
-      <div 
+      <div
         className="fixed inset-0 bg-black bg-opacity-50 z-40"
-        onClick={handleClose}
+        onClick={onClose}
       />
 
-      {/* Container do modal */}
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-        <div 
-          className="bg-white rounded-lg border border-gray-200 shadow-lg w-full max-w-4xl max-h-screen overflow-y-auto"
+        <div
+          className="bg-white rounded-xl border border-gray-200 shadow-xl w-full max-w-4xl max-h-screen overflow-y-auto"
           onClick={e => e.stopPropagation()}
           onKeyDown={handleKeyDown}
           tabIndex={-1}
         >
-          {/* Cabeçalho do modal */}
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                {/* Título dinâmico baseado no modo */}
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {isRenamingTipo ? 'Renomear Tipo de Verba' : 'Editar Lançamento'}
-                </h2>
-                <p className="text-sm text-gray-600 mt-1">
+          <div className="px-6 pt-5 pb-4 border-b border-gray-100 bg-gray-50 rounded-t-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 p-2 bg-green-100 rounded-lg flex-shrink-0">
+                  <BookOpen size={18} className="text-green-700" />
+                </div>
+                <div>
                   {isRenamingTipo ? (
-                    <>Renomeando tipo de verba para todas as verbas deste processo</>
-                  ) : (
-                    <>
-                      Verba: <span className="font-medium">{verba.tipoVerba}</span> • 
-                      Lançamento: <span className="font-medium">{lancamento.decisaoVinculada}</span>
-                    </>
-                  )}
-                </p>
-              </div>
-              
-              {/* Botão de fechar */}
-              <button
-                onClick={handleClose}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors duration-200"
-                title="Fechar modal"
-              >
-                <span className="text-xl">×</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Conteúdo do modal */}
-          <div className="p-6">
-            {/* Interface de Renomeação de Tipo */}
-            {isRenamingTipo ? (
-              <div className="space-y-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h3 className="text-base font-medium text-blue-900 mb-2">
-                    Renomear Tipo de Verba
-                  </h3>
-                  <p className="text-sm text-blue-800 mb-4">
-                    Esta operação renomeará o tipo "{verba.tipoVerba}" em todas as verbas deste processo.
-                  </p>
-                  
-                  <div className="space-y-3">
-                    {/* Campo para novo nome */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Novo Nome do Tipo
-                      </label>
+                    <div className="flex items-center gap-2 mb-0.5">
                       <input
-                        type="text"
                         value={newTipoName}
-                        onChange={(e) => setNewTipoName(e.target.value)}
-                        placeholder="Digite o novo nome..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={e => setNewTipoName(e.target.value)}
+                        className="text-base font-bold text-gray-900 border-b-2 border-blue-500 bg-transparent focus:outline-none pb-0.5"
+                        style={{ width: `${Math.max(newTipoName.length + 2, 10)}ch` }}
                         maxLength={100}
+                        autoFocus
                       />
-                    </div>
-                    
-                    {/* Botões da renomeação */}
-                    <div className="flex justify-end space-x-3">
-                      <button
-                        onClick={handleCancelRenameTipo}
-                        disabled={isSaving}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors duration-200"
-                      >
-                        Cancelar
-                      </button>
                       <button
                         onClick={handleExecuteRenameTipo}
                         disabled={isSaving || !newTipoName.trim() || newTipoName.trim() === verba.tipoVerba}
-                        className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors duration-200"
+                        className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-40"
+                        title="Confirmar renomeação"
                       >
-                        {isSaving ? (
-                          <>
-                            <span className="animate-spin text-xs">⟳</span>
-                            <span>Renomeando...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Edit2 size={14} />
-                            <span>Renomear Tipo</span>
-                          </>
-                        )}
+                        <Check size={14} />
+                      </button>
+                      <button
+                        onClick={handleCancelRenameTipo}
+                        className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                        title="Cancelar"
+                      >
+                        <X size={14} />
                       </button>
                     </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <h2 className="text-base font-bold text-gray-900">{verba.tipoVerba}</h2>
+                      <button
+                        onClick={handleStartRenameTipo}
+                        className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                        title="Renomear tipo de verba"
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {currentSituacao && (
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${badgeClass}`}>
+                        {currentSituacao}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400">·</span>
+                    <span className="text-xs text-gray-500">{lancamento.decisaoVinculada}</span>
+                    {lancamento.paginaVinculada != null && (
+                      <>
+                        <span className="text-xs text-gray-400">·</span>
+                        <span className="text-xs text-gray-500">p. {lancamento.paginaVinculada}</span>
+                      </>
+                    )}
                   </div>
+                  {isRenamingTipo && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Renomear atualizará <strong>todos os lançamentos</strong> com este tipo neste processo.
+                    </p>
+                  )}
                 </div>
               </div>
-            ) : (
-              /* Interface normal de edição de lançamento */
-              <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Decisão Vinculada */}
-                <CustomDropdown
-                  label="Decisão Vinculada"
-                  placeholder="-- Selecione uma decisão --"
-                  value={formData.decisaoVinculada}
-                  options={decisionOptions}
-                  required={true}
-                  error={errors.decisaoVinculada}
-                  onChange={(value) => handleInputChange('decisaoVinculada', value)}
-                />
+              <button
+                onClick={onClose}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
+                title="Fechar"
+              >
+                <span className="text-xl leading-none">×</span>
+              </button>
+            </div>
+          </div>
 
-                {/* Situação */}
-                <CustomDropdown
-                  label="Situação"
-                  placeholder="Selecione a situação"
-                  value={formData.situacao}
-                  required={true}
-                  error={errors.situacao}
-                  enumType={DynamicEnumType.SITUACAO_VERBA}
-                  processId={verba.processId}
-                  onChange={(value) => handleInputChange('situacao', value)}
-                />
-              </div>
-
-              {/* Fundamentação */}
-              <RichTextEditor
-                label="Fundamentação"
-                placeholder="Fundamentação jurídica da decisão..."
-                value={formData.fundamentacao || ''}
-                onChange={(value) => handleInputChange('fundamentacao', value)}
-                rows={4}
-                onExpand={() => handleExpandText('fundamentacao', 'Fundamentação')}
-                fieldType="fundamentacao"
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CustomDropdown
+                label="Decisão Vinculada"
+                placeholder="-- Selecione uma decisão --"
+                value={formData.decisaoVinculada}
+                options={decisionOptions}
+                required={true}
+                error={errors.decisaoVinculada}
+                onChange={(value) => handleInputChange('decisaoVinculada', value)}
               />
 
-              {/* Comentários */}
-              <RichTextEditor
-                label="Comentários"
-                placeholder="Observações e comentários técnicos..."
-                value={formData.comentariosCalculistas || ''}
-                onChange={(value) => handleInputChange('comentariosCalculistas', value)}
-                rows={4}
-                onExpand={() => handleExpandText('comentariosCalculistas', 'Comentários')}
-                fieldType="comentariosCalculistas"
+              <CustomDropdown
+                label="Situação"
+                placeholder="Selecione a situação"
+                value={formData.situacao}
+                required={true}
+                error={errors.situacao}
+                enumType={DynamicEnumType.SITUACAO_VERBA}
+                processId={verba.processId}
+                onChange={(value) => handleInputChange('situacao', value)}
               />
             </div>
-            )}
 
-            {/* Informações de auditoria */}
-            <div className="mt-6 pt-4 border-t border-gray-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
-                <div>
-                  <span className="font-medium">ID do Lançamento:</span>
-                  <span className="ml-2 font-mono">{lancamento.id}</span>
-                </div>
-                <div>
-                  <span className="font-medium">Criado em:</span>
-                  <span className="ml-2">{lancamento.dataCriacao.toLocaleString('pt-BR')}</span>
-                </div>
-                <div>
-                  <span className="font-medium">ID da Verba:</span>
-                  <span className="ml-2 font-mono">{verba.id}</span>
-                </div>
-                <div>
-                  <span className="font-medium">Verba criada em:</span>
-                  <span className="ml-2">{verba.dataCriacao.toLocaleString('pt-BR')}</span>
-                </div>
+            <RichTextEditor
+              label="Fundamentação"
+              placeholder="Fundamentação jurídica da decisão..."
+              value={formData.fundamentacao || ''}
+              onChange={(value) => handleInputChange('fundamentacao', value)}
+              rows={4}
+              onExpand={() => handleExpandText('fundamentacao', 'Fundamentação')}
+              fieldType="fundamentacao"
+            />
+
+            <RichTextEditor
+              label="Comentários"
+              placeholder="Observações e comentários técnicos..."
+              value={formData.comentariosCalculistas || ''}
+              onChange={(value) => handleInputChange('comentariosCalculistas', value)}
+              rows={4}
+              onExpand={() => handleExpandText('comentariosCalculistas', 'Comentários')}
+              fieldType="comentariosCalculistas"
+            />
+
+            <div className="pt-3 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-400">
+              <div className="flex items-center gap-1.5">
+                <Calendar size={11} />
+                <span>Lançamento criado: {lancamento.dataCriacao.toLocaleString('pt-BR')}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Clock size={11} />
+                <span>Verba criada: {verba.dataCriacao.toLocaleString('pt-BR')}</span>
+              </div>
+              <div className="font-mono truncate col-span-full text-gray-300 text-xs">
+                {lancamento.id}
               </div>
             </div>
           </div>
 
-          {/* Rodapé do modal com botões de ação */}
-          <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-            <div className="flex justify-end space-x-3">
-              {/* Botão Cancelar */}
+          {showDeleteConfirm && (
+            <div className="mx-6 mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-red-800">Excluir este lançamento?</p>
+                  <p className="text-xs text-red-600 mt-0.5">
+                    {verba.tipoVerba} · {lancamento.decisaoVinculada}. Esta ação não pode ser desfeita.
+                  </p>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={isDeleting}
+                      className="px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {isDeleting ? 'Excluindo...' : 'Sim, excluir'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="px-6 pb-6 flex items-center justify-between gap-3">
+            {onDelete ? (
               <button
-                onClick={handleClose}
+                onClick={() => setShowDeleteConfirm(v => !v)}
+                disabled={isSaving || isDeleting || isRenamingTipo}
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md border transition-colors disabled:opacity-50 ${
+                  showDeleteConfirm
+                    ? 'bg-red-50 border-red-200 text-red-700'
+                    : 'text-red-500 border-red-200 hover:bg-red-50'
+                }`}
+              >
+                <Trash2 size={14} /> Excluir
+              </button>
+            ) : <div />}
+
+            <div className="flex gap-2">
+              <button
+                onClick={onClose}
                 disabled={isSaving}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
               >
                 Cancelar
               </button>
-
-              {/* Botão Salvar */}
               <button
                 onClick={handleSave}
                 disabled={isSaving || isRenamingTipo}
-                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 shadow-sm transition-colors"
               >
                 {isSaving ? (
                   <>
@@ -493,7 +457,7 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
                   </>
                 ) : (
                   <>
-                    <Save size={16} />
+                    <Save size={15} />
                     <span>Salvar Alterações</span>
                   </>
                 )}
@@ -503,7 +467,6 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
         </div>
       </div>
 
-      {/* Modal de Texto Expandido */}
       <ExpandedTextModal
         isOpen={expandedTextModal.isOpen}
         onClose={handleCloseExpandedModal}
@@ -512,7 +475,7 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
         initialContent={expandedTextModal.content}
         dataField={expandedTextModal.field}
         placeholder={
-          expandedTextModal.field === 'fundamentacao' 
+          expandedTextModal.field === 'fundamentacao'
             ? 'Fundamentação jurídica da decisão...'
             : 'Observações e comentários técnicos...'
         }

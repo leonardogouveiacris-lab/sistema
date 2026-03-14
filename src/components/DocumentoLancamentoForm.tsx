@@ -1,15 +1,31 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FileText, X } from 'lucide-react';
+import { FileText, X, Save, AlertTriangle, Trash2, Calendar, Clock } from 'lucide-react';
 import { DocumentoLancamento, DocumentoLancamentoCreateInput, DocumentoLancamentoUpdateInput } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { RichTextEditor, ExpandedTextModal } from './ui';
 import logger from '../utils/logger';
+
+const TIPO_BADGE_COLORS: Record<string, string> = {
+  'Petição Inicial': 'bg-blue-100 text-blue-800 border-blue-300',
+  'Contestação': 'bg-red-100 text-red-800 border-red-300',
+  'Réplica': 'bg-teal-100 text-teal-800 border-teal-300',
+  'Laudo Pericial': 'bg-amber-100 text-amber-800 border-amber-300',
+  'Recurso': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  'Contrato': 'bg-orange-100 text-orange-800 border-orange-300',
+  'Sentença': 'bg-sky-100 text-sky-800 border-sky-300',
+  'Acordo': 'bg-green-100 text-green-800 border-green-300',
+};
+
+function getTipoBadgeClass(tipo: string): string {
+  return TIPO_BADGE_COLORS[tipo] || 'bg-gray-100 text-gray-700 border-gray-300';
+}
 
 interface DocumentoLancamentoFormProps {
   processId: string;
   editingDocumento?: DocumentoLancamento | null;
   onSubmit: (data: DocumentoLancamentoCreateInput | DocumentoLancamentoUpdateInput) => Promise<void>;
   onCancel?: () => void;
+  onDelete?: (id: string) => Promise<void>;
 }
 
 const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
@@ -17,12 +33,15 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
   editingDocumento,
   onSubmit,
   onCancel,
+  onDelete,
 }) => {
   const toast = useToast();
   const [tipoDocumento, setTipoDocumento] = useState('');
   const [comentarios, setComentarios] = useState('');
   const [paginaVinculada, setPaginaVinculada] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [expandedTextModal, setExpandedTextModal] = useState({
     isOpen: false,
     title: '',
@@ -34,6 +53,7 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
       setTipoDocumento(editingDocumento.tipoDocumento);
       setComentarios(editingDocumento.comentarios || '');
       setPaginaVinculada(editingDocumento.paginaVinculada?.toString() || '');
+      setShowDeleteConfirm(false);
     } else {
       resetForm();
     }
@@ -43,6 +63,7 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
     setTipoDocumento('');
     setComentarios('');
     setPaginaVinculada('');
+    setShowDeleteConfirm(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,6 +118,24 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
     }
   };
 
+  const handleDelete = async () => {
+    if (!editingDocumento || !onDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(editingDocumento.id);
+      if (onCancel) onCancel();
+    } catch (error) {
+      logger.errorWithException(
+        'Falha ao excluir documento',
+        error as Error,
+        'DocumentoLancamentoForm.handleDelete',
+        { documentoId: editingDocumento.id }
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleExpandText = useCallback(() => {
     setExpandedTextModal({
       isOpen: true,
@@ -106,11 +145,7 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
   }, [comentarios]);
 
   const handleCloseExpandedModal = useCallback(() => {
-    setExpandedTextModal({
-      isOpen: false,
-      title: '',
-      content: ''
-    });
+    setExpandedTextModal({ isOpen: false, title: '', content: '' });
   }, []);
 
   const handleSaveExpandedText = useCallback((content: string) => {
@@ -118,27 +153,47 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
     handleCloseExpandedModal();
   }, [handleCloseExpandedModal]);
 
+  const isEditing = !!editingDocumento;
+
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          <FileText className="w-5 h-5 text-blue-600" />
-          <h3 className="text-lg font-medium text-gray-900">
-            {editingDocumento ? 'Editar Documento' : 'Novo Lançamento de Documento'}
-          </h3>
+    <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden">
+      <div className="px-5 pt-4 pb-3 border-b border-gray-100 bg-gray-50">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 p-2 bg-orange-100 rounded-lg flex-shrink-0">
+              <FileText size={16} className="text-orange-600" />
+            </div>
+            <div>
+              {isEditing ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-gray-900">Editar Documento</h3>
+                  {tipoDocumento && (
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${getTipoBadgeClass(tipoDocumento)}`}>
+                      {tipoDocumento}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <h3 className="text-sm font-bold text-gray-900">Novo Documento</h3>
+              )}
+              {isEditing && editingDocumento.paginaVinculada != null && (
+                <p className="text-xs text-gray-400 mt-0.5">p. {editingDocumento.paginaVinculada}</p>
+              )}
+            </div>
+          </div>
+          {isEditing && onCancel && (
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
-        {editingDocumento && onCancel && (
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="p-1 text-gray-400 hover:text-gray-600 rounded"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
       </div>
 
-      <div className="space-y-4">
+      <div className="p-5 space-y-4">
         <div>
           <label htmlFor="tipoDocumento" className="block text-sm font-medium text-gray-700 mb-1">
             Tipo de Documento *
@@ -149,7 +204,7 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
             value={tipoDocumento}
             onChange={(e) => setTipoDocumento(e.target.value)}
             placeholder="Ex: Procuração, Contrato de Trabalho, Petição Inicial..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             required
             disabled={isSubmitting}
           />
@@ -166,7 +221,7 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
             onChange={(e) => setPaginaVinculada(e.target.value)}
             placeholder="Número da página no PDF"
             min="1"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-32 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             disabled={isSubmitting}
           />
         </div>
@@ -180,23 +235,97 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
           onExpand={handleExpandText}
         />
 
-        <div className="flex items-center justify-end space-x-3 pt-2">
-          {editingDocumento && onCancel && (
+        {isEditing && (
+          <div className="pt-2 border-t border-gray-100 flex items-center gap-4 text-xs text-gray-400">
+            <div className="flex items-center gap-1.5">
+              <Calendar size={11} />
+              <span>Criado: {new Date(editingDocumento.dataCriacao).toLocaleString('pt-BR')}</span>
+            </div>
+            {editingDocumento.dataAtualizacao > editingDocumento.dataCriacao && (
+              <div className="flex items-center gap-1.5">
+                <Clock size={11} />
+                <span>Atualizado: {new Date(editingDocumento.dataAtualizacao).toLocaleString('pt-BR')}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showDeleteConfirm && isEditing && (
+        <div className="mx-5 mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800">Excluir "{editingDocumento.tipoDocumento}"?</p>
+              {editingDocumento.paginaVinculada != null && (
+                <p className="text-xs text-red-600 mt-0.5">p.{editingDocumento.paginaVinculada} · Esta ação não pode ser desfeita.</p>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={isDeleting}
+                  className="px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isDeleting ? 'Excluindo...' : 'Sim, excluir'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="px-5 pb-5 flex items-center justify-between gap-3">
+        {isEditing && onDelete ? (
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(v => !v)}
+            disabled={isSubmitting || isDeleting}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md border transition-colors disabled:opacity-50 ${
+              showDeleteConfirm
+                ? 'bg-red-50 border-red-200 text-red-700'
+                : 'text-red-500 border-red-200 hover:bg-red-50'
+            }`}
+          >
+            <Trash2 size={14} /> Excluir
+          </button>
+        ) : <div />}
+
+        <div className="flex items-center gap-2">
+          {isEditing && onCancel && (
             <button
               type="button"
               onClick={handleCancel}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
               disabled={isSubmitting}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
             >
               Cancelar
             </button>
           )}
           <button
             type="submit"
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
             disabled={isSubmitting}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50 shadow-sm transition-colors"
           >
-            {isSubmitting ? 'Salvando...' : editingDocumento ? 'Atualizar' : 'Adicionar'}
+            {isSubmitting ? (
+              <>
+                <span className="animate-spin text-xs">⟳</span>
+                <span>Salvando...</span>
+              </>
+            ) : (
+              <>
+                <Save size={15} />
+                <span>{isEditing ? 'Salvar Alterações' : 'Adicionar'}</span>
+              </>
+            )}
           </button>
         </div>
       </div>
