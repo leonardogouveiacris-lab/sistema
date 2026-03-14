@@ -572,6 +572,18 @@ export class VerbasService {
 
       const isLastLancamento = verba.lancamentos.length === 1;
 
+      const highlightIdsToDelete: string[] = [];
+      if (lancamento.highlightId) {
+        highlightIdsToDelete.push(lancamento.highlightId);
+      }
+      if (lancamento.highlightIds && lancamento.highlightIds.length > 0) {
+        for (const hid of lancamento.highlightIds) {
+          if (!highlightIdsToDelete.includes(hid)) {
+            highlightIdsToDelete.push(hid);
+          }
+        }
+      }
+
       if (isLastLancamento) {
         const { error } = await supabase
           .from('verbas')
@@ -593,6 +605,21 @@ export class VerbasService {
         }
 
         await this.touchVerbaUpdatedAt(verbaId, verba.processId);
+      }
+
+      if (highlightIdsToDelete.length > 0) {
+        const { error: hlError } = await supabase
+          .from('pdf_highlights')
+          .delete()
+          .in('id', highlightIdsToDelete);
+
+        if (hlError) {
+          logger.warn(
+            `Erro ao excluir highlights do lançamento ${lancamentoId}`,
+            'VerbasService.removeLancamento',
+            { lancamentoId, highlightIdsToDelete }
+          );
+        }
       }
 
       return true;
