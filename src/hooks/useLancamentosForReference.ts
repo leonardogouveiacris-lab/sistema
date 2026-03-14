@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { useVerbaContext } from '../contexts/VerbaContext';
 import { useDocumentoContext } from '../contexts/DocumentoContext';
+import { useDecisionContext } from '../contexts/DecisionContext';
 
-export type LancamentoRefType = 'verba' | 'documento';
+export type LancamentoRefType = 'verba' | 'documento' | 'decisao';
 
 export interface LancamentoReferenceItem {
   id: string;
@@ -17,6 +18,7 @@ export interface LancamentoReferenceItem {
 export function useLancamentosForReference(processId: string): LancamentoReferenceItem[] {
   const { verbas } = useVerbaContext();
   const { documentos } = useDocumentoContext();
+  const { decisions } = useDecisionContext();
 
   return useMemo(() => {
     const items: LancamentoReferenceItem[] = [];
@@ -51,6 +53,19 @@ export function useLancamentosForReference(processId: string): LancamentoReferen
         });
       });
 
+    decisions
+      .filter(d => d.processId === processId)
+      .forEach(dec => {
+        items.push({
+          id: dec.id,
+          type: 'decisao',
+          label: dec.tipoDecisao,
+          sublabel: dec.situacao || '',
+          paginaVinculada: dec.paginaVinculada,
+          processDocumentId: dec.processDocumentId,
+        });
+      });
+
     return items;
-  }, [verbas, documentos, processId]);
+  }, [verbas, documentos, decisions, processId]);
 }

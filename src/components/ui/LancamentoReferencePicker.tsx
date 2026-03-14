@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FileText, Link2, Search } from 'lucide-react';
+import { FileText, Link2, Search, Scale } from 'lucide-react';
 import { LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 
 interface LancamentoReferencePickerProps {
@@ -17,6 +17,13 @@ const BADGE_COLORS: Record<string, string> = {
   'Reformada': 'bg-sky-100 text-sky-700',
   'Em Análise': 'bg-blue-100 text-blue-700',
   'Excluída': 'bg-gray-100 text-gray-600',
+  'Procedente': 'bg-green-100 text-green-700',
+  'Improcedente': 'bg-red-100 text-red-700',
+  'Parcialmente Procedente': 'bg-yellow-100 text-yellow-700',
+  'Homologado': 'bg-teal-100 text-teal-700',
+  'Rejeitado': 'bg-orange-100 text-orange-700',
+  'Deferido': 'bg-green-100 text-green-700',
+  'Indeferido': 'bg-red-100 text-red-700',
 };
 
 function getBadgeColor(s: string): string {
@@ -121,11 +128,13 @@ const LancamentoReferencePicker: React.FC<LancamentoReferencePickerProps> = ({
                 }`}
               >
                 <div className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center ${
-                  item.type === 'verba' ? 'bg-green-100' : 'bg-cyan-100'
+                  item.type === 'verba' ? 'bg-green-100' : item.type === 'decisao' ? 'bg-amber-100' : 'bg-cyan-100'
                 }`}>
                   {item.type === 'verba'
                     ? <Link2 size={11} className="text-green-600" />
-                    : <FileText size={11} className="text-cyan-600" />
+                    : item.type === 'decisao'
+                      ? <Scale size={11} className="text-amber-600" />
+                      : <FileText size={11} className="text-cyan-600" />
                   }
                 </div>
                 <div className="flex-1 min-w-0">

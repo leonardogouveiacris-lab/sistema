@@ -41,6 +41,16 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const triggerIndexRef = useRef<number | null>(null);
 
+  const pickerOpenRef = useRef(false);
+  useEffect(() => {
+    pickerOpenRef.current = pickerOpen;
+  }, [pickerOpen]);
+
+  const referenceItemsRef = useRef(referenceItems);
+  useEffect(() => {
+    referenceItemsRef.current = referenceItems;
+  }, [referenceItems]);
+
   const modules = useMemo(() => ({
     toolbar: [
       ['bold', 'italic', 'underline'],
@@ -98,8 +108,8 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     const editor = quillRef.current?.getEditor();
     if (!editor) return null;
     const selection = editor.getSelection();
-    if (!selection) return null;
-    const bounds = editor.getBounds(selection.index);
+    const index = selection ? selection.index : 0;
+    const bounds = editor.getBounds(index);
     if (!bounds) return null;
     const editorEl = editor.root;
     const editorRect = editorEl.getBoundingClientRect();
@@ -121,41 +131,52 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     triggerIndexRef.current = triggerIndex;
     setPickerQuery('');
     const rect = getCaretRect();
-    setAnchorRect(rect);
+    setAnchorRect(rect ?? (() => {
+      const editor = quillRef.current?.getEditor();
+      if (!editor) return null;
+      return editor.root.getBoundingClientRect();
+    })());
     setPickerOpen(true);
   }, [getCaretRect]);
 
-  useEffect(() => {
-    if (!referenceItems.length) return;
+  const closePickerRef = useRef(closePicker);
+  useEffect(() => { closePickerRef.current = closePicker; }, [closePicker]);
 
+  const openPickerRef = useRef(openPicker);
+  useEffect(() => { openPickerRef.current = openPicker; }, [openPicker]);
+
+  const getCaretRectRef = useRef(getCaretRect);
+  useEffect(() => { getCaretRectRef.current = getCaretRect; }, [getCaretRect]);
+
+  useEffect(() => {
     const editor = quillRef.current?.getEditor();
     if (!editor) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (pickerOpen) {
+      if (pickerOpenRef.current) {
         if (e.key === 'Escape') {
           e.stopPropagation();
-          closePicker();
-          return;
+          closePickerRef.current();
         }
         return;
       }
 
       if (e.key === '=' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (!referenceItemsRef.current.length) return;
         const selection = editor.getSelection();
         if (selection) {
           e.preventDefault();
-          openPicker(selection.index);
+          openPickerRef.current(selection.index);
         }
       }
     };
 
     const handleTextChange = () => {
-      if (!pickerOpen || triggerIndexRef.current === null) return;
+      if (!pickerOpenRef.current || triggerIndexRef.current === null) return;
 
       const selection = editor.getSelection();
       if (!selection) {
-        closePicker();
+        closePickerRef.current();
         return;
       }
 
@@ -163,13 +184,13 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       const triggerIdx = triggerIndexRef.current;
 
       if (currentIndex < triggerIdx) {
-        closePicker();
+        closePickerRef.current();
         return;
       }
 
       const text = editor.getText(triggerIdx, currentIndex - triggerIdx);
       setPickerQuery(text);
-      const rect = getCaretRect();
+      const rect = getCaretRectRef.current();
       if (rect) setAnchorRect(rect);
     };
 
@@ -180,7 +201,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       editor.root.removeEventListener('keydown', handleKeyDown, true);
       editor.off('text-change', handleTextChange);
     };
-  }, [pickerOpen, openPicker, closePicker, getCaretRect, referenceItems.length]);
+  }, []);
 
   const handleReferenceSelect = useCallback((item: LancamentoReferenceItem) => {
     const editor = quillRef.current?.getEditor();
@@ -265,7 +286,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
         </p>
       )}
 
-      {pickerOpen && referenceItems.length > 0 && (
+      {pickerOpen && (
         <LancamentoReferencePicker
           items={referenceItems}
           query={pickerQuery}
@@ -317,6 +338,11 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
           color: #0e7490;
           border: 1px solid #67e8f9;
         }
+        .lancamento-ref-chip[data-type="decisao"] {
+          background: #fef9c3;
+          color: #854d0e;
+          border: 1px solid #fde047;
+        }
         .lancamento-ref-chip:hover {
           filter: brightness(0.95);
         }
@@ -326,7 +352,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
 });
 
 function buildChipHtml(item: LancamentoReferenceItem): string {
-  const icon = item.type === 'verba' ? '⬡' : '⬜';
+  const icon = item.type === 'verba' ? '⬡' : item.type === 'decisao' ? '◈' : '⬜';
   const label = item.sublabel
     ? `${item.label} · ${item.sublabel}`
     : item.label;
