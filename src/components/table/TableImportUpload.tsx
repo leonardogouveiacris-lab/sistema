@@ -42,7 +42,7 @@ export function TableImportUpload({
       }
 
       const baseName = file.name.replace(/\.(xlsx|xls|csv)$/i, '');
-      const defaultName = namePrefix ? `${namePrefix} - ${baseName}` : baseName;
+      const defaultName = namePrefix ? `${namePrefix} - Holerites` : baseName;
       setTableName(defaultName);
       setPreview({ parsed, fileName: file.name });
     } catch (err) {
