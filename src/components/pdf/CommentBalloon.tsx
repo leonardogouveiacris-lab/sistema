@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { MessageCircle, X, Trash2, ArrowRight, Square, Palette, Spline } from 'lucide-react';
 import { PDFComment, CommentColor, COMMENT_COLORS, ConnectorType } from '../../types/PDFComment';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
@@ -213,6 +214,16 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     }
   }, [isDragging, handleDrag, handleDragEnd]);
 
+  const iconRef = useRef<HTMLDivElement>(null);
+  const [popupCoords, setPopupCoords] = useState({ top: 0, left: 0 });
+
+  useLayoutEffect(() => {
+    if (isExpanded && iconRef.current) {
+      const rect = iconRef.current.getBoundingClientRect();
+      setPopupCoords({ top: rect.bottom + 4, left: rect.left });
+    }
+  }, [isExpanded]);
+
   const colorConfig = COMMENT_COLORS[comment.color];
   const formattedDate = new Date(comment.createdAt).toLocaleString('pt-BR', {
     day: '2-digit',
@@ -234,6 +245,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
       onMouseDown={handleDragStart}
     >
       <div
+        ref={iconRef}
         onClick={handleIconClick}
         className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all shadow-md hover:shadow-lg ${colorConfig.bg} ${colorConfig.border} border-2 ${
           isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''
@@ -242,9 +254,10 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
         <MessageCircle size={16} className={colorConfig.icon} />
       </div>
 
-      {isExpanded && (
+      {isExpanded && createPortal(
         <div
-          className={`absolute top-10 left-0 w-72 bg-white rounded-lg shadow-xl border ${colorConfig.border} z-40`}
+          className={`fixed w-72 bg-white rounded-lg shadow-xl border ${colorConfig.border} z-[9999]`}
+          style={{ top: popupCoords.top, left: popupCoords.left }}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -359,7 +372,8 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
               <Trash2 size={16} />
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
