@@ -71,18 +71,20 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
   const handleReadonlyChipClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const chip = (e.target as HTMLElement).closest('[data-ref="lancamento"]') as HTMLElement | null;
-    if (!chip) return;
-    const id = chip.getAttribute('data-id');
-    if (!id) return;
-    const item = referenceItems.find(r => r.id === id);
-    if (item) {
-      e.preventDefault();
-      e.stopPropagation();
-      navigateToReference(item);
-    } else {
-      setEditContent(content);
-      setIsEditing(true);
+    if (chip) {
+      const id = chip.getAttribute('data-id');
+      if (id) {
+        const item = referenceItems.find(r => r.id === id);
+        if (item) {
+          e.preventDefault();
+          e.stopPropagation();
+          navigateToReference(item);
+          return;
+        }
+      }
     }
+    setEditContent(content);
+    setIsEditing(true);
   }, [referenceItems, navigateToReference, content]);
 
   const balloonRef = useRef<HTMLDivElement>(null);
