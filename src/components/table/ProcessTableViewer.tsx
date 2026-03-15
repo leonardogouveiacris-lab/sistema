@@ -1,7 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
-  Trash2,
-  Upload,
   Pencil,
   Calculator,
   MoreVertical,
@@ -9,6 +7,7 @@ import {
   X,
   Copy,
   Type,
+  Trash2,
 } from 'lucide-react';
 import { evaluateFormula, formatFormulaResult, formatCellNumber } from '../../utils/formulaEvaluator';
 import { AddFormulaColumnModal } from './AddFormulaColumnModal';
@@ -24,8 +23,6 @@ interface ProcessTableViewerProps {
   onEditFormula: (columnId: string, headerName: string, expression: string) => Promise<void>;
   onRenameColumn: (columnId: string, headerName: string) => Promise<void>;
   onDeleteColumn: (columnId: string) => Promise<void>;
-  onReplaceTable: () => void;
-  onDeleteTable: () => void;
   onCopyCellRef?: (ref: string) => void;
 }
 
@@ -47,8 +44,6 @@ export function ProcessTableViewer({
   onEditFormula,
   onRenameColumn,
   onDeleteColumn,
-  onReplaceTable,
-  onDeleteTable,
   onCopyCellRef,
 }: ProcessTableViewerProps) {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -59,7 +54,6 @@ export function ProcessTableViewer({
   const [activeColumnMenu, setActiveColumnMenu] = useState<string | null>(null);
   const [showFormulaModal, setShowFormulaModal] = useState(false);
   const [editingFormulaCol, setEditingFormulaCol] = useState<ProcessTableColumn | null>(null);
-  const [showTableMenu, setShowTableMenu] = useState(false);
   const [highlightedRef, setHighlightedRef] = useState<string | null>(null);
 
   const cellInputRef = useRef<HTMLInputElement>(null);
@@ -279,21 +273,6 @@ export function ProcessTableViewer({
             <Calculator size={13} />
             Nova fórmula
           </button>
-          <div className="relative">
-            <button
-              onClick={() => setShowTableMenu((v) => !v)}
-              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
-            >
-              <MoreVertical size={16} />
-            </button>
-            {showTableMenu && (
-              <TableMenu
-                onReplace={() => { setShowTableMenu(false); onReplaceTable(); }}
-                onDelete={() => { setShowTableMenu(false); onDeleteTable(); }}
-                onClose={() => setShowTableMenu(false)}
-              />
-            )}
-          </div>
         </div>
       </div>
 
@@ -585,33 +564,3 @@ function ColumnHeader({
   );
 }
 
-interface TableMenuProps {
-  onReplace: () => void;
-  onDelete: () => void;
-  onClose: () => void;
-}
-
-function TableMenu({ onReplace, onDelete }: TableMenuProps) {
-  return (
-    <div
-      className="absolute top-full right-0 z-40 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 min-w-[180px]"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <button
-        onClick={onReplace}
-        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
-      >
-        <Upload size={13} className="text-slate-400" />
-        Substituir tabela
-      </button>
-      <div className="my-1 border-t border-slate-100" />
-      <button
-        onClick={onDelete}
-        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors"
-      >
-        <Trash2 size={13} />
-        Excluir tabela
-      </button>
-    </div>
-  );
-}
