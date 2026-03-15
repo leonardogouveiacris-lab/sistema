@@ -17,6 +17,7 @@ interface DocumentoContextValue {
   addDocumento: (newDocumento: NewDocumento, skipGlobalError?: boolean) => Promise<OperationResult>;
   updateDocumento: (id: string, updatedData: Partial<NewDocumento>, skipGlobalError?: boolean) => Promise<OperationResult>;
   removeDocumento: (id: string, skipGlobalError?: boolean) => Promise<OperationResult>;
+  renameTipoDocumento: (oldTipo: string, newTipo: string, skipGlobalError?: boolean) => Promise<OperationResult>;
   getDocumentoById: (id: string) => Documento | undefined;
   getDocumentosByProcess: (processId: string) => Documento[];
   refreshDocumentos: () => Promise<void>;
@@ -157,6 +158,20 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, []);
 
+  const renameTipoDocumento = useCallback(async (oldTipo: string, newTipo: string, skipGlobalError = false): Promise<OperationResult> => {
+    try {
+      await DocumentosService.bulkUpdateTipo(oldTipo, newTipo);
+      setDocumentos(prev => prev.map(d => d.tipoDocumento === oldTipo ? { ...d, tipoDocumento: newTipo } : d));
+      setError(null);
+      return { success: true };
+    } catch (err) {
+      const rawMessage = err instanceof Error ? err.message : 'Erro ao renomear tipo de documento';
+      const errorMessage = translateSupabaseError(rawMessage);
+      if (!skipGlobalError) setError(errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  }, []);
+
   const getDocumentoById = useCallback((id: string): Documento | undefined => {
     return documentos.find(d => d.id === id);
   }, [documentos]);
@@ -172,6 +187,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
     addDocumento,
     updateDocumento,
     removeDocumento,
+    renameTipoDocumento,
     getDocumentoById,
     getDocumentosByProcess,
     refreshDocumentos
@@ -182,6 +198,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
     addDocumento,
     updateDocumento,
     removeDocumento,
+    renameTipoDocumento,
     getDocumentoById,
     getDocumentosByProcess,
     refreshDocumentos

@@ -351,6 +351,30 @@ export class DocumentosService {
     }
   }
 
+  static async bulkUpdateTipo(oldTipo: string, newTipo: string): Promise<number> {
+    try {
+      const { data, error } = await supabase
+        .from('lancamentos_documentos')
+        .update({ tipo_documento: newTipo })
+        .eq('tipo_documento', oldTipo)
+        .select('id');
+
+      if (error) {
+        throw new Error(`Erro ao renomear tipo de documento: ${error.message}`);
+      }
+
+      return (data || []).length;
+    } catch (error) {
+      logger.errorWithException(
+        `Falha ao renomear tipo de documento de "${oldTipo}" para "${newTipo}"`,
+        error as Error,
+        'DocumentosService.bulkUpdateTipo',
+        { oldTipo, newTipo }
+      );
+      throw error;
+    }
+  }
+
   /**
    * Remove um documento por ID
    *

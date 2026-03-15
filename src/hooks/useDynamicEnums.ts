@@ -33,6 +33,21 @@ interface UseDynamicEnumsReturn {
     processId?: string
   ) => Promise<boolean>;
 
+  renameCustomValue: (
+    enumType: DynamicEnumType,
+    oldValue: string,
+    newValue: string,
+    processId?: string
+  ) => Promise<{ success: boolean; message: string }>;
+
+  deleteCustomValue: (
+    enumType: DynamicEnumType,
+    value: string,
+    processId?: string
+  ) => Promise<{ success: boolean; message: string }>;
+
+  getPredefinedValues: (enumType: DynamicEnumType) => Promise<string[]>;
+
   isLoading: boolean;
   error: string | null;
 
@@ -276,6 +291,57 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
     }
   }, []);
 
+  const renameCustomValue = useCallback(async (
+    enumType: DynamicEnumType,
+    oldValue: string,
+    newValue: string,
+    processId?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      setError(null);
+      const result = await DynamicEnumService.renameCustomValue(enumType, oldValue, newValue, processId);
+      if (result.success) {
+        const cache = enumCacheRef.current;
+        for (const key of Array.from(cache.keys())) {
+          if (key.includes(enumType)) cache.delete(key);
+        }
+        DynamicEnumService.clearAllCache();
+      }
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao renomear';
+      setError(msg);
+      return { success: false, message: msg };
+    }
+  }, []);
+
+  const deleteCustomValue = useCallback(async (
+    enumType: DynamicEnumType,
+    value: string,
+    processId?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      setError(null);
+      const result = await DynamicEnumService.deleteCustomValue(enumType, value, processId);
+      if (result.success) {
+        const cache = enumCacheRef.current;
+        for (const key of Array.from(cache.keys())) {
+          if (key.includes(enumType)) cache.delete(key);
+        }
+        DynamicEnumService.clearAllCache();
+      }
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir';
+      setError(msg);
+      return { success: false, message: msg };
+    }
+  }, []);
+
+  const getPredefinedValues = useCallback(async (enumType: DynamicEnumType): Promise<string[]> => {
+    return DynamicEnumService.getPredefinedValues(enumType);
+  }, []);
+
   const clearCache = useCallback(() => {
     enumCacheRef.current.clear();
     DynamicEnumService.clearAllCache();
@@ -286,6 +352,9 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
     getValuesFromDatabase,
     addCustomValue,
     ensureValueExists,
+    renameCustomValue,
+    deleteCustomValue,
+    getPredefinedValues,
     isLoading,
     error,
     clearCache,

@@ -112,7 +112,8 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     documentos,
     addDocumento,
     updateDocumento,
-    removeDocumento
+    removeDocumento,
+    renameTipoDocumento
   } = useDocumentos();
 
   const onSaveDecision = useCallback(async (decision: NewDecision, skipGlobalError?: boolean): Promise<OperationResult> => {
@@ -713,6 +714,14 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     return null;
   }, [state.formMode, state.editingRecordId, processDocumentos]);
 
+  const handleRenameTipoDocumento = useCallback(async (oldTipo: string, newTipo: string): Promise<boolean> => {
+    const result = await renameTipoDocumento(oldTipo, newTipo, true);
+    if (!result.success) {
+      toast.error(result.error || 'Falha ao renomear tipo de documento.');
+    }
+    return result.success;
+  }, [renameTipoDocumento, toast]);
+
   const handleSaveDocumentoForm = async (documento: NewDocumento): Promise<boolean> => {
     const isEdit = state.formMode === 'edit-documento';
 
@@ -1262,6 +1271,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                 onSave={handleSaveDocumentoForm}
                 onCancel={cancelForm}
                 onDelete={state.formMode === 'edit-documento' ? async (id) => { await handleDeleteDocumento(id); cancelForm(); return true; } : undefined}
+                onRenameTipo={handleRenameTipoDocumento}
                 editingDocumento={editingDocumento}
               />
             )}

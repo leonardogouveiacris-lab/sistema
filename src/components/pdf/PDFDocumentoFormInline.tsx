@@ -5,19 +5,22 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { NewDocumento, Documento } from '../../types/Documento';
 import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
+import { DropdownItemAction } from '../ui/CustomDropdown';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { useDynamicEnums } from '../../hooks/useDynamicEnums';
+import { useToast } from '../../contexts/ToastContext';
 import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
 import { useNavigateToReference } from '../../hooks/useNavigateToReference';
 import { useProcessTable } from '../../hooks/useProcessTable';
-import { Save, X, FileText, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock } from 'lucide-react';
+import { Save, X, FileText, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock, Check, CreditCard as Edit2 } from 'lucide-react';
 
 interface PDFDocumentoFormInlineProps {
   processId: string;
   onSave: (documento: NewDocumento) => Promise<boolean>;
   onCancel: () => void;
   onDelete?: (id: string) => Promise<boolean>;
+  onRenameTipo?: (oldTipo: string, newTipo: string) => Promise<boolean>;
   editingDocumento?: Documento | null;
 }
 
@@ -47,10 +50,12 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   onSave,
   onCancel,
   onDelete,
+  onRenameTipo,
   editingDocumento = null
 }) => {
   const { state, clearHighlightIdsToLink, getCurrentDocument } = usePDFViewer();
-  const { refreshEnumValues } = useDynamicEnums();
+  const { refreshEnumValues, renameCustomValue, deleteCustomValue, getPredefinedValues } = useDynamicEnums();
+  const toast = useToast();
   const isEditMode = !!editingDocumento;
   const { table: processTable } = useProcessTable(processId);
   const referenceItems = useLancamentosForReference(processId, processTable);
@@ -72,11 +77,20 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const [isRenamingTipo, setIsRenamingTipo] = useState(false);
+  const [renameTipoValue, setRenameTipoValue] = useState('');
+  const [deletingTipo, setDeletingTipo] = useState<string | null>(null);
+  const [predefinedTipos, setPredefinedTipos] = useState<string[]>([]);
+
   const [expandedTextModal, setExpandedTextModal] = useState({
     isOpen: false,
     title: '',
     content: ''
   });
+
+  useEffect(() => {
+    getPredefinedValues(DynamicEnumType.TIPO_DOCUMENTO).then(setPredefinedTipos);
+  }, [getPredefinedValues]);
 
   useEffect(() => {
     if (isEditMode && editingDocumento) {
@@ -87,13 +101,18 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
         paginaVinculada: editingDocumento.paginaVinculada
       });
     }
-  }, [isEditMode, editingDocumento, processId]);
+    setIsRenamingTipo(false);
+  }, [isEditMode, editingDocumento?.id, processId]);
 
   useEffect(() => {
     if (!isEditMode) {
       setFormData(prev => ({ ...prev, paginaVinculada: state.currentPage }));
     }
   }, [state.currentPage, isEditMode]);
+
+  const isSystemTipo = useCallback((tipo: string): boolean => {
+    return predefinedTipos.includes(tipo);
+  }, [predefinedTipos]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -133,6 +152,52 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
     return storedIds.filter(id => currentHighlightIds.has(id));
   }, [isEditMode, editingDocumento, state.highlights]);
 
+  const handleConfirmRename = useCallback(() => {
+    if (renameTipoValue.trim()) {
+      setFormData(prev => ({ ...prev, tipoDocumento: renameTipoValue.trim() }));
+    }
+    setIsRenamingTipo(false);
+  }, [renameTipoValue]);
+
+  const handleCancelRename = useCallback(() => {
+    setRenameTipoValue(formData.tipoDocumento);
+    setIsRenamingTipo(false);
+  }, [formData.tipoDocumento]);
+
+  const handleEditarTipo = useCallback((tipo: string) => {
+    setIsRenamingTipo(true);
+    setRenameTipoValue(tipo);
+    setFormData(prev => ({ ...prev, tipoDocumento: tipo }));
+  }, []);
+
+  const handleExcluirTipo = useCallback(async (tipo: string) => {
+    setDeletingTipo(tipo);
+    try {
+      const result = await deleteCustomValue(DynamicEnumType.TIPO_DOCUMENTO, tipo, processId);
+      if (result.success) {
+        toast.success(result.message);
+        if (formData.tipoDocumento === tipo) {
+          setFormData(prev => ({ ...prev, tipoDocumento: '' }));
+        }
+        await refreshEnumValues(DynamicEnumType.TIPO_DOCUMENTO, processId);
+      } else {
+        toast.error(result.message);
+      }
+    } finally {
+      setDeletingTipo(null);
+    }
+  }, [deleteCustomValue, processId, toast, formData.tipoDocumento, refreshEnumValues]);
+
+  const tipoItemActions: DropdownItemAction = useMemo(() => ({
+    onEdit: (tipo: string) => {
+      if (!isSystemTipo(tipo)) handleEditarTipo(tipo);
+    },
+    onDelete: (tipo: string) => {
+      if (!isSystemTipo(tipo)) handleExcluirTipo(tipo);
+    },
+    isDeleting: (tipo: string) => deletingTipo === tipo,
+  }), [handleEditarTipo, handleExcluirTipo, deletingTipo, isSystemTipo]);
+
   const handleSave = async () => {
     if (!validateForm()) {
       return;
@@ -149,8 +214,23 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
         ? [...new Set([...existingHighlightIds, ...newHighlightIds])]
         : newHighlightIds;
 
+      const savedTipo = formData.tipoDocumento.trim();
+
+      if (isEditMode && editingDocumento && savedTipo !== editingDocumento.tipoDocumento && !isSystemTipo(editingDocumento.tipoDocumento)) {
+        const renameResult = await renameCustomValue(DynamicEnumType.TIPO_DOCUMENTO, editingDocumento.tipoDocumento, savedTipo, processId);
+        if (!renameResult.success) {
+          toast.error(renameResult.message || 'Falha ao renomear tipo de documento.');
+          setIsSaving(false);
+          return;
+        }
+        if (onRenameTipo) {
+          await onRenameTipo(editingDocumento.tipoDocumento, savedTipo);
+        }
+        await refreshEnumValues(DynamicEnumType.TIPO_DOCUMENTO, processId);
+      }
+
       const dataToSave: NewDocumento = {
-        tipoDocumento: formData.tipoDocumento.trim(),
+        tipoDocumento: savedTipo,
         comentarios: formData.comentarios?.trim() || '',
         processId: processId.trim(),
         paginaVinculada: formData.paginaVinculada || undefined,
@@ -212,6 +292,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   }, [handleCloseExpandedModal]);
 
   const currentTipo = formData.tipoDocumento;
+  const canRenameTipo = isEditMode && currentTipo && !isSystemTipo(currentTipo);
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden">
@@ -228,15 +309,45 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
               <FileText size={12} className="text-orange-600" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                {currentTipo ? (
-                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border flex-shrink-0 ${getTipoBadgeClass(currentTipo)}`}>
-                    {currentTipo}
-                  </span>
+              <div className="flex items-center gap-1 mb-0.5">
+                {isEditMode && isRenamingTipo ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      value={renameTipoValue}
+                      onChange={e => setRenameTipoValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleConfirmRename(); if (e.key === 'Escape') handleCancelRename(); }}
+                      className="text-xs font-bold text-gray-900 border-b border-orange-500 bg-transparent focus:outline-none"
+                      style={{ width: `${Math.max(renameTipoValue.length + 2, 12)}ch` }}
+                      autoFocus
+                    />
+                    <button onClick={handleConfirmRename} className="p-0.5 text-green-600 hover:text-green-700">
+                      <Check size={11} />
+                    </button>
+                    <button onClick={handleCancelRename} className="p-0.5 text-gray-400 hover:text-gray-600">
+                      <X size={11} />
+                    </button>
+                  </div>
                 ) : (
-                  <span className="text-sm font-bold text-gray-900 truncate">
-                    {isEditMode ? 'Editar Documento' : 'Novo Documento'}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    {currentTipo ? (
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border flex-shrink-0 ${getTipoBadgeClass(currentTipo)}`}>
+                        {currentTipo}
+                      </span>
+                    ) : (
+                      <span className="text-sm font-bold text-gray-900 truncate">
+                        {isEditMode ? 'Editar Documento' : 'Novo Documento'}
+                      </span>
+                    )}
+                    {canRenameTipo && (
+                      <button
+                        onClick={() => { setRenameTipoValue(currentTipo); setIsRenamingTipo(true); }}
+                        className="p-0.5 text-gray-400 hover:text-orange-600 flex-shrink-0"
+                        title="Renomear tipo"
+                      >
+                        <Edit2 size={10} />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
               {(formData.paginaVinculada || isEditMode) && (
@@ -258,6 +369,12 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
       </div>
 
       <div className="p-3 space-y-2.5">
+        {isEditMode && isRenamingTipo && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-2 text-xs text-orange-700">
+            Renomear atualizará <strong>todos os documentos</strong> com este tipo.
+          </div>
+        )}
+
         {errors.processId && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-2">
             <p className="text-red-700 text-xs">{errors.processId}</p>
@@ -280,6 +397,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           enumType={DynamicEnumType.TIPO_DOCUMENTO}
           processId={processId}
           onValueCreated={() => refreshEnumValues(DynamicEnumType.TIPO_DOCUMENTO)}
+          itemActions={tipoItemActions}
         />
 
         <div>

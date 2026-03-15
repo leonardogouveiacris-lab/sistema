@@ -374,9 +374,77 @@ export class DynamicEnumService {
     }
   }
   
+  static async renameCustomValue(
+    enumName: DynamicEnumType,
+    oldValue: string,
+    newValue: string,
+    processId?: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      if (!supabase) {
+        return { success: false, message: 'Supabase não configurado' };
+      }
+
+      const normalizedNew = newValue.trim();
+      if (!normalizedNew) {
+        return { success: false, message: 'Novo valor não pode ser vazio' };
+      }
+
+      const { error } = await supabase
+        .from('custom_enum_values')
+        .update({ enum_value: normalizedNew })
+        .eq('enum_name', enumName)
+        .eq('enum_value', oldValue);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      this.invalidateCache(enumName);
+      this.predefinedCache.delete(`predefined_${enumName}`);
+
+      return { success: true, message: `"${oldValue}" renomeado para "${normalizedNew}"` };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao renomear';
+      logger.errorWithException(msg, err as Error, 'DynamicEnumService.renameCustomValue', { enumName, oldValue, newValue });
+      return { success: false, message: msg };
+    }
+  }
+
+  static async deleteCustomValue(
+    enumName: DynamicEnumType,
+    value: string,
+    processId?: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      if (!supabase) {
+        return { success: false, message: 'Supabase não configurado' };
+      }
+
+      const { error } = await supabase
+        .from('custom_enum_values')
+        .delete()
+        .eq('enum_name', enumName)
+        .eq('enum_value', value);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      this.invalidateCache(enumName);
+      this.predefinedCache.delete(`predefined_${enumName}`);
+
+      return { success: true, message: `"${value}" removido` };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir';
+      logger.errorWithException(msg, err as Error, 'DynamicEnumService.deleteCustomValue', { enumName, value });
+      return { success: false, message: msg };
+    }
+  }
+
   /**
    * Invalida o cache para um enum específico
-   * 
+   *
    * @param enumName - Nome do enum para invalidar o cache
    */
   private static invalidateCache(enumName: string): void {
