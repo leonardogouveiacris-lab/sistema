@@ -11,9 +11,10 @@ import {
 } from 'lucide-react';
 import { evaluateFormula, formatFormulaResult, formatCellNumber } from '../../utils/formulaEvaluator';
 import { AddFormulaColumnModal } from './AddFormulaColumnModal';
+import Tooltip from '../ui/Tooltip';
 import type { ProcessTable, ProcessTableColumn, ProcessTableRow } from '../../types/ProcessTable';
 
-const COL_WIDTH = 100;
+const COL_WIDTH = 100.06;
 const ROW_NUM_WIDTH = 36;
 
 interface ProcessTableViewerProps {
@@ -502,23 +503,25 @@ function ColumnHeader({
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-1.5 group/header">
-          <span className={`font-mono text-[10px] font-bold shrink-0 ${isFormula ? 'text-emerald-700' : 'text-blue-600'}`}>
-            {column.letter}
-          </span>
-          <span className="text-slate-700 text-[11px] truncate flex-1" title={column.headerName}>
-            {column.headerName || '(sem nome)'}
-          </span>
-          {isFormula && (
-            <span className="text-[9px] font-mono text-emerald-600 bg-emerald-100 px-1 rounded shrink-0">fx</span>
-          )}
-          <button
-            onClick={(e) => { e.stopPropagation(); onMenuToggle(column.id); }}
-            className="p-0.5 rounded opacity-0 group-hover/header:opacity-100 hover:bg-slate-200 text-slate-500 transition-all shrink-0"
-          >
-            <MoreVertical size={11} />
-          </button>
-        </div>
+        <Tooltip content={column.headerName || '(sem nome)'} position="bottom" delay={300} className="block w-full">
+          <div className="flex items-center gap-1.5 group/header">
+            <span className={`font-mono text-[10px] font-bold shrink-0 ${isFormula ? 'text-emerald-700' : 'text-blue-600'}`}>
+              {column.letter}
+            </span>
+            <span className="text-slate-700 text-[11px] truncate flex-1">
+              {column.headerName || '(sem nome)'}
+            </span>
+            {isFormula && (
+              <span className="text-[9px] font-mono text-emerald-600 bg-emerald-100 px-1 rounded shrink-0">fx</span>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); onMenuToggle(column.id); }}
+              className="p-0.5 rounded opacity-0 group-hover/header:opacity-100 hover:bg-slate-200 text-slate-500 transition-all shrink-0"
+            >
+              <MoreVertical size={11} />
+            </button>
+          </div>
+        </Tooltip>
       )}
 
       {!isRenaming && isFormula && column.formulaExpression && (
