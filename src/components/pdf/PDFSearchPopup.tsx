@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, ChevronUp, ChevronDown, X, Loader2, Check } from 'lucide-react';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
-import { useDebounce } from '../../hooks/useDebounce';
 import { supabase } from '../../lib/supabase';
 import { getCachedDocumentText } from '../../utils/pdfTextExtractor';
 import type { SearchResult } from '../../utils/pdfTextExtractor';
@@ -54,13 +53,15 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   const [searchComplete, setSearchComplete] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const lastNavigatedQueryRef = useRef<string>('');
+  const lastSearchedQueryRef = useRef<string>('');
   const searchRequestIdRef = useRef(0);
   const localIndexRef = useRef<Map<string, Map<number, ReturnType<typeof buildPageSearchIndex>>>>(new Map());
   const indexProgressRef = useRef<{ current: number; total: number }>({ current: 0, total: 0 });
   const idleCallbackIdsRef = useRef<Set<number>>(new Set());
   const localQueryRef = useRef<string>(localQuery);
   const isSearchOpenRef = useRef<boolean>(state.isSearchOpen);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedQuery, setDebouncedQuery] = useState(localQuery);
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexProgress, setIndexProgress] = useState<{ current: number; total: number }>({
     current: 0,
@@ -69,13 +70,35 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   const [matchCase, setMatchCase] = useState(false);
   const [matchWholeWord, setMatchWholeWord] = useState(false);
   const [matchDiacritics, setMatchDiacritics] = useState(false);
-  const debouncedQuery = useDebounce(localQuery, 300);
 
   const searchOptions = useMemo<SearchOptions>(() => ({
     matchCase,
     matchWholeWord,
     matchDiacritics
   }), [matchCase, matchWholeWord, matchDiacritics]);
+
+  const flushDebounce = useCallback(() => {
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    setDebouncedQuery(localQueryRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null;
+      setDebouncedQuery(localQuery);
+    }, 300);
+    return () => {
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [localQuery]);
 
   const scheduleIdleTask = useCallback((callback: (deadline: IdleDeadline) => void) => {
     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
@@ -140,8 +163,9 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
       }
       cancelAllIdleTasks();
       setSearchComplete(false);
-      lastNavigatedQueryRef.current = '';
+      lastSearchedQueryRef.current = '';
       setLocalQuery('');
+      setDebouncedQuery('');
     }
   }, [cancelAllIdleTasks, state.isSearchOpen]);
 
@@ -337,6 +361,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
 
     setIsSearching(true);
     setSearchQuery(query);
+    lastSearchedQueryRef.current = query;
 
     try {
       const localSearch = buildLocalSearchResults(query);
@@ -414,41 +439,51 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     if (!debouncedQuery || debouncedQuery.length < 2) {
       setIsSearching(false);
       setSearchResults([]);
-      lastNavigatedQueryRef.current = '';
+      lastSearchedQueryRef.current = '';
       setSearchComplete(true);
       return;
     }
 
     searchWithFallback(debouncedQuery);
-  }, [debouncedQuery, searchWithFallback, setSearchResults]);
+  }, [debouncedQuery, searchWithFallback, setSearchResults, setIsSearching]);
 
   useEffect(() => {
-    const hasResults = state.searchResults.length > 0;
-    if (!hasResults || !state.searchQuery || !searchComplete) {
-      return;
+    if (searchOptions && lastSearchedQueryRef.current && lastSearchedQueryRef.current.length >= 2) {
+      searchWithFallback(lastSearchedQueryRef.current);
     }
-
-    if (lastNavigatedQueryRef.current === state.searchQuery) {
-      return;
-    }
-
-    lastNavigatedQueryRef.current = state.searchQuery;
-  }, [state.searchResults, state.searchQuery, searchComplete]);
+  }, [searchOptions, searchWithFallback]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       if (e.shiftKey) {
-        if (isIndexing) {
-          return;
-        }
+        if (state.isSearching) return;
+        if (state.searchResults.length === 0) return;
         goToPreviousSearchResult();
       } else {
-        setSearchComplete(false);
-        lastNavigatedQueryRef.current = '';
+        const queryToSearch = localQuery.trim();
+        if (queryToSearch.length < 2) return;
+
+        const alreadySearched = lastSearchedQueryRef.current === queryToSearch && searchComplete;
+        if (alreadySearched && state.searchResults.length > 0) {
+          goToNextSearchResult();
+          return;
+        }
+
+        flushDebounce();
         setSearchAnchorPage(state.currentPage);
-        searchWithFallback(localQuery);
+        searchWithFallback(queryToSearch);
       }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (state.isSearching) return;
+      if (state.searchResults.length === 0) return;
+      goToNextSearchResult();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (state.isSearching) return;
+      if (state.searchResults.length === 0) return;
+      goToPreviousSearchResult();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       invalidateSearch();
@@ -456,12 +491,17 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
     }
   }, [
     closeSearch,
+    flushDebounce,
+    goToNextSearchResult,
     goToPreviousSearchResult,
-    isIndexing,
+    invalidateSearch,
     localQuery,
+    searchComplete,
     searchWithFallback,
     setSearchAnchorPage,
-    state.currentPage
+    state.currentPage,
+    state.isSearching,
+    state.searchResults.length
   ]);
 
   useEffect(() => {
@@ -482,7 +522,10 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
   const hasResults = state.searchResults.length > 0;
   const noResults = localQuery.length >= 2 && !state.isSearching && state.searchResults.length === 0 && searchComplete;
   const extractionProgress = state.textExtractionProgress;
-  const navigationDisabled = !hasResults || isIndexing;
+  const navigationDisabled = !hasResults || state.isSearching;
+  const displayIndex = hasResults
+    ? (state.currentSearchIndex < 0 ? 1 : state.currentSearchIndex + 1)
+    : 0;
 
   return (
     <div className="absolute top-3 right-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -505,7 +548,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
                   clearSearch();
                   setSearchQuery('');
                   setSearchComplete(true);
-                  lastNavigatedQueryRef.current = '';
+                  lastSearchedQueryRef.current = '';
                 }
               }}
               onKeyDown={handleKeyDown}
@@ -517,29 +560,29 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
           </div>
 
           {state.isSearching && (
-            <Loader2 size={16} className="animate-spin text-blue-500" />
+            <Loader2 size={16} className="animate-spin text-blue-500 flex-shrink-0" />
           )}
 
-          {isIndexing && extractionProgress && (
-            <span className="text-xs text-blue-600">
-              Indexando texto… {extractionProgress.current}/{extractionProgress.total}
+          {isIndexing && !state.isSearching && extractionProgress && (
+            <span className="text-xs text-blue-600 flex-shrink-0">
+              {indexProgress.current}/{indexProgress.total}
             </span>
           )}
 
           {hasResults && (
-            <div className="flex items-center text-xs text-gray-600 min-w-[60px] justify-center">
-              <span className="font-medium">{state.currentSearchIndex + 1}</span>
+            <div className="flex items-center text-xs text-gray-600 min-w-[52px] justify-center flex-shrink-0">
+              <span className="font-medium">{displayIndex}</span>
               <span className="mx-0.5">/</span>
               <span>{state.searchResults.length}</span>
             </div>
           )}
 
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-0.5 flex-shrink-0">
             <button
               onClick={goToPreviousSearchResult}
               disabled={navigationDisabled}
               className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Resultado anterior (Shift+Enter)"
+              title="Resultado anterior (Shift+Enter / ↑)"
             >
               <ChevronUp size={16} />
             </button>
@@ -547,20 +590,20 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
               onClick={goToNextSearchResult}
               disabled={navigationDisabled}
               className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Proximo resultado (Enter)"
+              title="Próximo resultado (Enter / ↓)"
             >
               <ChevronDown size={16} />
             </button>
           </div>
 
-          <div className="w-px h-5 bg-gray-300" />
+          <div className="w-px h-5 bg-gray-300 flex-shrink-0" />
 
           <button
             onClick={() => {
               invalidateSearch();
               closeSearch();
             }}
-            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
             title="Fechar (Esc)"
           >
             <X size={16} />
@@ -571,8 +614,8 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
           <button
             type="button"
             onClick={() => setMatchCase(prev => !prev)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded border ${
-              matchCase ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200'
+            className={`flex items-center gap-1 px-2 py-0.5 rounded border transition-colors ${
+              matchCase ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
             }`}
           >
             {matchCase && <Check size={12} />}
@@ -581,8 +624,8 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
           <button
             type="button"
             onClick={() => setMatchWholeWord(prev => !prev)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded border ${
-              matchWholeWord ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200'
+            className={`flex items-center gap-1 px-2 py-0.5 rounded border transition-colors ${
+              matchWholeWord ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
             }`}
           >
             {matchWholeWord && <Check size={12} />}
@@ -591,8 +634,8 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
           <button
             type="button"
             onClick={() => setMatchDiacritics(prev => !prev)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded border ${
-              matchDiacritics ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200'
+            className={`flex items-center gap-1 px-2 py-0.5 rounded border transition-colors ${
+              matchDiacritics ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
             }`}
           >
             {matchDiacritics && <Check size={12} />}
