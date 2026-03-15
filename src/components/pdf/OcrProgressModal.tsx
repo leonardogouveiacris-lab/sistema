@@ -85,6 +85,13 @@ const statusLabel: Record<OcrState['status'], string> = {
   error: 'Erro no OCR',
 };
 
+const progressStepLabel: Record<string, string> = {
+  rendering: 'Renderizando pagina',
+  preprocessing: 'Pre-processando imagem',
+  recognizing: 'Reconhecendo texto',
+  saving: 'Salvando',
+};
+
 const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
   isOpen,
   ocrState,
@@ -242,11 +249,7 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
     ? Math.round((progress.currentPage / progress.totalPages) * 100)
     : 0;
 
-  const progressLabel = progress?.status === 'rendering'
-    ? 'Renderizando'
-    : progress?.status === 'recognizing'
-    ? 'Reconhecendo texto'
-    : 'Salvando';
+  const progressLabel = progress?.status ? (progressStepLabel[progress.status] ?? 'Processando') : 'Processando';
 
   useEffect(() => {
     if (!isOpen) return;
@@ -492,7 +495,7 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
                 </p>
               )}
               <p className="text-xs text-gray-400 text-center max-w-sm mt-2">
-                OCR processado localmente via Tesseract (pt-BR). O primeiro uso baixa o modelo de linguagem (~40 MB).
+                OCR processado localmente via Tesseract (pt-BR) com pre-processamento de imagem. O primeiro uso baixa o modelo de linguagem (~40 MB).
               </p>
             </div>
           )}
@@ -517,7 +520,7 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-between gap-4">
           <p className="text-xs text-gray-400 max-w-xs">
-            OCR via Tesseract (pt-BR) — processado localmente no navegador.
+            OCR via Tesseract (pt-BR) com binarizacao adaptativa — processado localmente.
           </p>
 
           <div className="flex gap-3">
