@@ -3175,6 +3175,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     setIsLoadingBookmarks(hasLoadingBookmarks);
   }, [state.bookmarksStatusByDoc, setIsLoadingBookmarks]);
 
+  const scrollToMultipleHighlightsRef = useRef(scrollToMultipleHighlights);
+  scrollToMultipleHighlightsRef.current = scrollToMultipleHighlights;
+
+  const navigateToPageWithHighlightRef = useRef(navigateToPageWithHighlight);
+  navigateToPageWithHighlightRef.current = navigateToPageWithHighlight;
+
+  const consumePendingNavigationRef = useRef(consumePendingNavigation);
+  consumePendingNavigationRef.current = consumePendingNavigation;
+
   /**
    * Effect para carregar highlights quando o PDF é aberto
    */
@@ -3198,15 +3207,15 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     };
 
     loadHighlights().then(() => {
-      const pending = consumePendingNavigation();
+      const pending = consumePendingNavigationRef.current();
       if (!pending) return;
       if (pending.type === 'highlights' && pending.highlightIds?.length) {
-        scrollToMultipleHighlights(pending.highlightIds, pending.page);
+        scrollToMultipleHighlightsRef.current(pending.highlightIds, pending.page);
       } else if (pending.type === 'page' && pending.page) {
-        navigateToPageWithHighlight(pending.page, pending.recordId);
+        navigateToPageWithHighlightRef.current(pending.page, pending.recordId);
       }
     });
-  }, [state.isOpen, processId, state.documents.length, setHighlights, consumePendingNavigation, navigateToPageWithHighlight, scrollToMultipleHighlights]);
+  }, [state.isOpen, processId, state.documents.length, setHighlights]);
 
   const loadCommentsForDocument = useCallback(async (documentId: string, signal: AbortSignal) => {
     if (!state.isOpen || commentsLoadInFlightRef.current.has(documentId) || commentsLoadedDocsRef.current.has(documentId)) {
