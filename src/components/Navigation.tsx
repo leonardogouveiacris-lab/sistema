@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useMemo } from 'react';
-import { Folder, FileText, BarChart3, Lock, Paintbrush } from 'lucide-react';
+import { Folder, FileText, BarChart3, Lock } from 'lucide-react';
 
 /**
  * Props do componente Navigation
@@ -63,12 +63,6 @@ const Navigation: React.FC<NavigationProps> = ({
       icon: <BarChart3 size={16} />,
       ariaLabel: 'Ir para Relatórios'
     },
-    {
-      id: 'sketch',
-      label: 'Esboço UI',
-      icon: <Paintbrush size={16} />,
-      ariaLabel: 'Ver esboço de redesign'
-    }
   ], []);
 
   /**

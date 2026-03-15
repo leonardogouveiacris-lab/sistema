@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import DesignSketch from './components/DesignSketch';
 import {
   ErrorBoundary,
   Header,
@@ -27,8 +26,7 @@ import { logger, getUserFriendlyMessage } from './utils';
 enum AppTabs {
   LISTA_PROCESSOS = 'lista-processos',
   PROCESSO = 'processo',
-  RELATORIOS = 'relatorios',
-  SKETCH = 'sketch'
+  RELATORIOS = 'relatorios'
 }
 
 const PROCESS_REQUIRED_TABS = [AppTabs.RELATORIOS];
@@ -371,9 +369,6 @@ function AppContent() {
             onBackToProcessList={handleBackToList}
           />
         );
-
-      case AppTabs.SKETCH:
-        return <DesignSketch />;
 
       default:
         logger.warn(`Aba desconhecida: ${activeTab}`, 'App - renderContent');
