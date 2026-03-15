@@ -47,34 +47,6 @@ export async function getDocumentOcrStatus(documentId: string): Promise<OcrDocum
   }
 }
 
-export async function getPageTextDensity(documentId: string, totalPages: number): Promise<Map<number, number>> {
-  const densityMap = new Map<number, number>();
-  try {
-    const { data } = await supabase
-      .from('pdf_text_pages')
-      .select('page_number, text_content, ocr_status')
-      .eq('process_document_id', documentId);
-
-    if (data) {
-      for (const row of data) {
-        densityMap.set(row.page_number, row.text_content?.trim().length ?? 0);
-      }
-    }
-
-    for (let page = 1; page <= totalPages; page++) {
-      if (!densityMap.has(page)) {
-        densityMap.set(page, 0);
-      }
-    }
-  } catch (error) {
-    logger.error('Failed to get page text density', 'pdfOcr.getPageTextDensity', { documentId }, error);
-    for (let page = 1; page <= totalPages; page++) {
-      densityMap.set(page, 0);
-    }
-  }
-  return densityMap;
-}
-
 export async function saveOcrResults(
   documentId: string,
   results: OcrPageResult[]
@@ -120,17 +92,4 @@ export async function saveOcrResults(
     logger.error('Failed to save OCR results', 'pdfOcr.saveOcrResults', { documentId }, error);
     return false;
   }
-}
-
-export function detectLowTextPages(
-  densityMap: Map<number, number>,
-  threshold = 50
-): number[] {
-  const lowTextPages: number[] = [];
-  densityMap.forEach((charCount, pageNumber) => {
-    if (charCount < threshold) {
-      lowTextPages.push(pageNumber);
-    }
-  });
-  return lowTextPages.sort((a, b) => a - b);
 }

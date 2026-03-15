@@ -6022,7 +6022,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   const {
     ocrState,
-    checkOcrStatus,
+    loadOcrStatus,
     runOcr,
     cancelOcr,
     resetOcr,
@@ -6282,8 +6282,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                 <button
                   onClick={() => {
                     setIsOcrModalOpen(true);
-                    if (activeOcrDocumentId && activeOcrPdfProxy) {
-                      checkOcrStatus(activeOcrPdfProxy.numPages);
+                    if (activeOcrDocumentId) {
+                      loadOcrStatus();
                     }
                   }}
                   disabled={state.documents.length === 0}
@@ -6415,8 +6415,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                     <button
                       onClick={() => {
                         setIsOcrModalOpen(true);
-                        if (activeOcrDocumentId && activeOcrPdfProxy) {
-                          checkOcrStatus(activeOcrPdfProxy.numPages);
+                        if (activeOcrDocumentId) {
+                          loadOcrStatus();
                         }
                         toolbarVisualDomain.setShowToolbarOverflow(false);
                       }}
@@ -6872,9 +6872,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         pdfUrl={activeOcrDocument?.url ?? ''}
         documentName={activeOcrDocument?.displayName ?? activeOcrDocument?.fileName ?? 'Documento'}
         currentPage={state.currentPage}
-        onStart={(pages) => {
+        onStart={(pages, params) => {
           if (activeOcrPdfProxy) {
-            runOcr(activeOcrPdfProxy, pages);
+            runOcr(activeOcrPdfProxy, pages, params);
           }
         }}
         onCancel={cancelOcr}

@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { X, ScanLine, AlertCircle, CheckCircle, Loader2, FileText, Wand2, Trash2 } from 'lucide-react';
+import { X, ScanLine, AlertCircle, CheckCircle, Loader2, FileText, Trash2, Settings, ChevronDown } from 'lucide-react';
 import type { OcrState } from '../../hooks/usePdfOcr';
+import { OCR_PARAMS_DEFAULT, PAGE_SEG_MODE_LABELS, type OcrParams } from '../../utils/pdfOcrEngine';
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
@@ -12,6 +13,15 @@ const INITIAL_THUMBNAIL_BATCH_SIZE = 20;
 const THUMBNAIL_APPEND_BATCH_SIZE = 20;
 const SCROLL_LOAD_THRESHOLD_PX = 180;
 
+const SCALE_OPTIONS: { value: number; label: string }[] = [
+  { value: 2.0, label: '2x (rapido)' },
+  { value: 2.5, label: '2.5x' },
+  { value: 3.0, label: '3x (padrao)' },
+  { value: 3.5, label: '3.5x (lento, maior qualidade)' },
+];
+
+const PAGE_SEG_MODES = Object.entries(PAGE_SEG_MODE_LABELS) as [OcrParams['pageSegMode'], string][];
+
 interface OcrProgressModalProps {
   isOpen: boolean;
   ocrState: OcrState;
@@ -19,7 +29,7 @@ interface OcrProgressModalProps {
   pdfUrl: string;
   documentName: string;
   currentPage: number;
-  onStart: (pages: number[]) => void;
+  onStart: (pages: number[], params: OcrParams) => void;
   onCancel: () => void;
   onClose: () => void;
 }
@@ -78,7 +88,6 @@ function formatPageRanges(pages: number[]): string {
 
 const statusLabel: Record<OcrState['status'], string> = {
   idle: 'Pronto',
-  detecting: 'Detectando paginas...',
   running: 'Executando OCR...',
   saving: 'Salvando resultados...',
   done: 'OCR concluido com sucesso',
@@ -107,11 +116,13 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
   const [rangeInput, setRangeInput] = useState('');
   const [rangeError, setRangeError] = useState<string | null>(null);
   const [thumbnailsToRender, setThumbnailsToRender] = useState(0);
+  const [showParams, setShowParams] = useState(false);
+  const [params, setParams] = useState<OcrParams>(OCR_PARAMS_DEFAULT);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
-  const { status, progress, lowTextPages, documentStatus, error, isRunning } = ocrState;
+  const { status, progress, documentStatus, error, isRunning } = ocrState;
   const isDone = status === 'done';
   const isError = status === 'error';
   const canStart = !isRunning && !isDone;
@@ -125,21 +136,14 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
   useEffect(() => {
     if (isOpen && canStart) {
       const initPage = Math.max(1, Math.min(currentPage, totalPages || 1));
-      if (lowTextPages.length > 0) {
-        setSelectedPages(new Set(lowTextPages));
-        setRangeInput(formatPageRanges(lowTextPages));
-      } else if (totalPages > 0) {
-        setSelectedPages(new Set([initPage]));
-        setRangeInput(String(initPage));
-      } else {
-        setSelectedPages(new Set());
-        setRangeInput('');
-      }
+      setSelectedPages(new Set([initPage]));
+      setRangeInput(String(initPage));
       setRangeError(null);
       setThumbnailsToRender(0);
+      setShowParams(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [isOpen, lowTextPages, currentPage, totalPages, canStart]);
+  }, [isOpen, currentPage, totalPages, canStart]);
 
   useEffect(() => {
     if (shouldUseIncrementalLoading) {
@@ -164,17 +168,6 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
       setRangeError(null);
     }
   }, [totalPages]);
-
-  const handleSelectDetected = useCallback(() => {
-    if (lowTextPages.length > 0) {
-      setSelectedPages(new Set(lowTextPages));
-      setRangeInput(formatPageRanges(lowTextPages));
-    } else {
-      setSelectedPages(new Set());
-      setRangeInput('');
-    }
-    setRangeError(null);
-  }, [lowTextPages]);
 
   const handleSelectAll = useCallback(() => {
     const all = Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -209,8 +202,8 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
 
   const handleStart = useCallback(() => {
     if (selectedPages.size === 0) return;
-    onStart(sortedSelectedPages);
-  }, [selectedPages, sortedSelectedPages, onStart]);
+    onStart(sortedSelectedPages, params);
+  }, [selectedPages, sortedSelectedPages, params, onStart]);
 
   const handleClose = useCallback(() => {
     if (!isRunning) {
@@ -300,7 +293,8 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
 
           {/* Toolbar */}
           {canStart && (
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 space-y-3">
+              {/* Page range row */}
               <div className="flex flex-wrap gap-3 items-end">
                 <div className="flex-1 min-w-[250px]">
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">
@@ -334,15 +328,6 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
                   >
                     Pagina {Math.max(1, Math.min(currentPage, totalPages || 1))}
                   </button>
-                  {lowTextPages.length > 0 && (
-                    <button
-                      onClick={handleSelectDetected}
-                      className="flex items-center gap-1 px-3 py-2.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors whitespace-nowrap"
-                    >
-                      <Wand2 size={12} />
-                      Detectadas ({lowTextPages.length})
-                    </button>
-                  )}
                   <button
                     onClick={handleSelectAll}
                     className="px-3 py-2.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
@@ -359,7 +344,8 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
                 </div>
               </div>
 
-              <div className="mt-3 flex items-center justify-between">
+              {/* Summary row */}
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-600">
                     <span className="font-semibold text-blue-600">{selectedPages.size}</span>
@@ -372,16 +358,79 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
                     </span>
                   )}
                 </div>
-                <span className="text-xs text-gray-400">
-                  Total do documento: {totalPages} paginas
-                </span>
+                <button
+                  onClick={() => setShowParams(v => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                    showParams
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <Settings size={12} />
+                  Parametros
+                  <ChevronDown size={11} className={`transition-transform ${showParams ? 'rotate-180' : ''}`} />
+                </button>
               </div>
+
+              {/* Params panel */}
+              {showParams && (
+                <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Configuracoes de reconhecimento</p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Render scale */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                        Escala de renderizacao
+                      </label>
+                      <select
+                        value={params.renderScale}
+                        onChange={e => setParams(p => ({ ...p, renderScale: parseFloat(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                      >
+                        {SCALE_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-gray-400">
+                        Resolucao maior melhora a precisao, mas e mais lento.
+                      </p>
+                    </div>
+
+                    {/* Page segmentation mode */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                        Modo de segmentacao (PSM)
+                      </label>
+                      <select
+                        value={params.pageSegMode}
+                        onChange={e => setParams(p => ({ ...p, pageSegMode: e.target.value as OcrParams['pageSegMode'] }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                      >
+                        {PAGE_SEG_MODES.map(([value, label]) => (
+                          <option key={value} value={value}>PSM {value} — {label}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-gray-400">
+                        Para formularios use PSM 3. Para texto corrido use PSM 6.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setParams(OCR_PARAMS_DEFAULT)}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Restaurar padrao
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
           {/* Preview grid */}
           {canStart && (
-            <div className="flex-1 overflow-hidden flex flex-col min-h-[240px]">
+            <div className="flex-1 overflow-hidden flex flex-col min-h-[200px]">
               <div className="px-6 py-3 border-b border-gray-100 bg-white">
                 <span className="text-sm font-medium text-gray-700">
                   Preview das paginas selecionadas

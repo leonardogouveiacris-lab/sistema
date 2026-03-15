@@ -2,20 +2,18 @@ import { useState, useCallback, useRef } from 'react';
 import { pdfjs } from 'react-pdf';
 import {
   getDocumentOcrStatus,
-  getPageTextDensity,
   saveOcrResults,
-  detectLowTextPages,
   type OcrDocumentStatus,
 } from '../services/pdfOcr.service';
-import type { OcrEngineProgress } from '../utils/pdfOcrEngine';
+import type { OcrEngineProgress, OcrParams } from '../utils/pdfOcrEngine';
+import { OCR_PARAMS_DEFAULT } from '../utils/pdfOcrEngine';
 import logger from '../utils/logger';
 
 export interface OcrState {
   isRunning: boolean;
   progress: OcrEngineProgress | null;
-  status: 'idle' | 'detecting' | 'running' | 'saving' | 'done' | 'error';
+  status: 'idle' | 'running' | 'saving' | 'done' | 'error';
   error: string | null;
-  lowTextPages: number[];
   documentStatus: OcrDocumentStatus | null;
 }
 
@@ -24,7 +22,6 @@ const initialState: OcrState = {
   progress: null,
   status: 'idle',
   error: null,
-  lowTextPages: [],
   documentStatus: null,
 };
 
@@ -32,35 +29,20 @@ export function usePdfOcr(documentId: string | null) {
   const [state, setState] = useState<OcrState>(initialState);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const checkStatus = useCallback(async (totalPages?: number) => {
+  const loadStatus = useCallback(async () => {
     if (!documentId) return;
-
-    setState(prev => ({ ...prev, status: 'detecting' }));
-
     try {
       const docStatus = await getDocumentOcrStatus(documentId);
-
-      let lowTextPages: number[] = [];
-      if (totalPages && totalPages > 0) {
-        const densityMap = await getPageTextDensity(documentId, totalPages);
-        lowTextPages = detectLowTextPages(densityMap);
-      }
-
-      setState(prev => ({
-        ...prev,
-        status: 'idle',
-        documentStatus: docStatus,
-        lowTextPages,
-      }));
+      setState(prev => ({ ...prev, documentStatus: docStatus }));
     } catch (error) {
-      logger.error('Failed to check OCR status', 'usePdfOcr.checkStatus', { documentId }, error);
-      setState(prev => ({ ...prev, status: 'idle' }));
+      logger.error('Failed to load OCR status', 'usePdfOcr.loadStatus', { documentId }, error);
     }
   }, [documentId]);
 
   const runOcr = useCallback(async (
     pdfDocument: pdfjs.PDFDocumentProxy,
-    pageNumbers?: number[]
+    pageNumbers: number[],
+    params: OcrParams = OCR_PARAMS_DEFAULT
   ) => {
     if (!documentId || state.isRunning) return;
 
@@ -76,24 +58,18 @@ export function usePdfOcr(documentId: string | null) {
     }));
 
     try {
-      const pagesToProcess = pageNumbers ?? state.lowTextPages;
-
-      if (pagesToProcess.length === 0) {
-        const allPages = Array.from({ length: pdfDocument.numPages }, (_, i) => i + 1);
-        pagesToProcess.push(...allPages);
-      }
-
       logger.info(
-        `Starting OCR for ${pagesToProcess.length} pages`,
+        `Starting OCR for ${pageNumbers.length} pages`,
         'usePdfOcr.runOcr',
-        { documentId, pages: pagesToProcess }
+        { documentId, pages: pageNumbers, params }
       );
 
       const { runOcrOnPages } = await import('../utils/pdfOcrEngine');
 
       const results = await runOcrOnPages(
         pdfDocument,
-        pagesToProcess,
+        pageNumbers,
+        params,
         (progress) => {
           setState(prev => ({ ...prev, progress }));
         },
@@ -143,7 +119,7 @@ export function usePdfOcr(documentId: string | null) {
         error: message,
       }));
     }
-  }, [documentId, state.isRunning, state.lowTextPages]);
+  }, [documentId, state.isRunning]);
 
   const cancelOcr = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -162,7 +138,7 @@ export function usePdfOcr(documentId: string | null) {
 
   return {
     ocrState: state,
-    checkOcrStatus: checkStatus,
+    loadOcrStatus: loadStatus,
     runOcr,
     cancelOcr,
     resetOcr,

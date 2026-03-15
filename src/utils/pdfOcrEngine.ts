@@ -2,8 +2,27 @@ import { pdfjs } from 'react-pdf';
 import logger from './logger';
 import type { OcrPageResult, OcrWordBox } from '../services/pdfOcr.service';
 
-const OCR_RENDER_SCALE = 3.0;
-const OCR_LANGUAGE = 'por';
+export const OCR_RENDER_SCALE_DEFAULT = 3.0;
+export const OCR_LANGUAGE = 'por';
+
+export interface OcrParams {
+  renderScale: number;
+  pageSegMode: '1' | '3' | '4' | '6' | '11' | '12';
+}
+
+export const OCR_PARAMS_DEFAULT: OcrParams = {
+  renderScale: OCR_RENDER_SCALE_DEFAULT,
+  pageSegMode: '3',
+};
+
+export const PAGE_SEG_MODE_LABELS: Record<OcrParams['pageSegMode'], string> = {
+  '1': 'Segmentacao automatica com OSD',
+  '3': 'Segmentacao automatica (recomendado)',
+  '4': 'Coluna unica de texto',
+  '6': 'Bloco uniforme de texto',
+  '11': 'Texto esparso',
+  '12': 'Texto esparso com OSD',
+};
 
 export interface OcrEngineProgress {
   currentPage: number;
@@ -104,10 +123,11 @@ function preprocessCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
 
 async function renderPageToCanvas(
   pdfDocument: pdfjs.PDFDocumentProxy,
-  pageNumber: number
+  pageNumber: number,
+  renderScale: number
 ): Promise<HTMLCanvasElement> {
   const page = await pdfDocument.getPage(pageNumber);
-  const viewport = page.getViewport({ scale: OCR_RENDER_SCALE });
+  const viewport = page.getViewport({ scale: renderScale });
 
   const canvas = document.createElement('canvas');
   canvas.width = viewport.width;
@@ -153,7 +173,8 @@ function postProcessText(text: string): string {
 }
 
 async function recognizeCanvasText(
-  canvas: HTMLCanvasElement
+  canvas: HTMLCanvasElement,
+  pageSegMode: OcrParams['pageSegMode']
 ): Promise<{ text: string; confidence: number; wordBoxes: OcrWordBox[] }> {
   const { createWorker } = await import('tesseract.js');
 
@@ -168,7 +189,7 @@ async function recognizeCanvasText(
 
   try {
     await worker.setParameters({
-      tessedit_pageseg_mode: '3',
+      tessedit_pageseg_mode: pageSegMode,
       preserve_interword_spaces: '1',
     });
 
@@ -199,6 +220,7 @@ async function recognizeCanvasText(
 export async function runOcrOnPages(
   pdfDocument: pdfjs.PDFDocumentProxy,
   pageNumbers: number[],
+  params: OcrParams = OCR_PARAMS_DEFAULT,
   onProgress?: (progress: OcrEngineProgress) => void,
   abortSignal?: AbortSignal
 ): Promise<OcrPageResult[]> {
@@ -219,7 +241,7 @@ export async function runOcrOnPages(
         status: 'rendering',
       });
 
-      const canvas = await renderPageToCanvas(pdfDocument, pageNumber);
+      const canvas = await renderPageToCanvas(pdfDocument, pageNumber, params.renderScale);
 
       if (abortSignal?.aborted) {
         break;
@@ -237,7 +259,7 @@ export async function runOcrOnPages(
         status: 'recognizing',
       });
 
-      const { text, confidence, wordBoxes } = await recognizeCanvasText(canvas);
+      const { text, confidence, wordBoxes } = await recognizeCanvasText(canvas, params.pageSegMode);
 
       results.push({ pageNumber, text, confidence, wordBoxes });
 
