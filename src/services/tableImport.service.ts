@@ -75,13 +75,21 @@ export async function getProcessTable(processId: string): Promise<ProcessTable |
 
   let cells: ProcessTableCellRecord[] = [];
   if (rowIds.length > 0) {
-    const { data: cellData, error: cellError } = await supabase
-      .from('process_table_cells')
-      .select('*')
-      .in('row_id', rowIds);
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    while (true) {
+      const { data: cellData, error: cellError } = await supabase
+        .from('process_table_cells')
+        .select('*')
+        .in('row_id', rowIds)
+        .range(from, from + PAGE_SIZE - 1);
 
-    if (cellError) throw cellError;
-    cells = cellData as ProcessTableCellRecord[];
+      if (cellError) throw cellError;
+      const page = cellData as ProcessTableCellRecord[];
+      cells = cells.concat(page);
+      if (page.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
   }
 
   const cellsByRow: Record<string, ProcessTableCellRecord[]> = {};
@@ -90,20 +98,24 @@ export async function getProcessTable(processId: string): Promise<ProcessTable |
     cellsByRow[cell.row_id].push(cell);
   }
 
-  const rows: ProcessTableRow[] = (rowRecords as ProcessTableRowRecord[]).map((rowRecord) => {
-    const rowCells = cellsByRow[rowRecord.id] ?? [];
-    const cellMap: Record<string, string | null> = {};
-    for (const cell of rowCells) {
-      cellMap[cell.column_id] = cell.cell_value;
-    }
-    return {
-      id: rowRecord.id,
-      rowIndex: rowRecord.row_index,
-      cells: cellMap,
-    };
-  });
+  const rows: ProcessTableRow[] = (rowRecords as ProcessTableRowRecord[])
+    .map((rowRecord) => {
+      const rowCells = cellsByRow[rowRecord.id] ?? [];
+      const cellMap: Record<string, string | null> = {};
+      for (const cell of rowCells) {
+        cellMap[cell.column_id] = cell.cell_value;
+      }
+      return {
+        id: rowRecord.id,
+        rowIndex: rowRecord.row_index,
+        cells: cellMap,
+      };
+    })
+    .filter((row) => Object.values(row.cells).some((v) => v !== null && v !== ''));
 
-  return buildTable(tableRecord as ProcessTableRecord, columns, rows);
+  const reindexedRows = rows.map((row, i) => ({ ...row, rowIndex: i + 1 }));
+
+  return buildTable(tableRecord as ProcessTableRecord, columns, reindexedRows);
 }
 
 export async function importTable(
