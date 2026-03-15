@@ -360,34 +360,37 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
           padding: 1px 6px;
           border-radius: 4px;
           font-size: 0.75rem;
-          font-weight: 500;
+          font-weight: 600;
           cursor: pointer;
           text-decoration: none;
           user-select: none;
           white-space: nowrap;
+          background: transparent;
+          color: inherit;
+          border: none;
         }
         .lancamento-ref-chip[data-type="verba"] {
-          background: #dcfce7;
-          color: #15803d;
-          border: 1px solid #86efac;
+          background: transparent;
+          color: inherit;
+          border: none;
         }
         .lancamento-ref-chip[data-type="documento"] {
-          background: #cffafe;
-          color: #0e7490;
-          border: 1px solid #67e8f9;
+          background: transparent;
+          color: inherit;
+          border: none;
         }
         .lancamento-ref-chip[data-type="decisao"] {
-          background: #fef9c3;
-          color: #854d0e;
-          border: 1px solid #fde047;
+          background: transparent;
+          color: inherit;
+          border: none;
         }
         .lancamento-ref-chip[data-type="tabela"] {
-          background: #e0f2fe;
-          color: #0369a1;
-          border: 1px solid #7dd3fc;
+          background: transparent;
+          color: inherit;
+          border: none;
         }
         .lancamento-ref-chip:hover {
-          filter: brightness(0.95);
+          text-decoration: underline;
         }
       `}</style>
     </div>
