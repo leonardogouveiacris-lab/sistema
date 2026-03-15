@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { X, Calculator, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { validateFormulaExpression, evaluateFormula } from '../../utils/formulaEvaluator';
-import { columnIndexToLetter } from '../../utils/tableParser';
 import type { ProcessTable, ProcessTableColumn } from '../../types/ProcessTable';
 
 interface AddFormulaColumnModalProps {
@@ -54,8 +53,9 @@ export function AddFormulaColumnModal({
     setSaving(true);
     try {
       await onConfirm(headerName.trim(), expression.trim().toUpperCase());
+      setSaving(false);
       onClose();
-    } finally {
+    } catch {
       setSaving(false);
     }
   };

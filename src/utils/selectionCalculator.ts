@@ -1,4 +1,5 @@
 import type { ProcessTableColumn, ProcessTableRow } from '../types/ProcessTable';
+import { normalizeNumberString } from './numberUtils';
 
 export interface SelectionStats {
   sum: number;
@@ -7,30 +8,6 @@ export interface SelectionStats {
   min: number;
   max: number;
   hasValues: boolean;
-}
-
-function normalizeNumberString(str: string): string {
-  const dotIdx = str.lastIndexOf('.');
-  const commaIdx = str.lastIndexOf(',');
-
-  if (dotIdx === -1 && commaIdx === -1) return str;
-
-  if (dotIdx !== -1 && commaIdx === -1) {
-    const dotCount = (str.match(/\./g) ?? []).length;
-    if (dotCount > 1) return str.replace(/\./g, '');
-    if (str.length - dotIdx - 1 === 3 && !str.startsWith('-0')) return str.replace(/\./g, '');
-    return str;
-  }
-
-  if (commaIdx !== -1 && dotIdx === -1) {
-    const commaCount = (str.match(/,/g) ?? []).length;
-    if (commaCount > 1) return str.replace(/,/g, '');
-    if (str.length - commaIdx - 1 === 3) return str.replace(/,/g, '');
-    return str.replace(',', '.');
-  }
-
-  if (dotIdx < commaIdx) return str.replace(/\./g, '').replace(',', '.');
-  return str.replace(/,/g, '');
 }
 
 function parseCellToNumber(value: string | null | undefined): number | null {
@@ -80,8 +57,8 @@ export function computeSelectionStats(
 
   const sum = values.reduce((a, b) => a + b, 0);
   const average = sum / values.length;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const min = values.reduce((a, b) => (b < a ? b : a), values[0]);
+  const max = values.reduce((a, b) => (b > a ? b : a), values[0]);
 
   return { sum, average, count: values.length, min, max, hasValues: true };
 }

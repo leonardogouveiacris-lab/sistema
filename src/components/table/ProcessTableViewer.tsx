@@ -224,21 +224,38 @@ export function ProcessTableViewer({
     [table.columns]
   );
 
+  const rowByIndex = useMemo<Map<number, ProcessTableRow>>(() => {
+    const map = new Map<number, ProcessTableRow>();
+    for (const row of table.rows) map.set(row.rowIndex, row);
+    return map;
+  }, [table.rows]);
+
   const getCellRef = useCallback(
     (column: ProcessTableColumn, rowIndex: number) => `${column.letter}${rowIndex}`,
     []
   );
 
+  const formulaResultsCache = useMemo<Record<string, string>>(() => {
+    const cache: Record<string, string> = {};
+    const formulaCols = sortedColumns.filter((c) => c.type === 'formula' && c.formulaExpression);
+    for (const col of formulaCols) {
+      for (const row of table.rows) {
+        const key = `${row.id}::${col.id}`;
+        cache[key] = formatFormulaResult(evaluateFormula(col.formulaExpression!, table.columns, row));
+      }
+    }
+    return cache;
+  }, [sortedColumns, table.columns, table.rows]);
+
   const getCellValue = useCallback(
     (row: ProcessTableRow, column: ProcessTableColumn): string => {
       if (column.type === 'formula' && column.formulaExpression) {
-        const result = evaluateFormula(column.formulaExpression, table.columns, row);
-        return formatFormulaResult(result);
+        return formulaResultsCache[`${row.id}::${column.id}`] ?? '';
       }
       const raw = row.cells[column.id] ?? '';
       return formatCellNumber(raw);
     },
-    [table.columns]
+    [formulaResultsCache]
   );
 
   const startEdit = useCallback(
@@ -325,15 +342,13 @@ export function ProcessTableViewer({
       const refs = new Set<string>();
       for (let ci = minCol; ci <= maxCol; ci++) {
         const col = sortedColumns[ci];
-        for (const row of table.rows) {
-          if (row.rowIndex >= minRow && row.rowIndex <= maxRow) {
-            refs.add(`${col.letter}${row.rowIndex}`);
-          }
+        for (let ri = minRow; ri <= maxRow; ri++) {
+          if (rowByIndex.has(ri)) refs.add(`${col.letter}${ri}`);
         }
       }
       return refs;
     },
-    [sortedColumns, table.rows]
+    [sortedColumns, rowByIndex]
   );
 
   const handleCellClick = useCallback(
@@ -388,13 +403,13 @@ export function ProcessTableViewer({
         allRefsForCol.add(`${letter}${row.rowIndex}`);
       }
       setSelectedRefs(allRefsForCol);
-      if (table.rows.length > 0) {
-        const firstRow = [...table.rows].sort((a, b) => a.rowIndex - b.rowIndex)[0];
-        setSelectionAnchorRef(`${letter}${firstRow.rowIndex}`);
+      if (rowByIndex.size > 0) {
+        const minRowIndex = Math.min(...Array.from(rowByIndex.keys()));
+        setSelectionAnchorRef(`${letter}${minRowIndex}`);
       }
       setFocusedCell({ rowIndex: 0, colIndex: colIdx });
     },
-    [table.rows, selectionAnchorRef, sortedColumns]
+    [table.rows, rowByIndex, selectionAnchorRef, sortedColumns]
   );
 
   const handleTableKeyDown = useCallback(
@@ -483,13 +498,15 @@ export function ProcessTableViewer({
     setActiveColumnMenu(null);
   }, []);
 
-  const isColumnFullySelected = useCallback(
-    (letter: string) => {
-      const colRefs = table.rows.map((r) => `${letter}${r.rowIndex}`);
-      return colRefs.length > 0 && colRefs.every((r) => selectedRefs.has(r));
-    },
-    [selectedRefs, table.rows]
-  );
+  const fullySelectedColumns = useMemo<Set<string>>(() => {
+    if (selectedRefs.size === 0 || table.rows.length === 0) return new Set();
+    const result = new Set<string>();
+    for (const col of sortedColumns) {
+      const allSelected = table.rows.every((r) => selectedRefs.has(`${col.letter}${r.rowIndex}`));
+      if (allSelected) result.add(col.letter);
+    }
+    return result;
+  }, [selectedRefs, table.rows, sortedColumns]);
 
   return (
     <div
@@ -570,7 +587,7 @@ export function ProcessTableViewer({
                     onDeleteColumn(id);
                     setActiveColumnMenu(null);
                   }}
-                  isColumnSelected={isColumnFullySelected(col.letter)}
+                  isColumnSelected={fullySelectedColumns.has(col.letter)}
                   onColumnHeaderClick={handleColumnHeaderClick}
                 />
               ))}

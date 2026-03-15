@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { ProcessTable, FormulaColumnDef } from '../types/ProcessTable';
-import type { ParsedTableData } from '../types/ProcessTable';
+import type { ProcessTable, FormulaColumnDef, ParsedTableData } from '../types/ProcessTable';
 import {
   getProcessTable,
   importTable,
@@ -72,20 +71,34 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
 
   const editCell = useCallback(
     async (rowId: string, columnId: string, value: string | null) => {
-      await updateCell(rowId, columnId, value);
+      let previousValue: string | null | undefined;
       setTable((prev) => {
         if (!prev) return prev;
+        const row = prev.rows.find((r) => r.id === rowId);
+        if (row) previousValue = row.cells[columnId];
         return {
           ...prev,
-          rows: prev.rows.map((row) => {
-            if (row.id !== rowId) return row;
-            return {
-              ...row,
-              cells: { ...row.cells, [columnId]: value },
-            };
+          rows: prev.rows.map((r) => {
+            if (r.id !== rowId) return r;
+            return { ...r, cells: { ...r.cells, [columnId]: value } };
           }),
         };
       });
+      try {
+        await updateCell(rowId, columnId, value);
+      } catch (err) {
+        setTable((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            rows: prev.rows.map((r) => {
+              if (r.id !== rowId) return r;
+              return { ...r, cells: { ...r.cells, [columnId]: previousValue ?? null } };
+            }),
+          };
+        });
+        throw err;
+      }
     },
     []
   );

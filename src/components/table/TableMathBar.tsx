@@ -63,8 +63,7 @@ export function TableMathBar({ selectedRefs, columns, rows, onSelectRange }: Tab
 
       if (targetLetters.length === 0 || rows.length === 0) return;
 
-      const sortedRows = [...rows].sort((a, b) => b.rowIndex - a.rowIndex);
-      const lastRow = sortedRows[0];
+      const lastRow = rows.reduce((a, b) => (b.rowIndex > a.rowIndex ? b : a));
       const startRowIndex = Math.max(1, lastRow.rowIndex - months + 1);
 
       const newRefs = new Set<string>();

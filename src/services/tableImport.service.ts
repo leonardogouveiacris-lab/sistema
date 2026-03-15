@@ -312,6 +312,13 @@ export async function renameColumn(columnId: string, headerName: string): Promis
 export async function deleteColumn(columnId: string, tableId: string): Promise<void> {
   if (!supabase) throw new Error('Supabase não configurado');
 
+  const { data: allCols, error: fetchError } = await supabase
+    .from('process_table_columns')
+    .select('id')
+    .eq('table_id', tableId);
+
+  if (fetchError) throw fetchError;
+
   const { error } = await supabase
     .from('process_table_columns')
     .delete()
@@ -319,14 +326,11 @@ export async function deleteColumn(columnId: string, tableId: string): Promise<v
 
   if (error) throw error;
 
-  const { data: remaining } = await supabase
-    .from('process_table_columns')
-    .select('id')
-    .eq('table_id', tableId);
+  const remainingCount = Math.max(0, (allCols?.length ?? 1) - 1);
 
   await supabase
     .from('process_tables')
-    .update({ total_columns: remaining?.length ?? 0 })
+    .update({ total_columns: remainingCount })
     .eq('id', tableId);
 }
 

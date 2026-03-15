@@ -38,12 +38,6 @@ export interface ProcessTableCellRecord {
   updated_at: string;
 }
 
-export interface ProcessTableCell {
-  columnId: string;
-  columnLetter: string;
-  value: string | null;
-}
-
 export interface ProcessTableRow {
   id: string;
   rowIndex: number;
