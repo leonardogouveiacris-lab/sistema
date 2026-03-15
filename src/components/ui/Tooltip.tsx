@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 interface TooltipProps {
@@ -20,9 +20,10 @@ const Tooltip: React.FC<TooltipProps> = ({
   className = 'inline-block',
   tooltipClassName = ''
 }) => {
-  const [isVisible, setIsVisible] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [measured, setMeasured] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
-  const triggerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLSpanElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -67,9 +68,10 @@ const Tooltip: React.FC<TooltipProps> = ({
     setCoords({ top, left });
   }, [position]);
 
-  useEffect(() => {
-    if (isVisible) {
+  useLayoutEffect(() => {
+    if (showTooltip) {
       calculatePosition();
+      setMeasured(true);
 
       const recalculate = () => calculatePosition();
       window.addEventListener('resize', recalculate);
@@ -79,12 +81,14 @@ const Tooltip: React.FC<TooltipProps> = ({
         window.removeEventListener('resize', recalculate);
         window.removeEventListener('scroll', recalculate, true);
       };
+    } else {
+      setMeasured(false);
     }
-  }, [isVisible, content, calculatePosition]);
+  }, [showTooltip, content, calculatePosition]);
 
   const handleMouseEnter = () => {
     timeoutRef.current = setTimeout(() => {
-      setIsVisible(true);
+      setShowTooltip(true);
     }, delay);
   };
 
@@ -92,7 +96,7 @@ const Tooltip: React.FC<TooltipProps> = ({
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
-    setIsVisible(false);
+    setShowTooltip(false);
   };
 
   useEffect(() => {
@@ -107,16 +111,17 @@ const Tooltip: React.FC<TooltipProps> = ({
     return <>{children}</>;
   }
 
-  const tooltipNode = isVisible ? (
+  const tooltipNode = showTooltip ? (
     <div
       ref={tooltipRef}
-      className={`fixed z-[9999] px-3 py-1.5 text-xs text-gray-800 bg-gray-200 border border-gray-300 rounded-md shadow-md pointer-events-none animate-fade-in whitespace-nowrap ${tooltipClassName}`}
+      className={`fixed z-[9999] px-3 py-1.5 text-xs text-gray-800 bg-gray-200 border border-gray-300 rounded-md shadow-md pointer-events-none whitespace-nowrap ${tooltipClassName}`}
       style={{
         top: coords.top,
         left: coords.left,
         maxWidth: maxWidth,
         overflow: 'hidden',
-        textOverflow: 'ellipsis'
+        textOverflow: 'ellipsis',
+        visibility: measured ? 'visible' : 'hidden',
       }}
     >
       {content}
@@ -133,15 +138,15 @@ const Tooltip: React.FC<TooltipProps> = ({
 
   return (
     <>
-      <div
+      <span
         ref={triggerRef}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         className={className}
       >
         {children}
-      </div>
-      {tooltipNode ? createPortal(tooltipNode, document.body) : null}
+      </span>
+      {createPortal(tooltipNode, document.body)}
     </>
   );
 };
