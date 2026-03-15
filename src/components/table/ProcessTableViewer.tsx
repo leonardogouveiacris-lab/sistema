@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Pencil,
   Calculator,
@@ -466,14 +467,59 @@ function ColumnHeader({
   onDeleteColumn,
 }: ColumnHeaderProps) {
   const isFormula = column.type === 'formula';
+  const thRef = useRef<HTMLTableCellElement>(null);
+  const [menuCoords, setMenuCoords] = useState({ top: 0, left: 0 });
+
+  useLayoutEffect(() => {
+    if (showMenu && thRef.current) {
+      const rect = thRef.current.getBoundingClientRect();
+      setMenuCoords({ top: rect.bottom + 4, left: rect.left });
+    }
+  }, [showMenu]);
+
+  const menuNode = showMenu ? (
+    <div
+      className="fixed z-[9999] bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 min-w-[170px]"
+      style={{ top: menuCoords.top, left: menuCoords.left }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {!isFormula && (
+        <button
+          onClick={() => onStartRename(column)}
+          className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+        >
+          <Type size={13} className="text-slate-400" />
+          Renomear coluna
+        </button>
+      )}
+      {isFormula && (
+        <button
+          onClick={() => onEditFormula(column)}
+          className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+        >
+          <Pencil size={13} className="text-slate-400" />
+          Editar fórmula
+        </button>
+      )}
+      <div className="my-1 border-t border-slate-100" />
+      <button
+        onClick={() => onDeleteColumn(column.id)}
+        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors"
+      >
+        <Trash2 size={13} />
+        Remover coluna
+      </button>
+    </div>
+  ) : null;
 
   return (
     <th
+      ref={thRef}
       className={`
-        relative px-2 py-2 border-b border-r border-slate-300 font-medium text-left overflow-visible
+        relative px-2 py-2 border-b border-r border-slate-300 font-medium text-left
         ${isFormula ? 'bg-emerald-100/60' : 'bg-slate-100'}
       `}
-      style={{ width: COL_WIDTH }}
+      style={{ width: COL_WIDTH, maxWidth: COL_WIDTH, overflow: 'hidden' }}
       onClick={(e) => e.stopPropagation()}
     >
       {isRenaming ? (
@@ -530,39 +576,7 @@ function ColumnHeader({
         </div>
       )}
 
-      {showMenu && (
-        <div
-          className="absolute top-full left-0 z-[100] mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 min-w-[170px]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {!isFormula && (
-            <button
-              onClick={() => onStartRename(column)}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
-            >
-              <Type size={13} className="text-slate-400" />
-              Renomear coluna
-            </button>
-          )}
-          {isFormula && (
-            <button
-              onClick={() => onEditFormula(column)}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
-            >
-              <Pencil size={13} className="text-slate-400" />
-              Editar fórmula
-            </button>
-          )}
-          <div className="my-1 border-t border-slate-100" />
-          <button
-            onClick={() => onDeleteColumn(column.id)}
-            className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors"
-          >
-            <Trash2 size={13} />
-            Remover coluna
-          </button>
-        </div>
-      )}
+      {createPortal(menuNode, document.body)}
     </th>
   );
 }
