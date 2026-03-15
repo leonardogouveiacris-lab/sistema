@@ -398,18 +398,19 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
                 className="min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg outline-none transition-colors leading-relaxed border border-gray-300 focus:ring-2 focus:ring-blue-500 bg-white"
                 style={{ wordBreak: 'break-word' }}
               />
+            ) : content ? (
+              <div
+                onClick={() => setIsEditing(true)}
+                className="min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg transition-colors leading-relaxed cursor-text text-gray-700 bg-gray-50 hover:bg-gray-100"
+                style={{ wordBreak: 'break-word' }}
+                dangerouslySetInnerHTML={{ __html: buildEditableHTML(content) }}
+              />
             ) : (
               <div
                 onClick={() => setIsEditing(true)}
-                className={`min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg transition-colors leading-relaxed cursor-text ${
-                  content ? 'text-gray-700 bg-gray-50 hover:bg-gray-100' : 'bg-gray-50 hover:bg-gray-100'
-                }`}
-                style={{ wordBreak: 'break-word' }}
-                dangerouslySetInnerHTML={content ? { __html: buildEditableHTML(content) } : undefined}
+                className="min-h-[60px] p-2 text-sm rounded-lg bg-gray-50 hover:bg-gray-100 cursor-text"
               >
-                {!content && (
-                  <span className="text-gray-400 italic">Clique para adicionar comentário...</span>
-                )}
+                <span className="text-gray-400 italic">Clique para adicionar comentário...</span>
               </div>
             )}
             {pickerOpen && createPortal(
