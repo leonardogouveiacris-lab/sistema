@@ -8,8 +8,12 @@
 import React, { useState, useMemo } from 'react';
 import { Documento } from '../types/Documento';
 import { FileText, Search, ChevronDown, ChevronUp, Filter } from 'lucide-react';
-import { getPreviewText, hasLongText, PREVIEW_LENGTHS } from '../utils/previewText';
+import { hasLongText } from '../utils/previewText';
 import { sortByPagina } from '../utils/sortByPagina';
+import { LancamentoRefRenderer } from './ui';
+import { useLancamentosForReference } from '../hooks/useLancamentosForReference';
+import { useNavigateToReference } from '../hooks/useNavigateToReference';
+import { useProcessTable } from '../hooks/useProcessTable';
 
 interface ProcessDocumentoListProps {
   processId: string;
@@ -27,6 +31,10 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
   const [selectedTipo, setSelectedTipo] = useState<string>('all');
   const [groupByTipo, setGroupByTipo] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+
+  const { table: processTable } = useProcessTable(processId);
+  const referenceItems = useLancamentosForReference(processId, processTable);
+  const navigateToReference = useNavigateToReference(processId);
 
   const toggleCardExpansion = (docId: string) => {
     setExpandedCards(prev => {
@@ -243,12 +251,12 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
                             </div>
                             {doc.comentarios && (
                               <div className="mb-2">
-                                <p className={`text-sm leading-relaxed ${isCardExpanded ? 'text-gray-700' : 'text-gray-600 italic'}`}>
-                                  {!isCardExpanded
-                                    ? getPreviewText(doc.comentarios, PREVIEW_LENGTHS.LIST_VIEW)
-                                    : doc.comentarios
-                                  }
-                                </p>
+                                <LancamentoRefRenderer
+                                  html={doc.comentarios}
+                                  referenceItems={referenceItems}
+                                  onNavigate={navigateToReference}
+                                  className={`text-sm leading-relaxed ${isCardExpanded ? 'text-gray-700' : 'text-gray-600 italic line-clamp-3'}`}
+                                />
                                 {showExpandButton && (
                                   <button
                                     onClick={() => toggleCardExpansion(doc.id)}
@@ -294,12 +302,12 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
                       </div>
                       {doc.comentarios && (
                         <div className="mb-2">
-                          <p className={`text-xs leading-relaxed ${isCardExpanded ? 'text-gray-700' : 'text-gray-600 italic'}`}>
-                            {!isCardExpanded
-                              ? getPreviewText(doc.comentarios, PREVIEW_LENGTHS.LIST_VIEW)
-                              : doc.comentarios
-                            }
-                          </p>
+                          <LancamentoRefRenderer
+                            html={doc.comentarios}
+                            referenceItems={referenceItems}
+                            onNavigate={navigateToReference}
+                            className={`text-xs leading-relaxed ${isCardExpanded ? 'text-gray-700' : 'text-gray-600 italic line-clamp-3'}`}
+                          />
                           {showExpandButton && (
                             <button
                               onClick={() => toggleCardExpansion(doc.id)}

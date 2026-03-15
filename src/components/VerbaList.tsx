@@ -11,7 +11,11 @@ import VerbaEditModal from './VerbaEditModal';
 import VerbaChecklistProgress from './VerbaChecklistProgress';
 import { VerbasService } from '../services/verbas.service';
 import logger from '../utils/logger';
-import { getPreviewText, hasLongText, PREVIEW_LENGTHS } from '../utils/previewText';
+import { hasLongText } from '../utils/previewText';
+import { LancamentoRefRenderer } from './ui';
+import { useLancamentosForReference } from '../hooks/useLancamentosForReference';
+import { useNavigateToReference } from '../hooks/useNavigateToReference';
+import { useProcessTable } from '../hooks/useProcessTable';
 
 /**
  * Props do componente VerbaList
@@ -64,6 +68,10 @@ const VerbaList: React.FC<VerbaListProps> = ({
       return new Date(a.dataCriacao).getTime() - new Date(b.dataCriacao).getTime();
     });
   }, []);
+
+  const { table: processTable } = useProcessTable(processId);
+  const referenceItems = useLancamentosForReference(processId, processTable);
+  const navigateToReference = useNavigateToReference(processId);
 
   // Estado do filtro de pesquisa para busca dinâmica
   const [filter, setFilter] = useState<VerbaFilter>({ searchTerm: '' });
@@ -504,24 +512,24 @@ const VerbaList: React.FC<VerbaListProps> = ({
                               {lancamento.fundamentacao && (
                                 <div className="text-sm text-gray-600">
                                   <span className="font-medium">Fundamentação:</span>{' '}
-                                  <span className="text-gray-500">
-                                    {!isCardExpanded
-                                      ? getPreviewText(lancamento.fundamentacao, PREVIEW_LENGTHS.LIST_VIEW)
-                                      : lancamento.fundamentacao
-                                    }
-                                  </span>
+                                  <LancamentoRefRenderer
+                                    html={lancamento.fundamentacao}
+                                    referenceItems={referenceItems}
+                                    onNavigate={navigateToReference}
+                                    className={`inline text-gray-500 ${!isCardExpanded ? 'line-clamp-3' : ''}`}
+                                  />
                                 </div>
                               )}
 
                               {lancamento.comentariosCalculistas && (
                                 <div className="text-sm text-gray-600">
                                   <span className="font-medium">Comentários:</span>{' '}
-                                  <span className="text-gray-500">
-                                    {!isCardExpanded
-                                      ? getPreviewText(lancamento.comentariosCalculistas, PREVIEW_LENGTHS.LIST_VIEW)
-                                      : lancamento.comentariosCalculistas
-                                    }
-                                  </span>
+                                  <LancamentoRefRenderer
+                                    html={lancamento.comentariosCalculistas}
+                                    referenceItems={referenceItems}
+                                    onNavigate={navigateToReference}
+                                    className={`inline text-gray-500 ${!isCardExpanded ? 'line-clamp-3' : ''}`}
+                                  />
                                 </div>
                               )}
 

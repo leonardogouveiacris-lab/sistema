@@ -3,8 +3,12 @@ import { Decision, NewDecision } from '../types/Decision';
 import { Scale, Search, ChevronDown, ChevronUp, Filter, CreditCard as Edit2, Trash2, AlertTriangle } from 'lucide-react';
 import DecisionEditModal from './DecisionEditModal';
 import logger from '../utils/logger';
-import { getPreviewText, hasLongText, PREVIEW_LENGTHS } from '../utils/previewText';
+import { hasLongText } from '../utils/previewText';
 import { sortByPagina } from '../utils/sortByPagina';
+import { LancamentoRefRenderer } from './ui';
+import { useLancamentosForReference } from '../hooks/useLancamentosForReference';
+import { useNavigateToReference } from '../hooks/useNavigateToReference';
+import { useProcessTable } from '../hooks/useProcessTable';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -34,6 +38,10 @@ const DecisionList: React.FC<DecisionListProps> = ({
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+
+  const { table: processTable } = useProcessTable(processId);
+  const referenceItems = useLancamentosForReference(processId, processTable);
+  const navigateToReference = useNavigateToReference(processId);
 
   const processDecisions = useMemo(() => {
     return decisions.filter(d => d.processId === processId);
@@ -167,6 +175,7 @@ const DecisionList: React.FC<DecisionListProps> = ({
     const isCardExpanded = expandedCards.has(decision.id);
     const showExpandButton = decision.observacoes && hasLongText(decision.observacoes);
     const isConfirmingDelete = deletingCardId === decision.id;
+    const observacoesHtml = decision.observacoes || '';
 
     return (
       <div
@@ -191,15 +200,14 @@ const DecisionList: React.FC<DecisionListProps> = ({
                   {decision.situacao}
                 </span>
               </div>
-              {decision.observacoes && (
+              {observacoesHtml && (
                 <div className="mb-2">
-                  {!isCardExpanded ? (
-                    <p className="text-xs text-gray-600 italic leading-relaxed">
-                      {getPreviewText(decision.observacoes, PREVIEW_LENGTHS.LIST_VIEW)}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-gray-700 leading-relaxed">{decision.observacoes}</p>
-                  )}
+                  <LancamentoRefRenderer
+                    html={observacoesHtml}
+                    referenceItems={referenceItems}
+                    onNavigate={navigateToReference}
+                    className={`text-xs leading-relaxed ${isCardExpanded ? 'text-gray-700' : 'text-gray-600 italic line-clamp-3'}`}
+                  />
                   {showExpandButton && (
                     <button
                       onClick={() => toggleCardExpansion(decision.id)}
@@ -424,15 +432,12 @@ const DecisionList: React.FC<DecisionListProps> = ({
                               </div>
                               {decision.observacoes && (
                                 <div className="mb-2">
-                                  {!isCardExpanded ? (
-                                    <p className="text-xs text-gray-600 italic leading-relaxed">
-                                      {getPreviewText(decision.observacoes, PREVIEW_LENGTHS.LIST_VIEW)}
-                                    </p>
-                                  ) : (
-                                    <p className="text-xs text-gray-700 leading-relaxed">
-                                      {decision.observacoes}
-                                    </p>
-                                  )}
+                                  <LancamentoRefRenderer
+                                    html={decision.observacoes}
+                                    referenceItems={referenceItems}
+                                    onNavigate={navigateToReference}
+                                    className={`text-xs leading-relaxed ${isCardExpanded ? 'text-gray-700' : 'text-gray-600 italic line-clamp-3'}`}
+                                  />
                                   {showExpandButton && (
                                     <button
                                       onClick={() => toggleCardExpansion(decision.id)}
