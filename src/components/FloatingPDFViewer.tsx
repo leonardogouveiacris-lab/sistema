@@ -6028,6 +6028,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     resetOcr,
   } = usePdfOcr(activeOcrDocumentId);
 
+  const prevOcrStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (ocrState.status === 'done' && prevOcrStatusRef.current !== 'done' && activeOcrDocumentId) {
+      invalidateOcrTextCache(activeOcrDocumentId);
+    }
+    prevOcrStatusRef.current = ocrState.status;
+  }, [ocrState.status, activeOcrDocumentId]);
+
   if (!state.isOpen || state.documents.length === 0) {
     return null;
   }
@@ -6881,9 +6889,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         onClose={() => {
           setIsOcrModalOpen(false);
           if (ocrState.status === 'done' || ocrState.status === 'error') {
-            if (ocrState.status === 'done' && activeOcrDocumentId) {
-              invalidateOcrTextCache(activeOcrDocumentId);
-            }
             resetOcr();
           }
         }}

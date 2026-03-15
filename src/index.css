@@ -166,28 +166,22 @@
   color: transparent !important;
 }
 
-[data-ocr-layer] {
+.textLayer[data-ocr-text-layer] span[role="presentation"] {
+  mix-blend-mode: normal;
+}
+
+:has(.textLayer[data-ocr-text-layer]) .textLayer:not([data-ocr-text-layer]),
+:has(.textLayer[data-ocr-text-layer]) .react-pdf__Page__textContent:not([data-ocr-text-layer]) {
+  pointer-events: none !important;
   user-select: none !important;
   -webkit-user-select: none !important;
-  pointer-events: none !important;
 }
 
-[data-ocr-layer] span {
+:has(.textLayer[data-ocr-text-layer]) .textLayer:not([data-ocr-text-layer]) span,
+:has(.textLayer[data-ocr-text-layer]) .react-pdf__Page__textContent:not([data-ocr-text-layer]) span {
+  pointer-events: none !important;
   user-select: none !important;
   -webkit-user-select: none !important;
-  pointer-events: none !important;
-}
-
-[data-ocr-layer] span::selection,
-[data-ocr-layer] ::selection {
-  background: transparent !important;
-  color: transparent !important;
-}
-
-[data-ocr-layer] span::-moz-selection,
-[data-ocr-layer] ::-moz-selection {
-  background: transparent !important;
-  color: transparent !important;
 }
 
 .textLayer .highlight,

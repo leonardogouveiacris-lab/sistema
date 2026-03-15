@@ -63,14 +63,18 @@ async function fetchOcrData(documentId: string, pageNumber: number, bust = false
   return result;
 }
 
-function buildRotationTransform(rotation: number, pageWidth: number, pageHeight: number): React.CSSProperties {
+function getRotationStyles(
+  rotation: number,
+  displayWidth: number,
+  displayHeight: number
+): React.CSSProperties {
   const r = ((rotation % 360) + 360) % 360;
   if (r === 0) return {};
   if (r === 90) return {
     transform: `rotate(90deg) translateX(0%) translateY(-100%)`,
     transformOrigin: 'top left',
-    width: pageHeight,
-    height: pageWidth,
+    width: displayHeight,
+    height: displayWidth,
   };
   if (r === 180) return {
     transform: `rotate(180deg)`,
@@ -79,8 +83,8 @@ function buildRotationTransform(rotation: number, pageWidth: number, pageHeight:
   if (r === 270) return {
     transform: `rotate(270deg) translateY(100%) translateX(-100%)`,
     transformOrigin: 'top left',
-    width: pageHeight,
-    height: pageWidth,
+    width: displayHeight,
+    height: displayWidth,
   };
   return {};
 }
@@ -138,18 +142,23 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
   const scaleX = displayWidth / ocrCanvasWidth;
   const scaleY = displayHeight / ocrCanvasHeight;
 
-  const rotationStyle = buildRotationTransform(r, displayWidth, displayHeight);
+  const rotationStyles = getRotationStyles(r, displayWidth, displayHeight);
 
   return (
     <div
-      data-ocr-layer="true"
-      className="absolute inset-0 overflow-hidden pointer-events-none"
+      className="textLayer react-pdf__Page__textContent"
+      data-ocr-text-layer="true"
       style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
         width: displayWidth,
         height: displayHeight,
-        zIndex: 2,
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
+        zIndex: 3,
+        overflow: 'hidden',
+        pointerEvents: 'auto',
+        userSelect: 'text',
+        WebkitUserSelect: 'text',
       } as React.CSSProperties}
     >
       <div
@@ -159,13 +168,13 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
           left: 0,
           width: displayWidth,
           height: displayHeight,
-          ...rotationStyle,
+          ...rotationStyles,
         }}
       >
         {data.wordBoxes.map((word, idx) => (
           <span
             key={idx}
-            aria-hidden="true"
+            role="presentation"
             style={{
               position: 'absolute',
               left: word.x * scaleX,
@@ -174,14 +183,16 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
               height: word.h * scaleY,
               color: 'transparent',
               backgroundColor: 'transparent',
-              userSelect: 'none',
-              WebkitUserSelect: 'none',
-              pointerEvents: 'none',
+              userSelect: 'text',
+              WebkitUserSelect: 'text',
+              cursor: 'text',
+              pointerEvents: 'auto',
               whiteSpace: 'pre',
-              overflow: 'visible',
+              overflow: 'hidden',
               fontSize: `${word.h * scaleY * 0.85}px`,
               lineHeight: 1,
               display: 'inline-block',
+              transformOrigin: '0% 0%',
             } as React.CSSProperties}
           >
             {word.text}
