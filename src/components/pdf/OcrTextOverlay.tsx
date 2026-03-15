@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { OcrWordBox } from '../../services/pdfOcr.service';
 
@@ -19,9 +19,22 @@ interface OcrPageData {
 
 const ocrDataCache = new Map<string, OcrPageData | null>();
 
-async function fetchOcrData(documentId: string, pageNumber: number): Promise<OcrPageData | null> {
+type RefreshListener = () => void;
+const refreshListeners = new Map<string, Set<RefreshListener>>();
+
+function subscribeToRefresh(documentId: string, listener: RefreshListener): () => void {
+  if (!refreshListeners.has(documentId)) {
+    refreshListeners.set(documentId, new Set());
+  }
+  refreshListeners.get(documentId)!.add(listener);
+  return () => {
+    refreshListeners.get(documentId)?.delete(listener);
+  };
+}
+
+async function fetchOcrData(documentId: string, pageNumber: number, bust = false): Promise<OcrPageData | null> {
   const cacheKey = `${documentId}:${pageNumber}`;
-  if (ocrDataCache.has(cacheKey)) {
+  if (!bust && ocrDataCache.has(cacheKey)) {
     return ocrDataCache.get(cacheKey) ?? null;
   }
 
@@ -74,13 +87,30 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
   rotation = 0,
 }) => {
   const [data, setData] = useState<OcrPageData | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     fetchOcrData(documentId, localPageNumber).then((result) => {
       if (!cancelled) setData(result);
     });
-    return () => { cancelled = true; };
+
+    const unsubscribe = subscribeToRefresh(documentId, () => {
+      if (!mountedRef.current) return;
+      fetchOcrData(documentId, localPageNumber, true).then((result) => {
+        if (mountedRef.current) setData(result);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [documentId, localPageNumber]);
 
   if (!data || data.wordBoxes.length === 0) return null;
@@ -154,6 +184,7 @@ export function invalidateOcrTextCache(documentId: string): void {
       ocrDataCache.delete(key);
     }
   }
+  refreshListeners.get(documentId)?.forEach((listener) => listener());
 }
 
 export default OcrTextOverlay;
