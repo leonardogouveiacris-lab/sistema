@@ -3,7 +3,8 @@ import { Documento } from '../../types/Documento';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { X, ChevronLeft, ChevronRight, CreditCard as Edit2, Trash2, FileText, File, Calendar, Clock } from 'lucide-react';
 import { LancamentoRefRenderer } from '../ui';
-import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
+import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
+import { useNavigateToReference } from '../../hooks/useNavigateToReference';
 import { useProcessTable } from '../../hooks/useProcessTable';
 import { useDraggablePanel } from '../../hooks/useDraggablePanel';
 
@@ -30,20 +31,15 @@ const DocumentoDetailModal: React.FC<DocumentoDetailModalProps> = ({
   hasPrevious = false,
   hasNext = false
 }) => {
-  const { navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
+  const { navigateToPageWithHighlight } = usePDFViewer();
   const { table: processTable } = useProcessTable(documento.processId);
   const referenceItems = useLancamentosForReference(documento.processId, processTable);
+  const navigateToReference = useNavigateToReference(documento.processId);
 
-  const handleRefNavigate = useCallback((item: LancamentoReferenceItem) => {
-    if (item.type === 'tabela') {
-      document.getElementById('process-tabela-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else if (item.highlightIds?.length && item.paginaVinculada) {
-      scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
-    } else if (item.paginaVinculada) {
-      navigateToPageWithHighlight(item.paginaVinculada, item.id);
-    }
+  const handleRefNavigate = useCallback((item: Parameters<typeof navigateToReference>[0]) => {
     onClose();
-  }, [navigateToPageWithHighlight, scrollToMultipleHighlights, onClose]);
+    navigateToReference(item);
+  }, [navigateToReference, onClose]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {

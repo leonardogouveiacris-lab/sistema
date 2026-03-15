@@ -8,7 +8,8 @@ import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useDynamicEnums } from '../../hooks/useDynamicEnums';
-import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
+import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
+import { useNavigateToReference } from '../../hooks/useNavigateToReference';
 import { useProcessTable } from '../../hooks/useProcessTable';
 import { Save, X, Scale, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock } from 'lucide-react';
 
@@ -45,21 +46,16 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
   onDelete,
   editingDecision = null
 }) => {
-  const { state, navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
+  const { state } = usePDFViewer();
   const { refreshEnumValues } = useDynamicEnums();
   const isEditMode = !!editingDecision;
   const { table: processTable } = useProcessTable(processId);
   const referenceItems = useLancamentosForReference(processId, processTable);
+  const navigateToReference = useNavigateToReference(processId);
 
-  const handleReferenceClick = useCallback((item: LancamentoReferenceItem) => {
-    if (item.type === 'tabela') {
-      document.getElementById('process-tabela-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else if (item.highlightIds?.length && item.paginaVinculada) {
-      scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
-    } else if (item.paginaVinculada) {
-      navigateToPageWithHighlight(item.paginaVinculada, item.id);
-    }
-  }, [navigateToPageWithHighlight, scrollToMultipleHighlights]);
+  const handleReferenceClick = useCallback((item: Parameters<typeof navigateToReference>[0]) => {
+    navigateToReference(item);
+  }, [navigateToReference]);
 
   const [formData, setFormData] = useState<NewDecision>({
     tipoDecisao: editingDecision?.tipoDecisao || '',

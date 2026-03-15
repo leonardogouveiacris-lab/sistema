@@ -261,7 +261,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     registerScrollContainer,
     disableSearchNavigationSync,
     isSearchNavigationActive,
-    setTextExtractionProgress
+    setTextExtractionProgress,
+    consumePendingNavigation,
+    navigateToPageWithHighlight,
+    scrollToMultipleHighlights
   } = usePDFViewer();
 
   const toast = useToast();
@@ -3194,8 +3197,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       );
     };
 
-    loadHighlights();
-  }, [state.isOpen, processId, state.documents.length, setHighlights]);
+    loadHighlights().then(() => {
+      const pending = consumePendingNavigation();
+      if (!pending) return;
+      if (pending.type === 'highlights' && pending.highlightIds?.length) {
+        scrollToMultipleHighlights(pending.highlightIds, pending.page);
+      } else if (pending.type === 'page' && pending.page) {
+        navigateToPageWithHighlight(pending.page, pending.recordId);
+      }
+    });
+  }, [state.isOpen, processId, state.documents.length, setHighlights, consumePendingNavigation, navigateToPageWithHighlight, scrollToMultipleHighlights]);
 
   const loadCommentsForDocument = useCallback(async (documentId: string, signal: AbortSignal) => {
     if (!state.isOpen || commentsLoadInFlightRef.current.has(documentId) || commentsLoadedDocsRef.current.has(documentId)) {

@@ -23,6 +23,16 @@ import { createFlowContext, generateFlowId } from '../utils/flowId';
 
 const CONTINUOUS_PAGE_GAP_PX = 16;
 
+/**
+ * Navegação pendente para ser executada após o visualizador abrir
+ */
+export interface PendingNavigation {
+  type: 'page' | 'highlights';
+  page?: number;
+  recordId?: string;
+  highlightIds?: string[];
+  targetDocumentId?: string;
+}
 
 /**
  * Interface para referências dos editores de texto
@@ -171,6 +181,10 @@ interface PDFViewerContextType {
   openViewer: (documentsOrDocument: ProcessDocument | ProcessDocument[], flowId?: string) => void;
   closeViewer: () => void;
   toggleMinimize: () => void;
+
+  // Navegação pendente (para abrir viewer e navegar em seguida)
+  setPendingNavigation: (nav: PendingNavigation | null) => void;
+  consumePendingNavigation: () => PendingNavigation | null;
 
   // Helpers para múltiplos documentos
   getCurrentDocument: () => ProcessDocument | null;
@@ -483,6 +497,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const highlightClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightClearTokenRef = useRef<number>(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const pendingNavigationRef = useRef<PendingNavigation | null>(null);
   const searchNavigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSearchNavigationActiveRef = useRef(false);
 
@@ -665,6 +680,16 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       textExtractionProgress: null
     }));
   }, [cancelScheduledHighlightClear]);
+
+  const setPendingNavigation = useCallback((nav: PendingNavigation | null) => {
+    pendingNavigationRef.current = nav;
+  }, []);
+
+  const consumePendingNavigation = useCallback((): PendingNavigation | null => {
+    const nav = pendingNavigationRef.current;
+    pendingNavigationRef.current = null;
+    return nav;
+  }, []);
 
   /**
    * Fecha o visualizador
@@ -2176,6 +2201,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     openViewer,
     closeViewer,
     toggleMinimize,
+    setPendingNavigation,
+    consumePendingNavigation,
     getCurrentDocument,
     getDocumentByGlobalPage,
     getLocalPageNumber,
@@ -2286,7 +2313,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setEditingConnectorId
   }), [
     state, hasRotations, rotatedPageCount,
-    openViewer, closeViewer, toggleMinimize,
+    openViewer, closeViewer, toggleMinimize, setPendingNavigation, consumePendingNavigation,
     getCurrentDocument, getDocumentByGlobalPage, getLocalPageNumber, getGlobalPageNumber, setDocumentPageInfo,
     goToPage, nextPage, previousPage, setTotalPages, navigateToPageWithHighlight,
     zoomIn, zoomOut, resetZoom, setZoom, setDisplayZoom, setIsInteracting,

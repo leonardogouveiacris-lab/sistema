@@ -3,7 +3,8 @@ import { Verba, VerbaLancamento } from '../../types/Verba';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { X, ChevronLeft, ChevronRight, CreditCard as Edit2, Trash2, FileText, Coins, Calendar, Clock, GripVertical } from 'lucide-react';
 import { LancamentoRefRenderer } from '../ui';
-import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
+import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
+import { useNavigateToReference } from '../../hooks/useNavigateToReference';
 import { useDraggablePanel } from '../../hooks/useDraggablePanel';
 import { useProcessTable } from '../../hooks/useProcessTable';
 
@@ -41,24 +42,15 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
   hasPrevious = false,
   hasNext = false
 }) => {
-  const { navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
+  const { navigateToPageWithHighlight } = usePDFViewer();
   const { table: processTable } = useProcessTable(verba.processId);
   const referenceItems = useLancamentosForReference(verba.processId, processTable);
+  const navigateToReference = useNavigateToReference(verba.processId);
 
-  const handleRefNavigate = useCallback((item: LancamentoReferenceItem) => {
-    if (item.type === 'tabela') {
-      onClose();
-      setTimeout(() => {
-        document.getElementById('process-tabela-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
-    } else if (item.highlightIds?.length && item.paginaVinculada) {
-      scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
-      onClose();
-    } else if (item.paginaVinculada) {
-      navigateToPageWithHighlight(item.paginaVinculada, item.id);
-      onClose();
-    }
-  }, [navigateToPageWithHighlight, scrollToMultipleHighlights, onClose]);
+  const handleRefNavigate = useCallback((item: Parameters<typeof navigateToReference>[0]) => {
+    onClose();
+    navigateToReference(item);
+  }, [navigateToReference, onClose]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {

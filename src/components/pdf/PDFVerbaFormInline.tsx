@@ -11,7 +11,8 @@ import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useTipoVerbas } from '../../hooks/useTipoVerbas';
 import { useToast } from '../../contexts/ToastContext';
-import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
+import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
+import { useNavigateToReference } from '../../hooks/useNavigateToReference';
 import { useProcessTable } from '../../hooks/useProcessTable';
 import { Save, X, BookOpen, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock, Check, CreditCard as Edit2 } from 'lucide-react';
 
@@ -50,22 +51,17 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
   onDelete,
   editingVerba = null
 }) => {
-  const { state, clearHighlightIdsToLink, getCurrentDocument, navigateToPageWithHighlight, scrollToMultipleHighlights } = usePDFViewer();
+  const { state, clearHighlightIdsToLink, getCurrentDocument } = usePDFViewer();
   const { tipos: tiposDisponiveis, isLoading: isTiposLoading, forcarRecarregamento, excluirTipo, renomearTipo } = useTipoVerbas(processId);
   const toast = useToast();
   const isEditMode = !!editingVerba;
   const { table: processTable } = useProcessTable(processId);
   const referenceItems = useLancamentosForReference(processId, processTable);
 
-  const handleReferenceClick = useCallback((item: LancamentoReferenceItem) => {
-    if (item.type === 'tabela') {
-      document.getElementById('process-tabela-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else if (item.highlightIds?.length && item.paginaVinculada) {
-      scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
-    } else if (item.paginaVinculada) {
-      navigateToPageWithHighlight(item.paginaVinculada, item.id);
-    }
-  }, [navigateToPageWithHighlight, scrollToMultipleHighlights]);
+  const navigateToReference = useNavigateToReference(processId);
+  const handleReferenceClick = useCallback((item: Parameters<typeof navigateToReference>[0]) => {
+    navigateToReference(item);
+  }, [navigateToReference]);
 
   const [formData, setFormData] = useState<NewVerbaComLancamento>({
     tipoVerba: editingVerba?.verba.tipoVerba || '',
