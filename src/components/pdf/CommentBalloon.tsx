@@ -6,6 +6,8 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
 import logger from '../../utils/logger';
 import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
+import { useNavigateToReference } from '../../hooks/useNavigateToReference';
+import { LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 import RichTextEditor from '../ui/RichTextEditor';
 import { registerLancamentoRefBlot } from '../ui/lancamentoRefBlot';
 
@@ -61,6 +63,27 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const referenceItems = useLancamentosForReference(processId);
+  const navigateToReference = useNavigateToReference(processId);
+
+  const handleReferenceClick = useCallback((item: LancamentoReferenceItem) => {
+    navigateToReference(item);
+  }, [navigateToReference]);
+
+  const handleReadonlyChipClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const chip = (e.target as HTMLElement).closest('[data-ref="lancamento"]') as HTMLElement | null;
+    if (!chip) return;
+    const id = chip.getAttribute('data-id');
+    if (!id) return;
+    const item = referenceItems.find(r => r.id === id);
+    if (item) {
+      e.preventDefault();
+      e.stopPropagation();
+      navigateToReference(item);
+    } else {
+      setEditContent(content);
+      setIsEditing(true);
+    }
+  }, [referenceItems, navigateToReference, content]);
 
   const balloonRef = useRef<HTMLDivElement>(null);
   const connectorDropdownRef = useRef<HTMLDivElement>(null);
@@ -309,10 +332,11 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
                 onChange={setEditContent}
                 rows={2}
                 referenceItems={referenceItems}
+                onReferenceClick={handleReferenceClick}
               />
             ) : content && content !== '<p><br></p>' ? (
               <div
-                onClick={() => { setEditContent(content); setIsEditing(true); }}
+                onClick={handleReadonlyChipClick}
                 className="min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg transition-colors leading-relaxed cursor-text text-gray-700 bg-gray-50 hover:bg-gray-100 ql-editor-readonly"
                 style={{ wordBreak: 'break-word' }}
                 dangerouslySetInnerHTML={{ __html: content }}

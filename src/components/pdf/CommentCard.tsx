@@ -1,7 +1,7 @@
 import React from 'react';
 import { PDFComment, COMMENT_COLORS, CommentColor } from '../../types/PDFComment';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
-import { FileText, MessageCircle, Calendar, Trash2, Eye } from 'lucide-react';
+import { FileText, Calendar, Trash2 } from 'lucide-react';
 import { Tooltip } from '../ui';
 
 function formatDateTime(date: Date | string | undefined): string {
@@ -33,28 +33,19 @@ const COLOR_DOT: Record<CommentColor, string> = {
 interface CommentCardProps {
   comment: PDFComment;
   onDelete?: (commentId: string) => void;
-  onViewDetails?: (commentId: string) => void;
   isHighlighted?: boolean;
 }
 
 const CommentCard: React.FC<CommentCardProps> = ({
   comment,
   onDelete,
-  onViewDetails,
   isHighlighted = false,
 }) => {
   const { navigateToPageWithHighlight, selectComment } = usePDFViewer();
-  const colorStyles = COMMENT_COLORS[comment.color] || COMMENT_COLORS.yellow;
 
   const handleNavigate = () => {
     navigateToPageWithHighlight(comment.pageNumber);
     selectComment(comment.id);
-  };
-
-  const handleViewDetails = () => {
-    navigateToPageWithHighlight(comment.pageNumber);
-    selectComment(comment.id);
-    onViewDetails?.(comment.id);
   };
 
   const preview = previewText(comment.content);
@@ -105,13 +96,6 @@ const CommentCard: React.FC<CommentCardProps> = ({
           </div>
 
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-            <button
-              onClick={handleViewDetails}
-              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-              title="Ver detalhes"
-            >
-              <Eye size={13} />
-            </button>
             {onDelete && (
               <button
                 onClick={() => onDelete(comment.id)}
