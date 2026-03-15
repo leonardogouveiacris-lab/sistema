@@ -5,9 +5,62 @@ import { PDFComment, CommentColor, COMMENT_COLORS, ConnectorType } from '../../t
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
 import logger from '../../utils/logger';
-import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
+import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 import LancamentoReferencePicker from '../ui/LancamentoReferencePicker';
-import { LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
+
+const REF_PATTERN = /\[=(\w+):([^:]+):([^\]]+)\]/g;
+
+type ContentSegment =
+  | { kind: 'text'; value: string }
+  | { kind: 'ref'; refType: string; id: string; label: string };
+
+function parseContent(raw: string): ContentSegment[] {
+  const segments: ContentSegment[] = [];
+  let last = 0;
+  for (const m of raw.matchAll(REF_PATTERN)) {
+    if (m.index! > last) segments.push({ kind: 'text', value: raw.slice(last, m.index) });
+    segments.push({ kind: 'ref', refType: m[1], id: m[2], label: m[3] });
+    last = m.index! + m[0].length;
+  }
+  if (last < raw.length) segments.push({ kind: 'text', value: raw.slice(last) });
+  return segments;
+}
+
+function serializeEditableDiv(div: HTMLDivElement): string {
+  let result = '';
+  div.childNodes.forEach(node => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      result += node.textContent;
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as HTMLElement;
+      if (el.dataset.refId) {
+        result += `[=${el.dataset.refType}:${el.dataset.refId}:${el.dataset.refLabel}]`;
+      } else if (el.tagName === 'BR') {
+        result += '\n';
+      } else {
+        result += el.textContent;
+      }
+    }
+  });
+  return result;
+}
+
+function buildEditableHTML(raw: string): string {
+  const segments = parseContent(raw);
+  return segments.map(seg => {
+    if (seg.kind === 'text') {
+      return seg.value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>');
+    }
+    const icon = seg.refType === 'verba' ? '⬡' : seg.refType === 'decisao' ? '◈' : seg.refType === 'tabela' ? '⊞' : '⬜';
+    const bgColor = seg.refType === 'verba' ? '#dcfce7' : seg.refType === 'decisao' ? '#fef9c3' : seg.refType === 'tabela' ? '#e0f2fe' : '#cffafe';
+    const textColor = seg.refType === 'verba' ? '#166534' : seg.refType === 'decisao' ? '#713f12' : seg.refType === 'tabela' ? '#0c4a6e' : '#164e63';
+    return `<span contenteditable="false" data-ref-id="${seg.id}" data-ref-type="${seg.refType}" data-ref-label="${seg.label.replace(/"/g, '&quot;')}" style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:9999px;font-size:11px;font-weight:500;background:${bgColor};color:${textColor};cursor:default;user-select:none;white-space:nowrap;">${icon} ${seg.label}</span>`;
+  }).join('');
+}
 
 interface CommentBalloonProps {
   comment: PDFComment;
@@ -40,12 +93,11 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
   const [pickerAnchor, setPickerAnchor] = useState<DOMRect | null>(null);
-  const pickerInsertIndexRef = useRef<number>(0);
 
   const referenceItems = useLancamentosForReference(processId);
 
   const balloonRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editableRef = useRef<HTMLDivElement>(null);
   const connectorDropdownRef = useRef<HTMLDivElement>(null);
   const colorDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -55,8 +107,15 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const posY = comment.positionY * scale;
 
   useEffect(() => {
-    if (isExpanded && isEditing && textareaRef.current) {
-      textareaRef.current.focus();
+    if (isExpanded && isEditing && editableRef.current) {
+      editableRef.current.innerHTML = buildEditableHTML(content);
+      editableRef.current.focus();
+      const range = document.createRange();
+      range.selectNodeContents(editableRef.current);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
     }
   }, [isExpanded, isEditing]);
 
@@ -85,57 +144,71 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   };
 
   const handleSave = async () => {
+    const serialized = editableRef.current ? serializeEditableDiv(editableRef.current) : content;
     try {
-      await PDFCommentsService.updateComment(comment.id, { content });
-      updateComment(comment.id, { content });
+      await PDFCommentsService.updateComment(comment.id, { content: serialized });
+      updateComment(comment.id, { content: serialized });
+      setContent(serialized);
       setIsEditing(false);
     } catch (error) {
       logger.errorWithException(
         'Falha ao salvar comentário no PDF',
         error as Error,
         'CommentBalloon.handleSave',
-        { commentId: comment.id, contentLength: content.length }
+        { commentId: comment.id, contentLength: serialized.length }
       );
     }
   };
 
   const handleCancel = () => {
+    if (editableRef.current) editableRef.current.innerHTML = buildEditableHTML(comment.content);
     setContent(comment.content);
     setIsEditing(false);
   };
 
-  const handleTextareaKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleEditableKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === '=' && !e.ctrlKey && !e.metaKey && !e.altKey && referenceItems.length > 0) {
       e.preventDefault();
-      const el = textareaRef.current;
+      const el = editableRef.current;
       if (!el) return;
-      const idx = el.selectionStart ?? content.length;
-      pickerInsertIndexRef.current = idx;
       setPickerQuery('');
       setPickerAnchor(el.getBoundingClientRect());
       setPickerOpen(true);
-    } else if (pickerOpen) {
-      if (e.key === 'Escape') {
-        setPickerOpen(false);
-      } else if (e.key === 'Backspace') {
-        setPickerQuery(q => q.slice(0, -1));
-      } else if (e.key.length === 1) {
-        setPickerQuery(q => q + e.key);
-      }
     }
-  }, [content, pickerOpen, referenceItems.length]);
+  }, [referenceItems.length]);
 
   const handleReferenceSelect = useCallback((item: LancamentoReferenceItem) => {
-    const tag = `[=${item.type}:${item.id}:${item.label}]`;
-    const idx = pickerInsertIndexRef.current;
-    const before = content.slice(0, idx);
-    const after = content.slice(idx);
-    setContent(before + tag + after);
+    const el = editableRef.current;
+    if (!el) return;
+
+    const icon = item.type === 'verba' ? '⬡' : item.type === 'decisao' ? '◈' : item.type === 'tabela' ? '⊞' : '⬜';
+    const bgColor = item.type === 'verba' ? '#dcfce7' : item.type === 'decisao' ? '#fef9c3' : item.type === 'tabela' ? '#e0f2fe' : '#cffafe';
+    const textColor = item.type === 'verba' ? '#166534' : item.type === 'decisao' ? '#713f12' : item.type === 'tabela' ? '#0c4a6e' : '#164e63';
+
+    const chip = document.createElement('span');
+    chip.contentEditable = 'false';
+    chip.dataset.refId = item.id;
+    chip.dataset.refType = item.type;
+    chip.dataset.refLabel = item.label;
+    chip.style.cssText = `display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:9999px;font-size:11px;font-weight:500;background:${bgColor};color:${textColor};cursor:default;user-select:none;white-space:nowrap;`;
+    chip.textContent = `${icon} ${item.label}`;
+
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(chip);
+      range.setStartAfter(chip);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      el.appendChild(chip);
+    }
+
     setPickerOpen(false);
-    setTimeout(() => {
-      textareaRef.current?.focus();
-    }, 0);
-  }, [content]);
+    el.focus();
+  }, []);
 
   const handleClose = async () => {
     if (isEditing && content !== comment.content) {
@@ -196,7 +269,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   };
 
   const handleDragStart = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button, textarea, input')) return;
+    if ((e.target as HTMLElement).closest('button, [contenteditable], input')) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -317,36 +390,36 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
           </div>
 
           <div className="p-3">
-            {isEditing ? (
-              <>
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                onKeyDown={handleTextareaKeyDown}
-                placeholder="Digite seu comentário... (= para referenciar)"
-                className="w-full h-24 p-2 text-sm border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {pickerOpen && createPortal(
-                <LancamentoReferencePicker
-                  items={referenceItems}
-                  query={pickerQuery}
-                  anchorRect={pickerAnchor}
-                  onSelect={handleReferenceSelect}
-                  onClose={() => setPickerOpen(false)}
-                />,
-                document.body
+            <div
+              ref={editableRef}
+              contentEditable={isEditing}
+              suppressContentEditableWarning
+              onKeyDown={isEditing ? handleEditableKeyDown : undefined}
+              onClick={() => { if (!isEditing) setIsEditing(true); }}
+              dangerouslySetInnerHTML={!isEditing ? { __html: buildEditableHTML(content) || '' } : undefined}
+              data-placeholder="Digite seu comentário... (= para referenciar)"
+              className={`min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg outline-none transition-colors leading-relaxed ${
+                isEditing
+                  ? 'border border-gray-300 focus:ring-2 focus:ring-blue-500 bg-white'
+                  : content
+                    ? 'text-gray-700 bg-gray-50 cursor-text hover:bg-gray-100'
+                    : 'cursor-text bg-gray-50 hover:bg-gray-100'
+              }`}
+              style={{ wordBreak: 'break-word' }}
+            >
+              {!isEditing && !content && (
+                <span className="text-gray-400 italic text-sm">Clique para adicionar comentário...</span>
               )}
-              </>
-            ) : (
-              <div
-                onClick={() => setIsEditing(true)}
-                className="min-h-[60px] p-2 text-sm text-gray-700 bg-gray-50 rounded-lg cursor-text hover:bg-gray-100 transition-colors"
-              >
-                {comment.content || (
-                  <span className="text-gray-400 italic">Clique para adicionar comentário...</span>
-                )}
-              </div>
+            </div>
+            {pickerOpen && createPortal(
+              <LancamentoReferencePicker
+                items={referenceItems}
+                query={pickerQuery}
+                anchorRect={pickerAnchor}
+                onSelect={handleReferenceSelect}
+                onClose={() => setPickerOpen(false)}
+              />,
+              document.body
             )}
           </div>
 
