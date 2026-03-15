@@ -13,7 +13,10 @@ function formatDateTime(date: Date | string | undefined): string {
 
 function previewText(text: string | undefined, max = 90): string {
   if (!text) return '';
-  const cleaned = text.trim().replace(/\[=\w+:[^:]+:([^\]]+)\]/g, '$1');
+  const withLabels = text.replace(/\[=\w+:[^:]+:([^\]]+)\]/g, '$1');
+  const div = document.createElement('div');
+  div.innerHTML = withLabels;
+  const cleaned = (div.textContent || div.innerText || '').trim();
   return cleaned.length > max ? `${cleaned.slice(0, max)}…` : cleaned;
 }
 

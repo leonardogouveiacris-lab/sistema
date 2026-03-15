@@ -28,6 +28,7 @@ import PDFDocumentoFormInline from './PDFDocumentoFormInline';
 import VerbaDetailModal from './VerbaDetailModal';
 import DecisionDetailModal from './DecisionDetailModal';
 import DocumentoDetailModal from './DocumentoDetailModal';
+import CommentDetailModal from './CommentDetailModal';
 import { Search, ChevronDown, ChevronUp, ChevronsLeftRight, ChevronsRightLeft, Scale, DollarSign, FileText, Plus, CheckCircle2, Circle, Clock, Layers, MessageCircle } from 'lucide-react';
 import { RenameService } from '../../services/rename.service';
 import * as PDFCommentsService from '../../services/pdfComments.service';
@@ -161,6 +162,8 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     cancelForm,
     removeHighlight,
     removeComment,
+    navigateToPageWithHighlight,
+    selectComment,
   } = usePDFViewer();
 
   const toast = useToast();
@@ -177,6 +180,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   const [decisionSearchQuery, setDecisionSearchQuery] = useState('');
   const [documentoSearchQuery, setDocumentoSearchQuery] = useState('');
   const [commentSearchQuery, setCommentSearchQuery] = useState('');
+  const [detailCommentId, setDetailCommentId] = useState<string | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -424,6 +428,10 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     }
     removeComment(commentId);
   }, [removeComment, toast]);
+
+  const handleViewComment = useCallback((commentId: string) => {
+    setDetailCommentId(commentId);
+  }, []);
 
   const handleEditDecision = useCallback((decisionId: string) => {
     startEditDecision(decisionId);
@@ -1381,6 +1389,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                     key={comment.id}
                     comment={comment}
                     onDelete={handleDeleteComment}
+                    onViewDetails={handleViewComment}
                     isHighlighted={state.selectedCommentId === comment.id}
                   />
                 ))}
@@ -1418,6 +1427,24 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
           </div>
         )}
       </div>
+
+      {detailCommentId && (() => {
+        const detailComment = state.comments.find(c => c.id === detailCommentId);
+        if (!detailComment) return null;
+        return (
+          <CommentDetailModal
+            comment={detailComment}
+            onClose={() => setDetailCommentId(null)}
+            onNavigate={(commentId) => {
+              const c = state.comments.find(x => x.id === commentId);
+              if (c) {
+                navigateToPageWithHighlight(c.pageNumber);
+                selectComment(commentId);
+              }
+            }}
+          />
+        );
+      })()}
     </div>
   );
 };

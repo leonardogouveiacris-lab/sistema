@@ -5,59 +5,30 @@ import { PDFComment, CommentColor, COMMENT_COLORS, ConnectorType } from '../../t
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
 import logger from '../../utils/logger';
-import { useLancamentosForReference, LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
-import LancamentoReferencePicker from '../ui/LancamentoReferencePicker';
+import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
+import RichTextEditor from '../ui/RichTextEditor';
+import { registerLancamentoRefBlot } from '../ui/lancamentoRefBlot';
 
-const REF_PATTERN = /\[=(\w+):([^:]+):([^\]]+)\]/g;
+registerLancamentoRefBlot();
 
-type ContentSegment =
-  | { kind: 'text'; value: string }
-  | { kind: 'ref'; refType: string; id: string; label: string };
+const LEGACY_REF_PATTERN = /\[=(\w+):([^:]+):([^\]]+)\]/g;
 
-function parseContent(raw: string): ContentSegment[] {
-  const segments: ContentSegment[] = [];
-  let last = 0;
-  for (const m of raw.matchAll(REF_PATTERN)) {
-    if (m.index! > last) segments.push({ kind: 'text', value: raw.slice(last, m.index) });
-    segments.push({ kind: 'ref', refType: m[1], id: m[2], label: m[3] });
-    last = m.index! + m[0].length;
-  }
-  if (last < raw.length) segments.push({ kind: 'text', value: raw.slice(last) });
-  return segments;
-}
-
-function serializeEditableDiv(div: HTMLDivElement): string {
-  let result = '';
-  div.childNodes.forEach(node => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      result += node.textContent;
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      const el = node as HTMLElement;
-      if (el.dataset.refId) {
-        result += `[=${el.dataset.refType}:${el.dataset.refId}:${el.dataset.refLabel}]`;
-      } else if (el.tagName === 'BR') {
-        result += '\n';
-      } else {
-        result += el.textContent;
-      }
-    }
+function legacyToHtml(raw: string): string {
+  if (!raw || !raw.includes('[=')) return raw;
+  return raw.replace(LEGACY_REF_PATTERN, (_match, refType, id, label) => {
+    const icon = refType === 'verba' ? '⬡' : refType === 'decisao' ? '◈' : refType === 'tabela' ? '⊞' : '⬜';
+    return `<span class="lancamento-ref-chip" data-ref="lancamento" data-id="${id}" data-type="${refType}" data-label="${label.replace(/"/g, '&quot;')}" contenteditable="false">${icon} ${label}</span>`;
   });
-  return result;
 }
 
-function buildEditableHTML(raw: string): string {
-  const segments = parseContent(raw);
-  return segments.map(seg => {
-    if (seg.kind === 'text') {
-      return seg.value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\n/g, '<br>');
-    }
-    const icon = seg.refType === 'verba' ? '⬡' : seg.refType === 'decisao' ? '◈' : seg.refType === 'tabela' ? '⊞' : '⬜';
-    return `<span contenteditable="false" class="lancamento-ref-chip" data-ref="lancamento" data-ref-id="${seg.id}" data-ref-type="${seg.refType}" data-ref-label="${seg.label.replace(/"/g, '&quot;')}" data-type="${seg.refType}" data-id="${seg.id}">${icon} ${seg.label}</span>`;
-  }).join('');
+function isLegacyFormat(content: string): boolean {
+  return LEGACY_REF_PATTERN.test(content) || (!content.startsWith('<') && !content.includes('<p'));
+}
+
+function normalizeContent(raw: string): string {
+  if (!raw) return '';
+  if (raw.includes('[=')) return legacyToHtml(raw);
+  return raw;
 }
 
 interface CommentBalloonProps {
@@ -82,20 +53,16 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const { updateComment, removeComment, selectComment, state } = usePDFViewer();
   const [isExpanded, setIsExpanded] = useState(!comment.isMinimized);
   const [isEditing, setIsEditing] = useState(false);
-  const [content, setContent] = useState(comment.content);
+  const [content, setContent] = useState(() => normalizeContent(comment.content));
+  const [editContent, setEditContent] = useState(() => normalizeContent(comment.content));
   const [showConnectorDropdown, setShowConnectorDropdown] = useState(false);
   const [showColorDropdown, setShowColorDropdown] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerQuery, setPickerQuery] = useState('');
-  const [pickerAnchor, setPickerAnchor] = useState<DOMRect | null>(null);
-
   const referenceItems = useLancamentosForReference(processId);
 
   const balloonRef = useRef<HTMLDivElement>(null);
-  const editableRef = useRef<HTMLDivElement>(null);
   const connectorDropdownRef = useRef<HTMLDivElement>(null);
   const colorDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -109,19 +76,6 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
       setIsExpanded(true);
     }
   }, [isSelected]);
-
-  useEffect(() => {
-    if (isExpanded && isEditing && editableRef.current) {
-      editableRef.current.innerHTML = buildEditableHTML(content);
-      editableRef.current.focus();
-      const range = document.createRange();
-      range.selectNodeContents(editableRef.current);
-      range.collapse(false);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-    }
-  }, [isExpanded, isEditing]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -148,75 +102,28 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   };
 
   const handleSave = async () => {
-    const serialized = editableRef.current ? serializeEditableDiv(editableRef.current) : content;
     try {
-      await PDFCommentsService.updateComment(comment.id, { content: serialized });
-      updateComment(comment.id, { content: serialized });
-      setContent(serialized);
+      await PDFCommentsService.updateComment(comment.id, { content: editContent });
+      updateComment(comment.id, { content: editContent });
+      setContent(editContent);
       setIsEditing(false);
     } catch (error) {
       logger.errorWithException(
         'Falha ao salvar comentário no PDF',
         error as Error,
         'CommentBalloon.handleSave',
-        { commentId: comment.id, contentLength: serialized.length }
+        { commentId: comment.id }
       );
     }
   };
 
   const handleCancel = () => {
-    if (editableRef.current) editableRef.current.innerHTML = buildEditableHTML(comment.content);
-    setContent(comment.content);
+    setEditContent(content);
     setIsEditing(false);
   };
 
-  const handleEditableKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === '=' && !e.ctrlKey && !e.metaKey && !e.altKey && referenceItems.length > 0) {
-      e.preventDefault();
-      const el = editableRef.current;
-      if (!el) return;
-      setPickerQuery('');
-      setPickerAnchor(el.getBoundingClientRect());
-      setPickerOpen(true);
-    }
-  }, [referenceItems.length]);
-
-  const handleReferenceSelect = useCallback((item: LancamentoReferenceItem) => {
-    const el = editableRef.current;
-    if (!el) return;
-
-    const icon = item.type === 'verba' ? '⬡' : item.type === 'decisao' ? '◈' : item.type === 'tabela' ? '⊞' : '⬜';
-
-    const chip = document.createElement('span');
-    chip.contentEditable = 'false';
-    chip.className = 'lancamento-ref-chip';
-    chip.setAttribute('data-ref', 'lancamento');
-    chip.setAttribute('data-type', item.type);
-    chip.setAttribute('data-id', item.id);
-    chip.dataset.refId = item.id;
-    chip.dataset.refType = item.type;
-    chip.dataset.refLabel = item.label;
-    chip.textContent = `${icon} ${item.label}`;
-
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      const range = sel.getRangeAt(0);
-      range.deleteContents();
-      range.insertNode(chip);
-      range.setStartAfter(chip);
-      range.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(range);
-    } else {
-      el.appendChild(chip);
-    }
-
-    setPickerOpen(false);
-    el.focus();
-  }, []);
-
   const handleClose = async () => {
-    if (isEditing && content !== comment.content) {
+    if (isEditing && editContent !== content) {
       await handleSave();
     }
     setIsExpanded(false);
@@ -274,7 +181,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   };
 
   const handleDragStart = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button, [contenteditable], input')) return;
+    if ((e.target as HTMLElement).closest('button, [contenteditable], input, .ql-toolbar, .ql-editor')) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -379,7 +286,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
       {isExpanded && createPortal(
         <div
-          className={`fixed w-72 bg-white rounded-lg shadow-xl border ${colorConfig.border} z-[9999]`}
+          className={`fixed w-80 bg-white rounded-lg shadow-xl border ${colorConfig.border} z-[9999]`}
           style={{ top: popupCoords.top, left: popupCoords.left }}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
@@ -396,42 +303,31 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
           <div className="p-3">
             {isEditing ? (
-              <div
-                ref={editableRef}
-                contentEditable
-                suppressContentEditableWarning
-                onKeyDown={handleEditableKeyDown}
-                className="min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg outline-none transition-colors leading-relaxed border border-gray-300 focus:ring-2 focus:ring-blue-500 bg-white"
-                style={{ wordBreak: 'break-word' }}
+              <RichTextEditor
+                placeholder="Adicionar comentário..."
+                value={editContent}
+                onChange={setEditContent}
+                rows={2}
+                referenceItems={referenceItems}
               />
-            ) : content ? (
+            ) : content && content !== '<p><br></p>' ? (
               <div
-                onClick={() => setIsEditing(true)}
-                className="min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg transition-colors leading-relaxed cursor-text text-gray-700 bg-gray-50 hover:bg-gray-100"
+                onClick={() => { setEditContent(content); setIsEditing(true); }}
+                className="min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg transition-colors leading-relaxed cursor-text text-gray-700 bg-gray-50 hover:bg-gray-100 ql-editor-readonly"
                 style={{ wordBreak: 'break-word' }}
-                dangerouslySetInnerHTML={{ __html: buildEditableHTML(content) }}
+                dangerouslySetInnerHTML={{ __html: content }}
               />
             ) : (
               <div
-                onClick={() => setIsEditing(true)}
+                onClick={() => { setEditContent(content); setIsEditing(true); }}
                 className="min-h-[60px] p-2 text-sm rounded-lg bg-gray-50 hover:bg-gray-100 cursor-text"
               >
                 <span className="text-gray-400 italic">Clique para adicionar comentário...</span>
               </div>
             )}
-            {pickerOpen && createPortal(
-              <LancamentoReferencePicker
-                items={referenceItems}
-                query={pickerQuery}
-                anchorRect={pickerAnchor}
-                onSelect={handleReferenceSelect}
-                onClose={() => setPickerOpen(false)}
-              />,
-              document.body
-            )}
           </div>
 
-          {isEditing && (
+          {isEditing ? (
             <div className="px-3 pb-3 flex justify-end gap-2">
               <button
                 onClick={handleCancel}
@@ -446,71 +342,71 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
                 Salvar
               </button>
             </div>
-          )}
-
-          <div className="px-3 py-2 border-t border-gray-200 flex items-center justify-center gap-3">
-            <div className="relative" ref={connectorDropdownRef}>
-              <button
-                onClick={() => setShowConnectorDropdown(!showConnectorDropdown)}
-                className={`p-1.5 rounded transition-colors ${showConnectorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-                title="Adicionar conector"
-              >
-                <Spline size={16} />
-              </button>
-              {showConnectorDropdown && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-white rounded-lg shadow-xl border py-1 min-w-[120px] z-[100]">
-                  <button
-                    onClick={handleStartArrow}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                  >
-                    <ArrowRight size={14} />
-                    Seta
-                  </button>
-                  <button
-                    onClick={handleStartHighlightBox}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                  >
-                    <Square size={14} />
-                    Destaque
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="relative" ref={colorDropdownRef}>
-              <button
-                onClick={() => setShowColorDropdown(!showColorDropdown)}
-                className={`p-1.5 rounded transition-colors ${showColorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-                title="Mudar cor"
-              >
-                <Palette size={16} />
-              </button>
-              {showColorDropdown && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-white rounded-lg shadow-xl border p-2 z-[100]">
-                  <div className="flex gap-1">
-                    {COLOR_OPTIONS.map(color => (
-                      <button
-                        key={color}
-                        onClick={() => handleColorChange(color)}
-                        className={`w-6 h-6 rounded-full ${COMMENT_COLORS[color].bg} ${COMMENT_COLORS[color].border} border-2 hover:scale-110 transition-transform ${
-                          comment.color === color ? 'ring-2 ring-blue-500 ring-offset-1' : ''
-                        }`}
-                        title={color}
-                      />
-                    ))}
+          ) : (
+            <div className="px-3 py-2 border-t border-gray-200 flex items-center justify-center gap-3">
+              <div className="relative" ref={connectorDropdownRef}>
+                <button
+                  onClick={() => setShowConnectorDropdown(!showConnectorDropdown)}
+                  className={`p-1.5 rounded transition-colors ${showConnectorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                  title="Adicionar conector"
+                >
+                  <Spline size={16} />
+                </button>
+                {showConnectorDropdown && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-white rounded-lg shadow-xl border py-1 min-w-[120px] z-[100]">
+                    <button
+                      onClick={handleStartArrow}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <ArrowRight size={14} />
+                      Seta
+                    </button>
+                    <button
+                      onClick={handleStartHighlightBox}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <Square size={14} />
+                      Destaque
+                    </button>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
 
-            <button
-              onClick={handleDelete}
-              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-              title="Excluir comentário"
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
+              <div className="relative" ref={colorDropdownRef}>
+                <button
+                  onClick={() => setShowColorDropdown(!showColorDropdown)}
+                  className={`p-1.5 rounded transition-colors ${showColorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                  title="Mudar cor"
+                >
+                  <Palette size={16} />
+                </button>
+                {showColorDropdown && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-white rounded-lg shadow-xl border p-2 z-[100]">
+                    <div className="flex gap-1">
+                      {COLOR_OPTIONS.map(color => (
+                        <button
+                          key={color}
+                          onClick={() => handleColorChange(color)}
+                          className={`w-6 h-6 rounded-full ${COMMENT_COLORS[color].bg} ${COMMENT_COLORS[color].border} border-2 hover:scale-110 transition-transform ${
+                            comment.color === color ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+                          }`}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={handleDelete}
+                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                title="Excluir comentário"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          )}
         </div>,
         document.body
       )}
