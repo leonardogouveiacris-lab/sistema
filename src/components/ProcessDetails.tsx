@@ -11,7 +11,7 @@ import { AlertTriangle, ArrowLeft, Trash2, CheckCircle2, Clock, AlertCircle, Tab
 import { useTableViewer } from '../contexts/TableViewerContext';
 import { useProcessTable } from '../hooks/useProcessTable';
 import { TableImportUpload } from './table/TableImportUpload';
-import { exportProcessSpreadsheet } from '../utils/exportSpreadsheet';
+import { exportTableSpreadsheet } from '../utils/exportSpreadsheet';
 
 const getStatusVerbasBadge = (status: StatusVerbas) => {
   switch (status) {
@@ -70,14 +70,10 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
   const [showTableMenu, setShowTableMenu] = React.useState(false);
 
   const handleExportSpreadsheet = React.useCallback(() => {
+    if (!table) return;
     setShowTableMenu(false);
-    exportProcessSpreadsheet(
-      process,
-      Array.isArray(decisions) ? decisions : [],
-      Array.isArray(verbas) ? verbas : [],
-      Array.isArray(documentos) ? documentos : []
-    );
-  }, [process, decisions, verbas, documentos]);
+    exportTableSpreadsheet(table);
+  }, [table]);
   const [showTableImport, setShowTableImport] = React.useState(false);
   const [showTableDelete, setShowTableDelete] = React.useState(false);
   const [isEditingBasicInfo, setIsEditingBasicInfo] = React.useState(false);
@@ -267,16 +263,16 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
                       <Upload size={13} className="text-slate-400" />
                       {table ? 'Substituir planilha' : 'Importar planilha'}
                     </button>
-                    <div className="my-1 border-t border-slate-100" />
-                    <button
-                      onClick={handleExportSpreadsheet}
-                      className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
-                    >
-                      <FileSpreadsheet size={13} className="text-slate-400" />
-                      Exportar planilha
-                    </button>
                     {table && (
                       <>
+                        <div className="my-1 border-t border-slate-100" />
+                        <button
+                          onClick={handleExportSpreadsheet}
+                          className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+                        >
+                          <FileSpreadsheet size={13} className="text-slate-400" />
+                          Exportar planilha
+                        </button>
                         <div className="my-1 border-t border-slate-100" />
                         <button
                           onClick={() => { setShowTableMenu(false); setShowTableDelete(true); }}
