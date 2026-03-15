@@ -380,6 +380,56 @@ export class ProcessesService {
   }
 
   /**
+   * Busca processos sem nenhum lançamento vinculado
+   *
+   * Um processo é considerado "vazio" quando não possui nenhum registro nas tabelas:
+   * - verbas, decisions, lancamentos_documentos
+   *
+   * @returns Promise<Process[]> - Lista de processos sem lançamentos
+   */
+  static async getEmptyProcesses(): Promise<Process[]> {
+    try {
+      if (!supabase) {
+        throw new Error('Supabase não configurado');
+      }
+
+      const { data, error } = await supabase
+        .from('processes')
+        .select(`
+          *,
+          verbas!left(id),
+          decisions!left(id),
+          lancamentos_documentos!left(id)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw new Error(`Erro ao buscar processos vazios: ${error.message}`);
+      }
+
+      const emptyProcesses = (data || []).filter((record: Record<string, unknown>) => {
+        const verbas = record.verbas as unknown[];
+        const decisions = record.decisions as unknown[];
+        const lancamentos = record.lancamentos_documentos as unknown[];
+        return (
+          (!verbas || verbas.length === 0) &&
+          (!decisions || decisions.length === 0) &&
+          (!lancamentos || lancamentos.length === 0)
+        );
+      });
+
+      return emptyProcesses.map(this.recordToProcess);
+    } catch (error) {
+      logger.errorWithException(
+        'Falha ao buscar processos vazios',
+        error as Error,
+        'ProcessesService.getEmptyProcesses'
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Busca processos por termo de pesquisa
    * 
    * Realiza busca nos campos: numero_processo, reclamante, reclamada e observacoes_gerais

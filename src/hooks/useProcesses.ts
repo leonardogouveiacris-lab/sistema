@@ -245,6 +245,38 @@ export const useProcesses = () => {
    * @param id - UUID do processo a ser removido
    * @returns Promise<boolean> - true se removido com sucesso
    */
+  const getEmptyProcesses = useCallback(async (): Promise<Process[]> => {
+    try {
+      return await ProcessesService.getEmptyProcesses();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao buscar processos vazios';
+      setError(errorMessage);
+      logger.error(errorMessage, 'useProcesses.getEmptyProcesses');
+      return [];
+    }
+  }, []);
+
+  const bulkRemoveProcesses = useCallback(async (
+    ids: string[],
+    onProgress?: (done: number, total: number) => void
+  ): Promise<{ removed: number; failed: number }> => {
+    let removed = 0;
+    let failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        isLocalUpdate.current = true;
+        await ProcessesService.delete(ids[i]);
+        removed++;
+      } catch {
+        failed++;
+      }
+      onProgress?.(i + 1, ids.length);
+    }
+    await loadProcesses();
+    setError(null);
+    return { removed, failed };
+  }, [loadProcesses]);
+
   const removeProcess = useCallback(async (id: string): Promise<boolean> => {
     try {
       const processToRemove = processes.find(p => p.id === id);
@@ -482,6 +514,8 @@ export const useProcesses = () => {
     addProcess,            // Criar novo processo no Supabase
     updateProcess,         // Atualizar processo existente no Supabase
     removeProcess,         // Remover processo (e dados relacionados) do Supabase
+    getEmptyProcesses,     // Buscar processos sem nenhum lançamento
+    bulkRemoveProcesses,   // Remover múltiplos processos em lote
 
     // ===== OPERAÇÕES DE CONSULTA =====
     getProcessById,        // Buscar processo por ID no estado atual

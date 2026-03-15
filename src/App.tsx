@@ -48,6 +48,8 @@ function AppContent() {
     addProcess,
     updateProcess,
     removeProcess,
+    getEmptyProcesses,
+    bulkRemoveProcesses,
     importBackup: importProcessBackup,
     refreshProcesses
   } = useProcesses();
@@ -331,6 +333,8 @@ function AppContent() {
             <ProcessList
               processes={processes}
               onSelectProcess={handleSelectProcess}
+              onFetchEmptyProcesses={getEmptyProcesses}
+              onBulkRemoveProcesses={bulkRemoveProcesses}
             />
           </div>
         );
