@@ -214,7 +214,7 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
       <ProcessDocumentManager processId={process.id} processNumber={process.numeroProcesso} />
 
       {/* Tabela de dados - abre em painel flutuante */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg border border-gray-200">
         <div className="p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-slate-100 rounded-lg border border-slate-200">
@@ -277,8 +277,8 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
 
         {/* Inline import panel */}
         {showTableImport && (
-          <div className="border-t border-slate-100">
-            <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-100">
+          <div className="border-t border-slate-200">
+            <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-200">
               <p className="text-xs font-semibold text-slate-700">
                 {table ? 'Substituir planilha' : 'Importar planilha'}
               </p>
