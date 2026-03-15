@@ -6847,9 +6847,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       <OcrProgressModal
         isOpen={isOcrModalOpen}
         ocrState={ocrState}
-        onStart={() => {
+        totalPages={activeOcrPdfProxy?.numPages ?? state.totalPages}
+        onStart={(pages) => {
           if (activeOcrPdfProxy) {
-            runOcr(activeOcrPdfProxy);
+            runOcr(activeOcrPdfProxy, pages);
           }
         }}
         onCancel={cancelOcr}
