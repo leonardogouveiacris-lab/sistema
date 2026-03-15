@@ -65,6 +65,7 @@ import { buildSelectionCommentsDomain } from './pdf/floatingViewer/selectionComm
 import { buildRenderStrategyDomain } from './pdf/floatingViewer/renderStrategyDomain';
 import { buildToolbarVisualDomain } from './pdf/floatingViewer/toolbarVisualDomain';
 import OcrProgressModal from './pdf/OcrProgressModal';
+import OcrTextOverlay, { invalidateOcrTextCache } from './pdf/OcrTextOverlay';
 import { usePdfOcr } from '../hooks/usePdfOcr';
 import { useFloatingViewerIdleTask } from './pdf/floatingViewer/useFloatingViewerIdleTask';
 import { useFloatingViewerInteractionState } from './pdf/floatingViewer/useFloatingViewerInteractionState';
@@ -6011,6 +6012,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     ? state.documents[0].id
     : (continuousCanvasPipeline.activeDocumentId ?? state.documents[0]?.id ?? null);
 
+  const activeOcrDocument = activeOcrDocumentId
+    ? state.documents.find(d => d.id === activeOcrDocumentId) ?? null
+    : null;
+
   const activeOcrPdfProxy = activeOcrDocumentId
     ? (pdfDocumentProxies.get(activeOcrDocumentId) ?? null)
     : null;
@@ -6661,6 +6666,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                 selectionRects={selectionsByPage.get(state.currentPage) || []}
                                 caretRect={caretByPage.get(state.currentPage) || null}
                               />
+                              <OcrTextOverlay
+                                documentId={doc.id}
+                                localPageNumber={localPageNum}
+                                scale={state.displayZoom}
+                                pageWidth={getPageWidth(state.currentPage) / state.zoom}
+                                pageHeight={getPageHeight(state.currentPage) / state.zoom}
+                              />
                               </MemoizedPDFPage>
                             </div>
                           );
@@ -6782,6 +6794,13 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                           selectionRects={selectionsByPage.get(globalPageNum) || []}
                                           caretRect={caretByPage.get(globalPageNum) || null}
                                         />
+                                        <OcrTextOverlay
+                                          documentId={doc.id}
+                                          localPageNumber={localPageNum}
+                                          scale={state.displayZoom}
+                                          pageWidth={pageWidth / state.zoom}
+                                          pageHeight={pageHeight / state.zoom}
+                                        />
                                           </MemoizedPDFPage>
                                       </>
                                     ) : (
@@ -6848,6 +6867,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         isOpen={isOcrModalOpen}
         ocrState={ocrState}
         totalPages={activeOcrPdfProxy?.numPages ?? state.totalPages}
+        pdfUrl={activeOcrDocument?.url ?? ''}
+        documentName={activeOcrDocument?.displayName ?? activeOcrDocument?.fileName ?? 'Documento'}
+        currentPage={state.currentPage}
         onStart={(pages) => {
           if (activeOcrPdfProxy) {
             runOcr(activeOcrPdfProxy, pages);
@@ -6857,6 +6879,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         onClose={() => {
           setIsOcrModalOpen(false);
           if (ocrState.status === 'done' || ocrState.status === 'error') {
+            if (ocrState.status === 'done' && activeOcrDocumentId) {
+              invalidateOcrTextCache(activeOcrDocumentId);
+            }
             resetOcr();
           }
         }}
