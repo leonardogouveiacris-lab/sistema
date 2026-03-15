@@ -21,6 +21,7 @@
     "react-pdf": "^10.2.0",
     "react-quill": "^2.0.0",
     "react-window": "^2.2.3",
+    "tesseract.js": "^5.1.1",
     "xlsx": "^0.18.5"
   },
   "overrides": {

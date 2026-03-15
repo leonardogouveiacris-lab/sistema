@@ -30,7 +30,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import { usePDFViewer, InsertionField } from '../contexts/PDFViewerContext';
 import { useToast } from '../contexts/ToastContext';
-import { Columns2 as Columns, FileText, BookOpen, Highlighter, Search, FileOutput, PanelRightClose, PanelRight, MoreVertical, ChevronDown, MessageCircle } from 'lucide-react';
+import { Columns2 as Columns, FileText, BookOpen, Highlighter, Search, FileOutput, PanelRightClose, PanelRight, MoreVertical, ChevronDown, MessageCircle, ScanLine } from 'lucide-react';
 import { useResponsivePanel } from '../hooks';
 import { usePdfNavigationState } from '../hooks/usePdfNavigationState';
 import { usePdfRenderBudget } from '../hooks/usePdfRenderBudget';
@@ -64,6 +64,8 @@ import { buildBookmarksDomain } from './pdf/floatingViewer/bookmarksDomain';
 import { buildSelectionCommentsDomain } from './pdf/floatingViewer/selectionCommentsDomain';
 import { buildRenderStrategyDomain } from './pdf/floatingViewer/renderStrategyDomain';
 import { buildToolbarVisualDomain } from './pdf/floatingViewer/toolbarVisualDomain';
+import OcrProgressModal from './pdf/OcrProgressModal';
+import { usePdfOcr } from '../hooks/usePdfOcr';
 import { useFloatingViewerIdleTask } from './pdf/floatingViewer/useFloatingViewerIdleTask';
 import { useFloatingViewerInteractionState } from './pdf/floatingViewer/useFloatingViewerInteractionState';
 import { countTotalBookmarks, mergeBookmarksFromMultipleDocuments } from '../utils/pdfBookmarkExtractor';
@@ -294,6 +296,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showCommentColorPicker, setShowCommentColorPicker] = useState(false);
   const [showToolbarOverflow, setShowToolbarOverflow] = useState(false);
+  const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
   const [scrollBasedVisiblePages, setScrollBasedVisiblePages] = useState<Set<number>>(new Set());
   const [scrollFallbackVisibleRange, setScrollFallbackVisibleRange] = useState<{ start: number; end: number } | null>(null);
   const [documentLayoutVersion, setDocumentLayoutVersion] = useState(0);
@@ -6004,6 +6007,22 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     toolbarCompact: responsiveConfig.toolbarCompact
   });
 
+  const activeOcrDocumentId = state.documents.length === 1
+    ? state.documents[0].id
+    : (continuousCanvasPipeline.activeDocumentId ?? state.documents[0]?.id ?? null);
+
+  const activeOcrPdfProxy = activeOcrDocumentId
+    ? (pdfDocumentProxies.get(activeOcrDocumentId) ?? null)
+    : null;
+
+  const {
+    ocrState,
+    checkOcrStatus,
+    runOcr,
+    cancelOcr,
+    resetOcr,
+  } = usePdfOcr(activeOcrDocumentId);
+
   if (!state.isOpen || state.documents.length === 0) {
     return null;
   }
@@ -6254,6 +6273,31 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                 {/* Separador */}
                 <div className="w-px h-6 bg-gray-300" />
 
+                {/* OCR button */}
+                <button
+                  onClick={() => {
+                    setIsOcrModalOpen(true);
+                    if (activeOcrDocumentId && activeOcrPdfProxy) {
+                      checkOcrStatus(activeOcrPdfProxy.numPages);
+                    }
+                  }}
+                  disabled={state.documents.length === 0}
+                  className={`flex items-center space-x-1 px-2 sm:px-3 py-1 text-xs font-medium border rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    ocrState.status === 'done'
+                      ? 'bg-green-50 text-green-700 border-green-300'
+                      : ocrState.isRunning
+                      ? 'bg-blue-50 text-blue-700 border-blue-300'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                  title="OCR - Reconhecimento de Texto"
+                >
+                  <ScanLine size={14} />
+                  {responsiveConfig.showToolbarLabels && <span>OCR</span>}
+                </button>
+
+                {/* Separador */}
+                <div className="w-px h-6 bg-gray-300" />
+
                 {/* Toggle de modo de visualização */}
                 <button
                   onClick={handleToggleViewMode}
@@ -6358,6 +6402,28 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                     >
                       <FileOutput size={14} />
                       <span>Extrair Páginas</span>
+                    </button>
+
+                    <div className="border-t border-gray-100 my-1" />
+
+                    {/* OCR */}
+                    <button
+                      onClick={() => {
+                        setIsOcrModalOpen(true);
+                        if (activeOcrDocumentId && activeOcrPdfProxy) {
+                          checkOcrStatus(activeOcrPdfProxy.numPages);
+                        }
+                        toolbarVisualDomain.setShowToolbarOverflow(false);
+                      }}
+                      disabled={state.documents.length === 0}
+                      className={`w-full flex items-center space-x-2 px-3 py-2 text-sm disabled:opacity-50 ${
+                        ocrState.status === 'done'
+                          ? 'text-green-700'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <ScanLine size={14} />
+                      <span>OCR</span>
                     </button>
 
                     <div className="border-t border-gray-100 my-1" />
@@ -6776,6 +6842,23 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         extractionTargetName={extractionTarget?.document.displayName || extractionTarget?.document.fileName || 'documento.pdf'}
         extractionSourceDocuments={extractionSourceDocuments}
         isSelecting={selectionMode === 'native-drag'}
+      />
+
+      <OcrProgressModal
+        isOpen={isOcrModalOpen}
+        ocrState={ocrState}
+        onStart={() => {
+          if (activeOcrPdfProxy) {
+            runOcr(activeOcrPdfProxy);
+          }
+        }}
+        onCancel={cancelOcr}
+        onClose={() => {
+          setIsOcrModalOpen(false);
+          if (ocrState.status === 'done' || ocrState.status === 'error') {
+            resetOcr();
+          }
+        }}
       />
     </>
   );
