@@ -104,7 +104,8 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     verbas,
     addVerbaComLancamento,
     updateVerbaLancamento,
-    removeVerbaLancamento
+    removeVerbaLancamento,
+    refreshVerbas
   } = useVerbas();
 
   const {
@@ -658,15 +659,20 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       if (item) {
         const oldTipo = item.verba.tipoVerba;
         const newTipo = verba.tipoVerba;
+        let renamed = false;
         if (newTipo && newTipo.trim() && newTipo.trim() !== oldTipo) {
           const renameResult = await RenameService.renomearComAnalise(oldTipo, newTipo.trim(), processId);
           if (!renameResult.success) {
             toast.error(renameResult.message || 'Falha ao renomear tipo de verba.');
             return false;
           }
+          renamed = true;
         }
         const result = await onUpdateVerba(item.verba.id, state.editingRecordId, verba.lancamento, true);
         if (result.success) {
+          if (renamed) {
+            await refreshVerbas();
+          }
           cancelForm();
         } else {
           toast.error(result.error || 'Falha ao atualizar verba.');
