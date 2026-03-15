@@ -2,10 +2,35 @@ import type { ProcessTableColumn, ProcessTableRow } from '../types/ProcessTable'
 
 const TOKEN_REGEX = /([A-Z]+(?:[A-Z]+)*)\b/g;
 
+function normalizeNumberString(str: string): string {
+  const dotIdx = str.lastIndexOf('.');
+  const commaIdx = str.lastIndexOf(',');
+
+  if (dotIdx === -1 && commaIdx === -1) return str;
+
+  if (dotIdx !== -1 && commaIdx === -1) {
+    const dotCount = (str.match(/\./g) ?? []).length;
+    if (dotCount > 1) return str.replace(/\./g, '');
+    if (str.length - dotIdx - 1 === 3 && !str.startsWith('-0')) return str.replace(/\./g, '');
+    return str;
+  }
+
+  if (commaIdx !== -1 && dotIdx === -1) {
+    const commaCount = (str.match(/,/g) ?? []).length;
+    if (commaCount > 1) return str.replace(/,/g, '');
+    if (str.length - commaIdx - 1 === 3) return str.replace(/,/g, '');
+    return str.replace(',', '.');
+  }
+
+  if (dotIdx < commaIdx) return str.replace(/\./g, '').replace(',', '.');
+  return str.replace(/,/g, '');
+}
+
 function parseNumber(value: string | null | undefined): number {
   if (value === null || value === undefined || value === '') return 0;
-  const cleaned = String(value).replace(/[^\d.,-]/g, '').replace(',', '.');
-  const n = parseFloat(cleaned);
+  const str = String(value).replace(/[^\d.,-]/g, '').trim();
+  const normalized = normalizeNumberString(str);
+  const n = parseFloat(normalized.replace(/\s/g, ''));
   return isNaN(n) ? 0 : n;
 }
 
@@ -126,37 +151,7 @@ export function formatCellNumber(value: string | null): string {
   const str = String(value).trim();
   if (!/^-?[\d.,\s]+$/.test(str)) return str;
 
-  const dotIdx = str.lastIndexOf('.');
-  const commaIdx = str.lastIndexOf(',');
-
-  let normalized: string;
-
-  if (dotIdx === -1 && commaIdx === -1) {
-    normalized = str;
-  } else if (dotIdx !== -1 && commaIdx === -1) {
-    const dotCount = (str.match(/\./g) ?? []).length;
-    if (dotCount > 1) {
-      normalized = str.replace(/\./g, '');
-    } else if (str.length - dotIdx - 1 === 3 && !str.startsWith('-0')) {
-      normalized = str.replace(/\./g, '');
-    } else {
-      normalized = str;
-    }
-  } else if (commaIdx !== -1 && dotIdx === -1) {
-    const commaCount = (str.match(/,/g) ?? []).length;
-    if (commaCount > 1) {
-      normalized = str.replace(/,/g, '');
-    } else if (str.length - commaIdx - 1 === 3) {
-      normalized = str.replace(/,/g, '');
-    } else {
-      normalized = str.replace(',', '.');
-    }
-  } else if (dotIdx < commaIdx) {
-    normalized = str.replace(/\./g, '').replace(',', '.');
-  } else {
-    normalized = str.replace(/,/g, '');
-  }
-
+  const normalized = normalizeNumberString(str);
   const n = parseFloat(normalized.replace(/\s/g, ''));
   if (isNaN(n)) return str;
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
