@@ -214,8 +214,8 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
       <ProcessDocumentManager processId={process.id} processNumber={process.numeroProcesso} />
 
       {/* Tabela de dados - abre em painel flutuante */}
-      <div className="bg-white rounded-lg border border-gray-200 p-5">
-        <div className="flex items-center justify-between">
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-slate-100 rounded-lg border border-slate-200">
               <TableIcon size={18} className="text-slate-600" />
@@ -228,13 +228,15 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => openTableViewer(process.id)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-700 hover:bg-slate-800 rounded-lg transition-colors duration-200"
-            >
-              <TableIcon size={15} />
-              Abrir Tabela
-            </button>
+            {table && (
+              <button
+                onClick={() => openTableViewer(process.id)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-700 hover:bg-slate-800 rounded-lg transition-colors duration-200"
+              >
+                <TableIcon size={15} />
+                Abrir Tabela
+              </button>
+            )}
             <div className="relative">
               <button
                 onClick={() => setShowTableMenu((v) => !v)}
@@ -248,7 +250,7 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
                   <div className="fixed inset-0 z-40" onClick={() => setShowTableMenu(false)} />
                   <div className="absolute top-full right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 min-w-[190px]">
                     <button
-                      onClick={() => { setShowTableMenu(false); setShowTableImport(true); }}
+                      onClick={() => { setShowTableMenu(false); setShowTableImport((v) => !v); }}
                       className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
                     >
                       <Upload size={13} className="text-slate-400" />
@@ -272,21 +274,19 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Modal importar/substituir planilha */}
-      {showTableImport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h3 className="text-sm font-semibold text-slate-800">
+        {/* Inline import panel */}
+        {showTableImport && (
+          <div className="border-t border-slate-100">
+            <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-100">
+              <p className="text-xs font-semibold text-slate-700">
                 {table ? 'Substituir planilha' : 'Importar planilha'}
-              </h3>
+              </p>
               <button
                 onClick={() => setShowTableImport(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
-                <X size={15} />
+                <X size={14} />
               </button>
             </div>
             <div className="p-5">
@@ -309,8 +309,8 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
               />
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Modal excluir tabela */}
       {showTableDelete && (
