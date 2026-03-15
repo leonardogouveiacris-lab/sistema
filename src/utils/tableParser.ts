@@ -21,10 +21,10 @@ export function letterToColumnIndex(letter: string): number {
 }
 
 function cellToString(value: unknown): string | null {
-  if (value === null || value === undefined || value === '') return null;
+  if (value === null || value === undefined || value === '') return '0';
   if (typeof value === 'number') {
     if (Number.isFinite(value)) return String(value);
-    return null;
+    return '0';
   }
   return String(value);
 }
@@ -56,14 +56,13 @@ export async function parseXlsxFile(file: File): Promise<ParsedTableData> {
         const rows: (string | null)[][] = [];
         for (let r = 1; r < jsonData.length; r++) {
           const rawRow = jsonData[r] as unknown[];
+          const hasData = rawRow.some((v) => v !== null && v !== undefined && v !== '');
+          if (!hasData) continue;
           const row: (string | null)[] = [];
           for (let c = 0; c < maxCols; c++) {
             row.push(cellToString(rawRow[c] ?? null));
           }
-          const hasData = row.some((v) => v !== null && v !== '');
-          if (hasData) {
-            rows.push(row);
-          }
+          rows.push(row);
         }
 
         resolve({ headers, rows });
@@ -103,14 +102,13 @@ export async function parseCsvFile(file: File): Promise<ParsedTableData> {
         const rows: (string | null)[][] = [];
         for (let r = 1; r < jsonData.length; r++) {
           const rawRow = jsonData[r] as unknown[];
+          const hasData = rawRow.some((v) => v !== null && v !== undefined && v !== '');
+          if (!hasData) continue;
           const row: (string | null)[] = [];
           for (let c = 0; c < maxCols; c++) {
             row.push(cellToString(rawRow[c] ?? null));
           }
-          const hasData = row.some((v) => v !== null && v !== '');
-          if (hasData) {
-            rows.push(row);
-          }
+          rows.push(row);
         }
 
         resolve({ headers, rows });

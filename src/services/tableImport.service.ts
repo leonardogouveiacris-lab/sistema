@@ -111,7 +111,7 @@ export async function getProcessTable(processId: string): Promise<ProcessTable |
         cells: cellMap,
       };
     })
-    .filter((row) => Object.values(row.cells).some((v) => v !== null && v !== ''));
+    .filter((row) => Object.values(row.cells).some((v) => v !== null && v !== undefined));
 
   const reindexedRows = rows.map((row, i) => ({ ...row, rowIndex: i + 1 }));
 
