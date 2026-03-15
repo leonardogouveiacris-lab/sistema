@@ -3,7 +3,9 @@ import logger from './logger';
 import type { OcrPageResult, OcrWordBox } from '../services/pdfOcr.service';
 
 const OCR_RENDER_SCALE = 2.0;
-const OCR_LANGUAGE = 'por';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export interface OcrEngineProgress {
   currentPage: number;
@@ -39,43 +41,32 @@ async function renderPageToCanvas(
 }
 
 async function recognizeCanvasText(
-  canvas: HTMLCanvasElement
+  canvas: HTMLCanvasElement,
+  pageNumber: number
 ): Promise<{ text: string; confidence: number; wordBoxes: OcrWordBox[] }> {
-  const { createWorker } = await import('tesseract.js');
+  const imageBase64 = canvas.toDataURL('image/png').split(',')[1];
 
-  const worker = await createWorker(OCR_LANGUAGE, 1, {
-    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
-    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
-    logger: () => {},
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/ocr-page`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ imageBase64, pageNumber }),
   });
 
-  try {
-    await worker.setParameters({
-      tessedit_pageseg_mode: '1',
-    });
-
-    const result = await worker.recognize(canvas);
-    const text = result.data.text.trim();
-    const confidence = result.data.confidence;
-
-    const wordBoxes: OcrWordBox[] = [];
-    for (const word of result.data.words) {
-      const wordText = word.text.trim();
-      if (!wordText) continue;
-      wordBoxes.push({
-        text: wordText,
-        x: word.bbox.x0,
-        y: word.bbox.y0,
-        w: word.bbox.x1 - word.bbox.x0,
-        h: word.bbox.y1 - word.bbox.y0,
-      });
-    }
-
-    return { text, confidence, wordBoxes };
-  } finally {
-    await worker.terminate();
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OCR edge function error ${response.status}: ${errorText}`);
   }
+
+  const data = await response.json();
+
+  return {
+    text: data.text ?? '',
+    confidence: data.confidence ?? 95,
+    wordBoxes: (data.wordBoxes ?? []) as OcrWordBox[],
+  };
 }
 
 export async function runOcrOnPages(
@@ -113,12 +104,12 @@ export async function runOcrOnPages(
         status: 'recognizing',
       });
 
-      const { text, confidence, wordBoxes } = await recognizeCanvasText(canvas);
+      const { text, confidence, wordBoxes } = await recognizeCanvasText(canvas, pageNumber);
 
       results.push({ pageNumber, text, confidence, wordBoxes });
 
       logger.info(
-        `OCR page ${pageNumber}: ${text.length} chars, ${wordBoxes.length} words, confidence ${confidence.toFixed(1)}%`,
+        `OCR page ${pageNumber}: ${text.length} chars, confidence ${confidence}%`,
         'pdfOcrEngine.runOcrOnPages'
       );
     } catch (error) {
