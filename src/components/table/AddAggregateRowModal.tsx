@@ -16,6 +16,7 @@ const ALL_OPERATIONS: AggregateOperation[] = [
 interface AddAggregateRowModalProps {
   table: ProcessTable;
   editingAggregate?: AggregateRow;
+  initialColumnId?: string;
   onConfirm: (
     columnId: string,
     operation: AggregateOperation,
@@ -28,13 +29,14 @@ interface AddAggregateRowModalProps {
 export function AddAggregateRowModal({
   table,
   editingAggregate,
+  initialColumnId,
   onConfirm,
   onClose,
 }: AddAggregateRowModalProps) {
   const availableColumns = useMemo(() => getColumnsForAggregate(table.columns), [table.columns]);
 
   const [columnId, setColumnId] = useState<string>(
-    editingAggregate?.columnId ?? availableColumns[0]?.id ?? ''
+    editingAggregate?.columnId ?? initialColumnId ?? availableColumns[0]?.id ?? ''
   );
   const [operation, setOperation] = useState<AggregateOperation>(
     editingAggregate?.operation ?? 'sum'
