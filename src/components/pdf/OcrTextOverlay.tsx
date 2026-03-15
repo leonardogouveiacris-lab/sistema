@@ -142,12 +142,15 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
 
   return (
     <div
-      className="absolute inset-0 overflow-hidden pointer-events-none select-text"
+      data-ocr-layer="true"
+      className="absolute inset-0 overflow-hidden pointer-events-none"
       style={{
         width: displayWidth,
         height: displayHeight,
         zIndex: 2,
-      }}
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+      } as React.CSSProperties}
     >
       <div
         style={{
@@ -162,6 +165,7 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
         {data.wordBoxes.map((word, idx) => (
           <span
             key={idx}
+            aria-hidden="true"
             style={{
               position: 'absolute',
               left: word.x * scaleX,
@@ -170,16 +174,15 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
               height: word.h * scaleY,
               color: 'transparent',
               backgroundColor: 'transparent',
-              userSelect: 'text',
-              WebkitUserSelect: 'text',
-              cursor: 'text',
-              pointerEvents: 'auto',
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              pointerEvents: 'none',
               whiteSpace: 'pre',
               overflow: 'visible',
               fontSize: `${word.h * scaleY * 0.85}px`,
               lineHeight: 1,
               display: 'inline-block',
-            }}
+            } as React.CSSProperties}
           >
             {word.text}
           </span>

@@ -166,6 +166,30 @@
   color: transparent !important;
 }
 
+[data-ocr-layer] {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  pointer-events: none !important;
+}
+
+[data-ocr-layer] span {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  pointer-events: none !important;
+}
+
+[data-ocr-layer] span::selection,
+[data-ocr-layer] ::selection {
+  background: transparent !important;
+  color: transparent !important;
+}
+
+[data-ocr-layer] span::-moz-selection,
+[data-ocr-layer] ::-moz-selection {
+  background: transparent !important;
+  color: transparent !important;
+}
+
 .textLayer .highlight,
 .textLayer .highlight.appended,
 .textLayer .highlight.begin,
