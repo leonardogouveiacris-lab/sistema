@@ -30,6 +30,7 @@ import DecisionDetailModal from './DecisionDetailModal';
 import DocumentoDetailModal from './DocumentoDetailModal';
 import { Search, ChevronDown, ChevronUp, ChevronsLeftRight, ChevronsRightLeft, Scale, DollarSign, FileText, Plus, CheckCircle2, Circle, Clock, Layers, MessageCircle } from 'lucide-react';
 import { RenameService } from '../../services/rename.service';
+import * as PDFCommentsService from '../../services/pdfComments.service';
 
 interface GroupProgressStats {
   total: number;
@@ -415,8 +416,14 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   }, [sortedComments, debouncedCommentSearchQuery]);
 
   const handleDeleteComment = useCallback(async (commentId: string) => {
+    try {
+      await PDFCommentsService.deleteComment(commentId);
+    } catch {
+      toast.error('Falha ao excluir comentario.');
+      return;
+    }
     removeComment(commentId);
-  }, [removeComment]);
+  }, [removeComment, toast]);
 
   const handleEditDecision = useCallback((decisionId: string) => {
     startEditDecision(decisionId);
