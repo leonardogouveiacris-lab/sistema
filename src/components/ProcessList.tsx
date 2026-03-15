@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { Folder, Search, ChevronDown, Eye, Trash2 } from 'lucide-react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { Folder, Search, ChevronDown, Eye } from 'lucide-react';
 import { Process, ProcessFilter } from '../types/Process';
 import logger from '../utils/logger';
 import CleanupEmptyProcessesModal from './CleanupEmptyProcessesModal';
@@ -17,6 +17,17 @@ const ProcessList: React.FC<ProcessListProps> = ({ processes, onSelectProcess, o
   const [filter, setFilter] = useState<ProcessFilter>({ searchTerm: '' });
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [showCleanupModal, setShowCleanupModal] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === '-') {
+        e.preventDefault();
+        setShowCleanupModal(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const filteredProcesses = useMemo(() => {
     if (!filter.searchTerm.trim()) return processes;
@@ -66,21 +77,11 @@ const ProcessList: React.FC<ProcessListProps> = ({ processes, onSelectProcess, o
     )}
     <div className="bg-white rounded-lg border border-gray-200">
       <div className="p-6 border-b border-gray-200">
-        <div className="flex items-start justify-between mb-6">
-          <div className="text-center flex-1">
-            <h2 className="text-xl font-semibold text-gray-900">Lista de Processos</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              Gerencie seus processos ({filteredProcesses.length} encontrados)
-            </p>
-          </div>
-          <button
-            onClick={() => setShowCleanupModal(true)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
-            title="Remover processos sem lançamentos"
-          >
-            <Trash2 size={13} />
-            Limpar vazios
-          </button>
+        <div className="text-center mb-6">
+          <h2 className="text-xl font-semibold text-gray-900">Lista de Processos</h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Gerencie seus processos ({filteredProcesses.length} encontrados)
+          </p>
         </div>
 
         <div className="relative">
