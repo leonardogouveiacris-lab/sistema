@@ -492,7 +492,7 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
                 </p>
               )}
               <p className="text-xs text-gray-400 text-center max-w-sm mt-2">
-                OCR processado localmente via Tesseract.js (pt-BR). O primeiro uso baixa o modelo de lingua (~10 MB).
+                OCR processado localmente via Tesseract (pt-BR). O primeiro uso baixa o modelo de linguagem (~40 MB).
               </p>
             </div>
           )}
