@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { X, ScanLine, AlertCircle, CheckCircle, Loader2, FileText, Trash2, Settings, ChevronDown } from 'lucide-react';
+import { X, ScanLine, AlertCircle, CheckCircle, Loader2, FileText, Trash2, Settings } from 'lucide-react';
 import type { OcrState } from '../../hooks/usePdfOcr';
 import { OCR_PARAMS_DEFAULT, PAGE_SEG_MODE_LABELS, type OcrParams } from '../../utils/pdfOcrEngine';
 
@@ -360,15 +360,14 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
                 </div>
                 <button
                   onClick={() => setShowParams(v => !v)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                  title="Parametros de reconhecimento"
+                  className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
                     showParams
                       ? 'bg-blue-50 text-blue-700 border-blue-200'
                       : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
                   }`}
                 >
-                  <Settings size={12} />
-                  Parametros
-                  <ChevronDown size={11} className={`transition-transform ${showParams ? 'rotate-180' : ''}`} />
+                  <Settings size={13} />
                 </button>
               </div>
 

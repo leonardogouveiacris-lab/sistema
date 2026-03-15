@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { OcrWordBox } from '../../services/pdfOcr.service';
 
-const OCR_RENDER_SCALE = 2.0;
 
 interface OcrTextOverlayProps {
   documentId: string;
@@ -119,13 +118,9 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
   const displayHeight = pageHeight * scale;
 
   const r = ((rotation % 360) + 360) % 360;
-  const isSwapped = r === 90 || r === 270;
 
-  const ocrCanvasWidth = isSwapped ? pageHeight * OCR_RENDER_SCALE : pageWidth * OCR_RENDER_SCALE;
-  const ocrCanvasHeight = isSwapped ? pageWidth * OCR_RENDER_SCALE : pageHeight * OCR_RENDER_SCALE;
-
-  const scaleX = displayWidth / ocrCanvasWidth;
-  const scaleY = displayHeight / ocrCanvasHeight;
+  const scaleX = scale;
+  const scaleY = scale;
 
   const rotationStyle = buildRotationTransform(r, displayWidth, displayHeight);
 

@@ -259,7 +259,16 @@ export async function runOcrOnPages(
         status: 'recognizing',
       });
 
-      const { text, confidence, wordBoxes } = await recognizeCanvasText(canvas, params.pageSegMode);
+      const { text, confidence, wordBoxes: rawWordBoxes } = await recognizeCanvasText(canvas, params.pageSegMode);
+
+      const rs = params.renderScale;
+      const wordBoxes: OcrWordBox[] = rawWordBoxes.map(wb => ({
+        text: wb.text,
+        x: wb.x / rs,
+        y: wb.y / rs,
+        w: wb.w / rs,
+        h: wb.h / rs,
+      }));
 
       results.push({ pageNumber, text, confidence, wordBoxes });
 
