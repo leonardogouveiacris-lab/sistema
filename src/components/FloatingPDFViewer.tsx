@@ -730,13 +730,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, []);
 
 
-  const getPercentile = useCallback((values: number[], percentile: number): number | null => {
-    if (values.length === 0) return null;
-    const sorted = [...values].sort((a, b) => a - b);
-    const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((percentile / 100) * sorted.length) - 1));
-    return Number(sorted[index].toFixed(2));
-  }, []);
-
   const logNavigationLatencySummary = useCallback((_flowId: string, _source: string) => {
     // Metrics logging disabled
   }, []);

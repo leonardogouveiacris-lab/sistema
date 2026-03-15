@@ -75,13 +75,16 @@ export const testSupabaseConnection = async (): Promise<boolean> => {
   try {
     logger.info('Testando conexão com Supabase...', 'supabase-config');
     
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Timeout na conexão')), 10000);
+      timeoutHandle = setTimeout(() => reject(new Error('Timeout na conexão')), 10000);
     });
 
     const queryPromise = supabase.from('processes').select('count').limit(1);
 
-    const { error } = await Promise.race([queryPromise, timeoutPromise]);
+    const { error } = await Promise.race([queryPromise, timeoutPromise]).finally(() => {
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+    });
     
     if (error) {
       // Se as tabelas não existem, não é um erro de conectividade

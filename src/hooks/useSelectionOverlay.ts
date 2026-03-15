@@ -99,6 +99,7 @@ export function useSelectionOverlay(
   }>({ pending: false, forceUpdate: false });
 
   const scrollDebounceRef = useRef<number | null>(null);
+  const scrollIsScrollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isScrollingRef = useRef(false);
 
   const updateSelectionMode = useCallback((nextMode: SelectionMode) => {
@@ -742,8 +743,12 @@ export function useSelectionOverlay(
       scrollDebounceRef.current = requestAnimationFrame(() => {
         scheduleRafUpdate(true);
 
-        setTimeout(() => {
+        if (scrollIsScrollingTimerRef.current !== null) {
+          clearTimeout(scrollIsScrollingTimerRef.current);
+        }
+        scrollIsScrollingTimerRef.current = setTimeout(() => {
           isScrollingRef.current = false;
+          scrollIsScrollingTimerRef.current = null;
         }, SCROLL_DEBOUNCE_MS);
 
         scrollDebounceRef.current = null;
@@ -757,6 +762,10 @@ export function useSelectionOverlay(
       if (scrollDebounceRef.current !== null) {
         cancelAnimationFrame(scrollDebounceRef.current);
         scrollDebounceRef.current = null;
+      }
+      if (scrollIsScrollingTimerRef.current !== null) {
+        clearTimeout(scrollIsScrollingTimerRef.current);
+        scrollIsScrollingTimerRef.current = null;
       }
     };
   }, [containerRef, scheduleRafUpdate]);

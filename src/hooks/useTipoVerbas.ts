@@ -201,8 +201,8 @@ export const useTipoVerbas = (processId?: string): UseTipoVerbasReturn => {
    */
   const forcarRecarregamento = useCallback(async () => {
     TipoVerbaService.limparCache();
-    await carregarTipos();
-  }, [carregarTipos]);
+    await carregarTipos(processId);
+  }, [carregarTipos, processId]);
 
   // ===== INICIALIZAÇÃO =====
 

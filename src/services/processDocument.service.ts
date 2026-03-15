@@ -33,6 +33,8 @@ const triggerTextExtraction = (documentId: string): void => {
   }
 
   const extractUrl = `${supabaseUrl}/functions/v1/extract-pdf-text`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   fetch(extractUrl, {
     method: 'POST',
@@ -40,7 +42,8 @@ const triggerTextExtraction = (documentId: string): void => {
       'Authorization': `Bearer ${supabaseAnonKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ process_document_id: documentId })
+    body: JSON.stringify({ process_document_id: documentId }),
+    signal: controller.signal,
   })
     .then(response => response.json())
     .then(result => {
@@ -53,12 +56,15 @@ const triggerTextExtraction = (documentId: string): void => {
       }
     })
     .catch(error => {
-      logger.warn(
-        'Text extraction failed (non-blocking)',
-        'processDocumentService.triggerTextExtraction',
-        { documentId, error }
-      );
-    });
+      if (error instanceof Error && error.name !== 'AbortError') {
+        logger.warn(
+          'Text extraction failed (non-blocking)',
+          'processDocumentService.triggerTextExtraction',
+          { documentId, error }
+        );
+      }
+    })
+    .finally(() => clearTimeout(timeoutId));
 };
 
 /**

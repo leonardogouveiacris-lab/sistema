@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   ErrorBoundary,
   Header,
@@ -221,18 +221,27 @@ function AppContent() {
     setSelectedProcess(refreshedProcess);
   }, [processes, selectedProcess]);
 
+  const globalErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleTabChange = useCallback((tab: string) => {
     setGlobalError('');
     if (isProcessRequiredTab(tab) && !selectedProcess) {
       logger.warn(`Tentativa de navegar para aba que requer processo sem processo selecionado: ${tab}`, 'App - handleTabChange');
       setActiveTab(AppTabs.LISTA_PROCESSOS);
       setGlobalError('Por favor, selecione um processo antes de acessar esta seção.');
-      setTimeout(() => setGlobalError(''), 4000);
+      if (globalErrorTimerRef.current) clearTimeout(globalErrorTimerRef.current);
+      globalErrorTimerRef.current = setTimeout(() => setGlobalError(''), 4000);
       return;
     }
     setActiveTab(tab);
     logger.info(`Navegação para aba: ${tab}`, 'App - handleTabChange', { tab, hasSelectedProcess: !!selectedProcess });
   }, [selectedProcess]);
+
+  useEffect(() => {
+    return () => {
+      if (globalErrorTimerRef.current) clearTimeout(globalErrorTimerRef.current);
+    };
+  }, []);
 
   const handleImportBackup = useCallback(() => {
     setGlobalError('');

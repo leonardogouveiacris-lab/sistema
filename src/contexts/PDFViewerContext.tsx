@@ -497,6 +497,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const highlightClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightClearTokenRef = useRef<number>(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const multiHighlightTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pendingNavigationRef = useRef<PendingNavigation | null>(null);
   const searchNavigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSearchNavigationActiveRef = useRef(false);
@@ -1031,7 +1032,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'create-decision',
       editingRecordId: null
     }));
-  }, [state.currentPage]);
+  }, []);
 
   /**
    * Inicia criação de verba
@@ -1043,7 +1044,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'create-verba',
       editingRecordId: null
     }));
-  }, [state.currentPage]);
+  }, []);
 
   /**
    * Inicia edição de decisão
@@ -1079,7 +1080,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'create-documento',
       editingRecordId: null
     }));
-  }, [state.currentPage]);
+  }, []);
 
   /**
    * Inicia edição de documento
@@ -1103,7 +1104,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       formMode: 'create-documento-lancamento',
       editingRecordId: null
     }));
-  }, [state.currentPage]);
+  }, []);
 
   /**
    * Inicia edição de lançamento de documento
@@ -1749,6 +1750,9 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
       const PAGE_RENDER_DELAY = 500;
       const HIGHLIGHT_BLINK_TIME = 2500;
 
+      multiHighlightTimersRef.current.forEach(t => clearTimeout(t));
+      multiHighlightTimersRef.current = [];
+
       const navigateToPageIndex = (pageIndex: number) => {
         if (pageIndex >= sortedPages.length) {
           setState(prev => ({
@@ -1770,13 +1774,13 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
         }));
 
         // não usar scheduleHighlightedPageClear aqui porque o "blink" controla
-        setTimeout(() => {
+        const t1 = setTimeout(() => {
           setState(prev => ({
             ...prev,
             selectedHighlightIds: pageHighlightIds
           }));
 
-          setTimeout(() => {
+          const t2 = setTimeout(() => {
             const firstHighlightOnPage = pageHighlightIds[0];
             const highlightElement = document.getElementById(`highlight-${firstHighlightOnPage}`);
             if (highlightElement) {
@@ -1786,11 +1790,14 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
               });
             }
           }, 200);
+          multiHighlightTimersRef.current.push(t2);
 
-          setTimeout(() => {
+          const t3 = setTimeout(() => {
             navigateToPageIndex(pageIndex + 1);
           }, HIGHLIGHT_BLINK_TIME);
+          multiHighlightTimersRef.current.push(t3);
         }, PAGE_RENDER_DELAY);
+        multiHighlightTimersRef.current.push(t1);
       };
 
       navigateToPageIndex(0);
@@ -2007,11 +2014,12 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
 
   useEffect(() => {
     return () => {
-      // cleanup de timeouts
       if (searchNavigationTimeoutRef.current) clearTimeout(searchNavigationTimeoutRef.current);
       if (rotationSaveTimeoutRef.current) clearTimeout(rotationSaveTimeoutRef.current);
       if (rotationBlockTimeoutRef.current) clearTimeout(rotationBlockTimeoutRef.current);
       if (highlightClearTimeoutRef.current) clearTimeout(highlightClearTimeoutRef.current);
+      multiHighlightTimersRef.current.forEach(t => clearTimeout(t));
+      multiHighlightTimersRef.current = [];
     };
   }, []);
 

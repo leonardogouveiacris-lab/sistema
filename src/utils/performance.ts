@@ -81,7 +81,16 @@ export function memoize<T extends (...args: any[]) => any>(
   const cache = new Map<string, ReturnType<T>>();
 
   return ((...args: Parameters<T>): ReturnType<T> => {
-    const key = keyFn ? keyFn(...args) : JSON.stringify(args);
+    let key: string;
+    if (keyFn) {
+      key = keyFn(...args);
+    } else {
+      try {
+        key = JSON.stringify(args);
+      } catch {
+        key = args.map((a, i) => `${i}:${typeof a}:${String(a)}`).join('|');
+      }
+    }
 
     if (cache.has(key)) {
       const value = cache.get(key)!;

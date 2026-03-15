@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
+const DRAG_THROTTLE_MS = 16;
+
 interface Position {
   x: number;
   y: number;
@@ -10,6 +12,11 @@ export function useDraggablePanel() {
   const isDragging = useRef(false);
   const dragOffset = useRef<Position>({ x: 0, y: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
+  const lastDragFrameRef = useRef<number>(0);
+  const activeListenersRef = useRef<{
+    move: ((ev: MouseEvent) => void) | null;
+    up: (() => void) | null;
+  }>({ move: null, up: null });
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -32,6 +39,9 @@ export function useDraggablePanel() {
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!isDragging.current) return;
+      const now = Date.now();
+      if (now - lastDragFrameRef.current < DRAG_THROTTLE_MS) return;
+      lastDragFrameRef.current = now;
       const panelWidth = panelRef.current?.offsetWidth ?? 560;
       const panelHeight = panelRef.current?.offsetHeight ?? 400;
       const newX = Math.max(0, Math.min(window.innerWidth - panelWidth, ev.clientX - dragOffset.current.x));
@@ -43,7 +53,12 @@ export function useDraggablePanel() {
       isDragging.current = false;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      activeListenersRef.current.move = null;
+      activeListenersRef.current.up = null;
     };
+
+    activeListenersRef.current.move = onMouseMove;
+    activeListenersRef.current.up = onMouseUp;
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -52,6 +67,14 @@ export function useDraggablePanel() {
   useEffect(() => {
     return () => {
       isDragging.current = false;
+      if (activeListenersRef.current.move) {
+        document.removeEventListener('mousemove', activeListenersRef.current.move);
+        activeListenersRef.current.move = null;
+      }
+      if (activeListenersRef.current.up) {
+        document.removeEventListener('mouseup', activeListenersRef.current.up);
+        activeListenersRef.current.up = null;
+      }
     };
   }, []);
 

@@ -102,7 +102,7 @@ const PDFSearchPopup: React.FC<PDFSearchPopupProps> = ({
 
   const scheduleIdleTask = useCallback((callback: (deadline: IdleDeadline) => void) => {
     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      return window.requestIdleCallback(callback as any);
+      return (window as Window & { requestIdleCallback: (cb: (deadline: IdleDeadline) => void) => number }).requestIdleCallback(callback);
     }
     return window.setTimeout(() => {
       callback({ didTimeout: true, timeRemaining: () => 0 });

@@ -71,7 +71,7 @@ async function extractPageText(
 
     for (const item of textContent.items) {
       if ('str' in item && item.str) {
-        const textItem = item as any;
+        const textItem = item as typeof item & { transform?: number[]; width?: number; height?: number; str: string };
         const x = textItem.transform?.[4] || 0;
         const y = textItem.transform?.[5] || 0;
         const width = textItem.width || 0;
