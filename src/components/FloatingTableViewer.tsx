@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Table as TableIcon, FileText, X, Minus } from 'lucide-react';
+import { Table as TableIcon, X, Minus } from 'lucide-react';
 import { useTableViewer } from '../contexts/TableViewerContext';
 import { usePDFViewer } from '../contexts/PDFViewerContext';
 import { TabelaTab } from './table';
@@ -10,7 +10,7 @@ interface FloatingTableViewerProps {
 
 const FloatingTableViewer: React.FC<FloatingTableViewerProps> = ({ processId }) => {
   const { state, closeTableViewer, toggleMinimize } = useTableViewer();
-  const { state: pdfState, toggleMinimize: pdfToggleMinimize } = usePDFViewer();
+  const { state: pdfState } = usePDFViewer();
 
   const effectiveProcessId = state.processId || processId || '';
 
@@ -47,34 +47,11 @@ const FloatingTableViewer: React.FC<FloatingTableViewerProps> = ({ processId }) 
     );
   }
 
-  const handleSwitchToPDF = () => {
-    toggleMinimize();
-    if (pdfState.isMinimized) {
-      pdfToggleMinimize();
-    }
-  };
-
   return (
     <div
       className="fixed top-0 right-0 bottom-0 bg-white shadow-2xl z-[51] flex flex-col notranslate"
       style={{ width: panelWidth }}
     >
-      {pdfIsVisiblePanel && (
-        <div className="flex items-center shrink-0 border-b border-gray-200 bg-gray-50">
-          <button
-            onClick={handleSwitchToPDF}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors border-b-2 border-transparent"
-          >
-            <FileText size={13} />
-            PDF
-          </button>
-          <div className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-blue-700 border-b-2 border-blue-600 bg-white">
-            <TableIcon size={13} />
-            Tabela
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center justify-between px-4 py-3 bg-gray-100 border-b border-gray-200 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <TableIcon size={16} className="text-slate-600 shrink-0" />
