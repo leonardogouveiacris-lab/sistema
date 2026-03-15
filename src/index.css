@@ -153,7 +153,9 @@
 .textLayer ::selection,
 .textLayer span::selection,
 .react-pdf__Page__textContent ::selection,
-.react-pdf__Page__textContent span::selection {
+.react-pdf__Page__textContent span::selection,
+.ocr-text-overlay ::selection,
+.ocr-text-overlay span::selection {
   background: transparent !important;
   color: transparent !important;
 }
@@ -161,7 +163,9 @@
 .textLayer ::-moz-selection,
 .textLayer span::-moz-selection,
 .react-pdf__Page__textContent ::-moz-selection,
-.react-pdf__Page__textContent span::-moz-selection {
+.react-pdf__Page__textContent span::-moz-selection,
+.ocr-text-overlay ::-moz-selection,
+.ocr-text-overlay span::-moz-selection {
   background: transparent !important;
   color: transparent !important;
 }

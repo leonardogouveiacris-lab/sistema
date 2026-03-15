@@ -126,7 +126,7 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
 
   return (
     <div
-      className="absolute inset-0 overflow-hidden pointer-events-none select-text"
+      className="absolute inset-0 overflow-hidden pointer-events-none select-text ocr-text-overlay"
       style={{
         width: displayWidth,
         height: displayHeight,
@@ -158,9 +158,9 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
               WebkitUserSelect: 'text',
               cursor: 'text',
               pointerEvents: 'auto',
-              whiteSpace: 'pre',
-              overflow: 'visible',
-              fontSize: `${word.h * scaleY * 0.85}px`,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              fontSize: `${Math.max(1, word.h * scaleY * 0.85)}px`,
               lineHeight: 1,
               display: 'inline-block',
             }}
