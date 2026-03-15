@@ -519,6 +519,16 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   }, [cumulativePageTops]);
 
   useEffect(() => {
+    const isVisible = state.isOpen && !state.isMinimized && state.documents.length > 0;
+    if (isVisible) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [state.isOpen, state.isMinimized, state.documents.length]);
+
+  useEffect(() => {
     if (state.viewMode !== 'continuous') {
       return;
     }

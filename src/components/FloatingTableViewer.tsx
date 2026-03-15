@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Table as TableIcon, FileText, X, Minus } from 'lucide-react';
 import { useTableViewer } from '../contexts/TableViewerContext';
 import { usePDFViewer } from '../contexts/PDFViewerContext';
@@ -13,6 +13,16 @@ const FloatingTableViewer: React.FC<FloatingTableViewerProps> = ({ processId }) 
   const { state: pdfState, toggleMinimize: pdfToggleMinimize } = usePDFViewer();
 
   const effectiveProcessId = state.processId || processId || '';
+
+  useEffect(() => {
+    const isVisible = state.isOpen && !state.isMinimized && !!effectiveProcessId;
+    if (isVisible) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [state.isOpen, state.isMinimized, effectiveProcessId]);
 
   if (!state.isOpen || !effectiveProcessId) return null;
 
