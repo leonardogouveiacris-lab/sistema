@@ -56,9 +56,7 @@ function buildEditableHTML(raw: string): string {
         .replace(/\n/g, '<br>');
     }
     const icon = seg.refType === 'verba' ? '⬡' : seg.refType === 'decisao' ? '◈' : seg.refType === 'tabela' ? '⊞' : '⬜';
-    const bgColor = seg.refType === 'verba' ? '#dcfce7' : seg.refType === 'decisao' ? '#fef9c3' : seg.refType === 'tabela' ? '#e0f2fe' : '#cffafe';
-    const textColor = seg.refType === 'verba' ? '#166534' : seg.refType === 'decisao' ? '#713f12' : seg.refType === 'tabela' ? '#0c4a6e' : '#164e63';
-    return `<span contenteditable="false" data-ref-id="${seg.id}" data-ref-type="${seg.refType}" data-ref-label="${seg.label.replace(/"/g, '&quot;')}" style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:9999px;font-size:11px;font-weight:500;background:${bgColor};color:${textColor};cursor:default;user-select:none;white-space:nowrap;">${icon} ${seg.label}</span>`;
+    return `<span contenteditable="false" class="lancamento-ref-chip" data-ref="lancamento" data-ref-id="${seg.id}" data-ref-type="${seg.refType}" data-ref-label="${seg.label.replace(/"/g, '&quot;')}" data-type="${seg.refType}" data-id="${seg.id}">${icon} ${seg.label}</span>`;
   }).join('');
 }
 
@@ -182,15 +180,16 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     if (!el) return;
 
     const icon = item.type === 'verba' ? '⬡' : item.type === 'decisao' ? '◈' : item.type === 'tabela' ? '⊞' : '⬜';
-    const bgColor = item.type === 'verba' ? '#dcfce7' : item.type === 'decisao' ? '#fef9c3' : item.type === 'tabela' ? '#e0f2fe' : '#cffafe';
-    const textColor = item.type === 'verba' ? '#166534' : item.type === 'decisao' ? '#713f12' : item.type === 'tabela' ? '#0c4a6e' : '#164e63';
 
     const chip = document.createElement('span');
     chip.contentEditable = 'false';
+    chip.className = 'lancamento-ref-chip';
+    chip.setAttribute('data-ref', 'lancamento');
+    chip.setAttribute('data-type', item.type);
+    chip.setAttribute('data-id', item.id);
     chip.dataset.refId = item.id;
     chip.dataset.refType = item.type;
     chip.dataset.refLabel = item.label;
-    chip.style.cssText = `display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:9999px;font-size:11px;font-weight:500;background:${bgColor};color:${textColor};cursor:default;user-select:none;white-space:nowrap;`;
     chip.textContent = `${icon} ${item.label}`;
 
     const sel = window.getSelection();
@@ -390,27 +389,29 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
           </div>
 
           <div className="p-3">
-            <div
-              ref={editableRef}
-              contentEditable={isEditing}
-              suppressContentEditableWarning
-              onKeyDown={isEditing ? handleEditableKeyDown : undefined}
-              onClick={() => { if (!isEditing) setIsEditing(true); }}
-              dangerouslySetInnerHTML={!isEditing ? { __html: buildEditableHTML(content) || '' } : undefined}
-              data-placeholder="Digite seu comentário... (= para referenciar)"
-              className={`min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg outline-none transition-colors leading-relaxed ${
-                isEditing
-                  ? 'border border-gray-300 focus:ring-2 focus:ring-blue-500 bg-white'
-                  : content
-                    ? 'text-gray-700 bg-gray-50 cursor-text hover:bg-gray-100'
-                    : 'cursor-text bg-gray-50 hover:bg-gray-100'
-              }`}
-              style={{ wordBreak: 'break-word' }}
-            >
-              {!isEditing && !content && (
-                <span className="text-gray-400 italic text-sm">Clique para adicionar comentário...</span>
-              )}
-            </div>
+            {isEditing ? (
+              <div
+                ref={editableRef}
+                contentEditable
+                suppressContentEditableWarning
+                onKeyDown={handleEditableKeyDown}
+                className="min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg outline-none transition-colors leading-relaxed border border-gray-300 focus:ring-2 focus:ring-blue-500 bg-white"
+                style={{ wordBreak: 'break-word' }}
+              />
+            ) : (
+              <div
+                onClick={() => setIsEditing(true)}
+                className={`min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg transition-colors leading-relaxed cursor-text ${
+                  content ? 'text-gray-700 bg-gray-50 hover:bg-gray-100' : 'bg-gray-50 hover:bg-gray-100'
+                }`}
+                style={{ wordBreak: 'break-word' }}
+                dangerouslySetInnerHTML={content ? { __html: buildEditableHTML(content) } : undefined}
+              >
+                {!content && (
+                  <span className="text-gray-400 italic">Clique para adicionar comentário...</span>
+                )}
+              </div>
+            )}
             {pickerOpen && createPortal(
               <LancamentoReferencePicker
                 items={referenceItems}
