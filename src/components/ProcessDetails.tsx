@@ -321,6 +321,7 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
                 onCancel={() => setShowTableImport(false)}
                 isReplacing={!!table}
                 importing={importing}
+                namePrefix={process.reclamante}
               />
             </div>
           </div>

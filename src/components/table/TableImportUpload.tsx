@@ -8,6 +8,7 @@ interface TableImportUploadProps {
   onCancel?: () => void;
   isReplacing?: boolean;
   importing?: boolean;
+  namePrefix?: string;
 }
 
 export function TableImportUpload({
@@ -15,6 +16,7 @@ export function TableImportUpload({
   onCancel,
   isReplacing = false,
   importing = false,
+  namePrefix,
 }: TableImportUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -39,7 +41,8 @@ export function TableImportUpload({
         return;
       }
 
-      const defaultName = file.name.replace(/\.(xlsx|xls|csv)$/i, '');
+      const baseName = file.name.replace(/\.(xlsx|xls|csv)$/i, '');
+      const defaultName = namePrefix ? `${namePrefix} - ${baseName}` : baseName;
       setTableName(defaultName);
       setPreview({ parsed, fileName: file.name });
     } catch (err) {
