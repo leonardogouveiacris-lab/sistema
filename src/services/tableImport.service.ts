@@ -10,6 +10,9 @@ import type {
   ProcessTableCellRecord,
   ParsedTableData,
   FormulaColumnDef,
+  AggregateRow,
+  AggregateRowRecord,
+  AggregateOperation,
 } from '../types/ProcessTable';
 
 function mapColumnRecord(r: ProcessTableColumnRecord): ProcessTableColumn {
@@ -23,10 +26,23 @@ function mapColumnRecord(r: ProcessTableColumnRecord): ProcessTableColumn {
   };
 }
 
+function mapAggregateRecord(r: AggregateRowRecord): AggregateRow {
+  return {
+    id: r.id,
+    tableId: r.table_id,
+    columnId: r.column_id,
+    operation: r.operation,
+    rangeStart: r.range_start,
+    rangeEnd: r.range_end,
+    displayOrder: r.display_order,
+  };
+}
+
 function buildTable(
   record: ProcessTableRecord,
   columns: ProcessTableColumn[],
-  rows: ProcessTableRow[]
+  rows: ProcessTableRow[],
+  aggregateRows: AggregateRow[] = []
 ): ProcessTable {
   return {
     id: record.id,
@@ -36,6 +52,7 @@ function buildTable(
     totalColumns: record.total_columns,
     columns,
     rows,
+    aggregateRows,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
   };
@@ -115,7 +132,17 @@ export async function getProcessTable(processId: string): Promise<ProcessTable |
 
   const reindexedRows = rows.map((row, i) => ({ ...row, rowIndex: i + 1 }));
 
-  return buildTable(tableRecord as ProcessTableRecord, columns, reindexedRows);
+  const { data: aggRecords, error: aggError } = await supabase
+    .from('process_table_aggregate_rows')
+    .select('*')
+    .eq('table_id', tableRecord.id)
+    .order('display_order', { ascending: true });
+
+  if (aggError) throw aggError;
+
+  const aggregateRows: AggregateRow[] = (aggRecords as AggregateRowRecord[]).map(mapAggregateRecord);
+
+  return buildTable(tableRecord as ProcessTableRecord, columns, reindexedRows, aggregateRows);
 }
 
 export async function importTable(
@@ -352,6 +379,53 @@ export async function updateTableName(tableId: string, name: string): Promise<vo
     .from('process_tables')
     .update({ name })
     .eq('id', tableId);
+
+  if (error) throw error;
+}
+
+export async function addAggregateRow(
+  tableId: string,
+  columnId: string,
+  operation: AggregateOperation,
+  rangeStart: number | null,
+  rangeEnd: number | null,
+  displayOrder: number
+): Promise<AggregateRow> {
+  if (!supabase) throw new Error('Supabase não configurado');
+
+  const { data, error } = await supabase
+    .from('process_table_aggregate_rows')
+    .insert({ table_id: tableId, column_id: columnId, operation, range_start: rangeStart, range_end: rangeEnd, display_order: displayOrder })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return mapAggregateRecord(data as AggregateRowRecord);
+}
+
+export async function updateAggregateRow(
+  id: string,
+  operation: AggregateOperation,
+  rangeStart: number | null,
+  rangeEnd: number | null
+): Promise<void> {
+  if (!supabase) throw new Error('Supabase não configurado');
+
+  const { error } = await supabase
+    .from('process_table_aggregate_rows')
+    .update({ operation, range_start: rangeStart, range_end: rangeEnd })
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
+export async function deleteAggregateRow(id: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase não configurado');
+
+  const { error } = await supabase
+    .from('process_table_aggregate_rows')
+    .delete()
+    .eq('id', id);
 
   if (error) throw error;
 }

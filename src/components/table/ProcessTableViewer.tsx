@@ -8,12 +8,16 @@ import {
   Trash2,
   Type,
   Pencil,
+  Sigma,
+  Plus,
 } from 'lucide-react';
 import { evaluateFormula, formatFormulaResult, formatCellNumber } from '../../utils/formulaEvaluator';
+import { computeAggregate, formatAggregateResult, OPERATION_LABELS } from '../../utils/aggregateCalculator';
 import { AddFormulaColumnModal } from './AddFormulaColumnModal';
+import { AddAggregateRowModal } from './AddAggregateRowModal';
 import { TableMathBar } from './TableMathBar';
 import Tooltip from '../ui/Tooltip';
-import type { ProcessTable, ProcessTableColumn, ProcessTableRow } from '../../types/ProcessTable';
+import type { ProcessTable, ProcessTableColumn, ProcessTableRow, AggregateRow, AggregateOperation } from '../../types/ProcessTable';
 
 const COL_WIDTH = 100.06;
 const ROW_NUM_WIDTH = 36;
@@ -26,6 +30,9 @@ interface ProcessTableViewerProps {
   onRenameColumn: (columnId: string, headerName: string) => Promise<void>;
   onDeleteColumn: (columnId: string) => Promise<void>;
   onCopyCellRef?: (ref: string) => void;
+  onAddAggregate?: (columnId: string, operation: AggregateOperation, rangeStart: number | null, rangeEnd: number | null) => Promise<void>;
+  onEditAggregate?: (id: string, operation: AggregateOperation, rangeStart: number | null, rangeEnd: number | null) => Promise<void>;
+  onRemoveAggregate?: (id: string) => Promise<void>;
 }
 
 interface EditingCell {
@@ -201,6 +208,9 @@ export function ProcessTableViewer({
   onRenameColumn,
   onDeleteColumn,
   onCopyCellRef,
+  onAddAggregate,
+  onEditAggregate,
+  onRemoveAggregate,
 }: ProcessTableViewerProps) {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [savingCell, setSavingCell] = useState<string | null>(null);
@@ -213,6 +223,9 @@ export function ProcessTableViewer({
 
   const [selectedRefs, setSelectedRefs] = useState<Set<string>>(new Set());
   const [selectionAnchorRef, setSelectionAnchorRef] = useState<string | null>(null);
+
+  const [showAggregateModal, setShowAggregateModal] = useState(false);
+  const [editingAggregate, setEditingAggregate] = useState<AggregateRow | null>(null);
 
   const cellInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -246,6 +259,20 @@ export function ProcessTableViewer({
     }
     return cache;
   }, [sortedColumns, table.columns, table.rows]);
+
+  const aggregateResultsCache = useMemo<Record<string, string>>(() => {
+    const cache: Record<string, string> = {};
+    for (const agg of table.aggregateRows) {
+      const value = computeAggregate(agg, table.rows);
+      cache[agg.id] = formatAggregateResult(value, agg.operation);
+    }
+    return cache;
+  }, [table.aggregateRows, table.rows]);
+
+  const aggregateRowsByDisplayOrder = useMemo(
+    () => [...table.aggregateRows].sort((a, b) => a.displayOrder - b.displayOrder),
+    [table.aggregateRows]
+  );
 
   const getCellValue = useCallback(
     (row: ProcessTableRow, column: ProcessTableColumn): string => {
@@ -494,6 +521,21 @@ export function ProcessTableViewer({
     setEditingFormulaCol(null);
   };
 
+  const handleAggregateConfirm = async (
+    columnId: string,
+    operation: AggregateOperation,
+    rangeStart: number | null,
+    rangeEnd: number | null
+  ) => {
+    if (editingAggregate) {
+      await onEditAggregate?.(editingAggregate.id, operation, rangeStart, rangeEnd);
+      setEditingAggregate(null);
+    } else {
+      await onAddAggregate?.(columnId, operation, rangeStart, rangeEnd);
+    }
+    setShowAggregateModal(false);
+  };
+
   const closeAllMenus = useCallback(() => {
     setActiveColumnMenu(null);
   }, []);
@@ -523,6 +565,14 @@ export function ProcessTableViewer({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setEditingAggregate(null); setShowAggregateModal(true); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600
+                       bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200"
+          >
+            <Sigma size={13} />
+            Linha de soma
+          </button>
           <button
             onClick={() => setShowFormulaModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600
@@ -694,6 +744,90 @@ export function ProcessTableViewer({
               </tr>
             ))}
           </tbody>
+
+          {aggregateRowsByDisplayOrder.length > 0 && (
+            <tfoot className="sticky bottom-0 z-20">
+              {aggregateRowsByDisplayOrder.map((agg) => {
+                const aggColumn = sortedColumns.find((c) => c.id === agg.columnId);
+                const result = aggregateResultsCache[agg.id] ?? '—';
+                return (
+                  <tr key={agg.id} className="group/agg">
+                    <td
+                      className="sticky left-0 z-10 bg-slate-700 border-t border-r border-slate-600 text-slate-300 text-center py-1.5 px-1 font-mono text-[9px]"
+                      style={{ width: ROW_NUM_WIDTH }}
+                    >
+                      <Sigma size={10} className="mx-auto opacity-60" />
+                    </td>
+                    {sortedColumns.map((col) => {
+                      const isTarget = col.id === agg.columnId;
+                      return (
+                        <td
+                          key={col.id}
+                          style={{ width: COL_WIDTH }}
+                          className={`
+                            border-t border-r border-slate-600 h-8 relative
+                            ${isTarget ? 'bg-slate-700' : 'bg-slate-800'}
+                            transition-colors
+                          `}
+                        >
+                          {isTarget ? (
+                            <div className="flex items-center justify-between h-full px-1.5 gap-1">
+                              <span className="text-[9px] font-bold text-slate-400 tracking-widest shrink-0">
+                                {OPERATION_LABELS[agg.operation]}
+                              </span>
+                              <span className="text-xs font-bold text-emerald-300 font-mono truncate text-right">
+                                {result}
+                              </span>
+                              <div className="flex shrink-0 gap-0.5 opacity-0 group-hover/agg:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => { setEditingAggregate(agg); setShowAggregateModal(true); }}
+                                  title="Editar"
+                                  className="p-0.5 rounded hover:bg-slate-600 text-slate-400 hover:text-white"
+                                >
+                                  <Pencil size={9} />
+                                </button>
+                                <button
+                                  onClick={() => onRemoveAggregate?.(agg.id)}
+                                  title="Remover"
+                                  className="p-0.5 rounded hover:bg-red-800 text-slate-400 hover:text-red-300"
+                                >
+                                  <X size={9} />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            aggColumn && (
+                              <div className="flex items-center justify-between h-full px-1.5">
+                                <span className="text-[9px] text-slate-600 truncate">
+                                  {agg.rangeStart !== null && agg.rangeEnd !== null
+                                    ? `${agg.rangeStart}–${agg.rangeEnd}`
+                                    : ''}
+                                </span>
+                              </div>
+                            )
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+              <tr>
+                <td
+                  colSpan={sortedColumns.length + 1}
+                  className="bg-slate-800 border-t border-slate-700 py-1 px-3"
+                >
+                  <button
+                    onClick={() => { setEditingAggregate(null); setShowAggregateModal(true); }}
+                    className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+                  >
+                    <Plus size={10} />
+                    Adicionar linha de agregação
+                  </button>
+                </td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
@@ -718,6 +852,15 @@ export function ProcessTableViewer({
           editingColumn={editingFormulaCol}
           onConfirm={handleEditFormulaConfirm}
           onClose={() => setEditingFormulaCol(null)}
+        />
+      )}
+
+      {showAggregateModal && (
+        <AddAggregateRowModal
+          table={table}
+          editingAggregate={editingAggregate ?? undefined}
+          onConfirm={handleAggregateConfirm}
+          onClose={() => { setShowAggregateModal(false); setEditingAggregate(null); }}
         />
       )}
     </div>

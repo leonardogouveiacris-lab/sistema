@@ -18,6 +18,9 @@ export function TabelaTab({ processId, onImportRequest }: TabelaTabProps) {
     editFormula,
     renameColumnHeader,
     removeColumn,
+    addAggregate,
+    editAggregate,
+    removeAggregate,
   } = useProcessTable(processId);
 
   const handleAddFormula = async (headerName: string, expression: string) => {
@@ -85,6 +88,9 @@ export function TabelaTab({ processId, onImportRequest }: TabelaTabProps) {
         onEditFormula={handleEditFormula}
         onRenameColumn={renameColumnHeader}
         onDeleteColumn={removeColumn}
+        onAddAggregate={addAggregate}
+        onEditAggregate={editAggregate}
+        onRemoveAggregate={removeAggregate}
       />
     </div>
   );

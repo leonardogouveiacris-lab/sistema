@@ -53,18 +53,6 @@ export interface ProcessTableColumn {
   formulaExpression?: string | null;
 }
 
-export interface ProcessTable {
-  id: string;
-  processId: string;
-  name: string;
-  totalRows: number;
-  totalColumns: number;
-  columns: ProcessTableColumn[];
-  rows: ProcessTableRow[];
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface ParsedTableData {
   headers: string[];
   rows: (string | null)[][];
@@ -73,4 +61,40 @@ export interface ParsedTableData {
 export interface FormulaColumnDef {
   headerName: string;
   expression: string;
+}
+
+export type AggregateOperation = 'sum' | 'average' | 'min' | 'max' | 'count' | 'product' | 'median' | 'stddev';
+
+export interface AggregateRowRecord {
+  id: string;
+  table_id: string;
+  column_id: string;
+  operation: AggregateOperation;
+  range_start: number | null;
+  range_end: number | null;
+  display_order: number;
+  created_at: string;
+}
+
+export interface AggregateRow {
+  id: string;
+  tableId: string;
+  columnId: string;
+  operation: AggregateOperation;
+  rangeStart: number | null;
+  rangeEnd: number | null;
+  displayOrder: number;
+}
+
+export interface ProcessTable {
+  id: string;
+  processId: string;
+  name: string;
+  totalRows: number;
+  totalColumns: number;
+  columns: ProcessTableColumn[];
+  rows: ProcessTableRow[];
+  aggregateRows: AggregateRow[];
+  createdAt: string;
+  updatedAt: string;
 }

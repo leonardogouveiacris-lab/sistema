@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { ProcessTable, FormulaColumnDef, ParsedTableData } from '../types/ProcessTable';
+import type { ProcessTable, FormulaColumnDef, ParsedTableData, AggregateRow, AggregateOperation } from '../types/ProcessTable';
 import {
   getProcessTable,
   importTable,
@@ -10,6 +10,9 @@ import {
   deleteProcessTable,
   updateTableName,
   renameColumn,
+  addAggregateRow,
+  updateAggregateRow,
+  deleteAggregateRow,
 } from '../services/tableImport.service';
 
 interface UseProcessTableReturn {
@@ -26,6 +29,9 @@ interface UseProcessTableReturn {
   removeTable: () => Promise<void>;
   renameTable: (name: string) => Promise<void>;
   reload: () => Promise<void>;
+  addAggregate: (columnId: string, operation: AggregateOperation, rangeStart: number | null, rangeEnd: number | null) => Promise<void>;
+  editAggregate: (id: string, operation: AggregateOperation, rangeStart: number | null, rangeEnd: number | null) => Promise<void>;
+  removeAggregate: (id: string) => Promise<void>;
 }
 
 export function useProcessTable(processId: string): UseProcessTableReturn {
@@ -163,6 +169,7 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
           ...prev,
           columns: prev.columns.filter((c) => c.id !== columnId),
           totalColumns: prev.totalColumns - 1,
+          aggregateRows: prev.aggregateRows.filter((a) => a.columnId !== columnId),
         };
       });
     },
@@ -184,6 +191,43 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
     [table]
   );
 
+  const addAggregate = useCallback(
+    async (columnId: string, operation: AggregateOperation, rangeStart: number | null, rangeEnd: number | null) => {
+      if (!table) return;
+      const nextOrder = table.aggregateRows.length;
+      const newAgg = await addAggregateRow(table.id, columnId, operation, rangeStart, rangeEnd, nextOrder);
+      setTable((prev) => {
+        if (!prev) return prev;
+        return { ...prev, aggregateRows: [...prev.aggregateRows, newAgg] };
+      });
+    },
+    [table]
+  );
+
+  const editAggregate = useCallback(
+    async (id: string, operation: AggregateOperation, rangeStart: number | null, rangeEnd: number | null) => {
+      await updateAggregateRow(id, operation, rangeStart, rangeEnd);
+      setTable((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          aggregateRows: prev.aggregateRows.map((a) =>
+            a.id !== id ? a : { ...a, operation, rangeStart, rangeEnd }
+          ),
+        };
+      });
+    },
+    []
+  );
+
+  const removeAggregate = useCallback(async (id: string) => {
+    await deleteAggregateRow(id);
+    setTable((prev) => {
+      if (!prev) return prev;
+      return { ...prev, aggregateRows: prev.aggregateRows.filter((a) => a.id !== id) };
+    });
+  }, []);
+
   return {
     table,
     loading,
@@ -198,5 +242,8 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
     removeTable,
     renameTable,
     reload: load,
+    addAggregate,
+    editAggregate,
+    removeAggregate,
   };
 }
