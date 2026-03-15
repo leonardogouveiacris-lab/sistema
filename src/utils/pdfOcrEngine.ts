@@ -52,7 +52,7 @@ async function recognizeCanvasText(
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ imageBase64, pageNumber }),
+    body: JSON.stringify({ imageBase64, pageNumber, canvasWidth: canvas.width, canvasHeight: canvas.height }),
   });
 
   if (!response.ok) {

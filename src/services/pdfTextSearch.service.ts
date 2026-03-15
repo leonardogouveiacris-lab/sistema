@@ -1,4 +1,4 @@
-import type { DocumentTextCache, SearchResult, TextItem } from '../utils/pdfTextExtractor';
+import type { SearchResult, TextItem } from '../utils/pdfTextExtractor';
 import { getDocumentTextCache } from '../utils/pdfTextExtractor';
 import type { SearchOptions } from '../utils/pdfLocalSearch';
 import { mergeRectsIntoLines } from '../utils/rectMerger';
@@ -98,14 +98,6 @@ const buildPageTextFromItems = (items: TextItem[]): { text: string; charRects: A
   return { text, charRects };
 };
 
-const hasRenderableItems = (cache: DocumentTextCache): boolean => {
-  for (const page of cache.pages.values()) {
-    if (page.items.length > 0) {
-      return true;
-    }
-  }
-  return false;
-};
 
 const isWholeWordMatch = (text: string, start: number, end: number): boolean => {
   const before = start > 0 ? text[start - 1] : '';
@@ -138,7 +130,19 @@ export const searchLocalPdfText = ({
     }
 
     const cache = getDocumentTextCache(doc.id);
-    if (!cache || cache.pages.size !== offsetInfo.numPages || !hasRenderableItems(cache)) {
+    if (!cache || cache.pages.size !== offsetInfo.numPages) {
+      missingDocumentIds.add(doc.id);
+      return;
+    }
+
+    const hasSearchableContent = (() => {
+      for (const page of cache.pages.values()) {
+        if (page.items.length > 0 || page.text.trim().length > 0) return true;
+      }
+      return false;
+    })();
+
+    if (!hasSearchableContent) {
       missingDocumentIds.add(doc.id);
       return;
     }
