@@ -124,9 +124,40 @@ export function formatFormulaResult(value: string): string {
 export function formatCellNumber(value: string | null): string {
   if (value === null || value === '') return '';
   const str = String(value).trim();
-  if (!/^-?[\d.,]+$/.test(str)) return str;
-  const normalized = str.replace(/\./g, '').replace(',', '.');
-  const n = parseFloat(normalized);
+  if (!/^-?[\d.,\s]+$/.test(str)) return str;
+
+  const dotIdx = str.lastIndexOf('.');
+  const commaIdx = str.lastIndexOf(',');
+
+  let normalized: string;
+
+  if (dotIdx === -1 && commaIdx === -1) {
+    normalized = str;
+  } else if (dotIdx !== -1 && commaIdx === -1) {
+    const dotCount = (str.match(/\./g) ?? []).length;
+    if (dotCount > 1) {
+      normalized = str.replace(/\./g, '');
+    } else if (str.length - dotIdx - 1 === 3 && !str.startsWith('-0')) {
+      normalized = str.replace(/\./g, '');
+    } else {
+      normalized = str;
+    }
+  } else if (commaIdx !== -1 && dotIdx === -1) {
+    const commaCount = (str.match(/,/g) ?? []).length;
+    if (commaCount > 1) {
+      normalized = str.replace(/,/g, '');
+    } else if (str.length - commaIdx - 1 === 3) {
+      normalized = str.replace(/,/g, '');
+    } else {
+      normalized = str.replace(',', '.');
+    }
+  } else if (dotIdx < commaIdx) {
+    normalized = str.replace(/\./g, '').replace(',', '.');
+  } else {
+    normalized = str.replace(/,/g, '');
+  }
+
+  const n = parseFloat(normalized.replace(/\s/g, ''));
   if (isNaN(n)) return str;
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

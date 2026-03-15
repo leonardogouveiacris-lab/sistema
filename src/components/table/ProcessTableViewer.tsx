@@ -14,8 +14,8 @@ import { evaluateFormula, formatFormulaResult, formatCellNumber } from '../../ut
 import { AddFormulaColumnModal } from './AddFormulaColumnModal';
 import type { ProcessTable, ProcessTableColumn, ProcessTableRow } from '../../types/ProcessTable';
 
-const COL_WIDTH = 148;
-const ROW_NUM_WIDTH = 40;
+const COL_WIDTH = 100;
+const ROW_NUM_WIDTH = 36;
 
 interface ProcessTableViewerProps {
   table: ProcessTable;
@@ -494,6 +494,7 @@ function ColumnHeader({
         ${isFormula ? 'bg-emerald-100/60' : 'bg-slate-100'}
       `}
       style={{ width: COL_WIDTH }}
+      onClick={(e) => e.stopPropagation()}
     >
       {isRenaming ? (
         <div className="flex items-center gap-1 absolute inset-0 px-1 bg-white ring-2 ring-inset ring-blue-500 z-10">
