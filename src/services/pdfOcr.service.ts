@@ -14,6 +14,8 @@ export interface OcrPageResult {
   text: string;
   confidence: number;
   wordBoxes: OcrWordBox[];
+  canvasWidth?: number;
+  canvasHeight?: number;
 }
 
 export interface OcrDocumentStatus {
@@ -88,6 +90,10 @@ export async function saveOcrResults(
         .eq('page_number', result.pageNumber)
         .maybeSingle();
 
+      const canvasDims = result.canvasWidth && result.canvasHeight
+        ? { canvas_width: result.canvasWidth, canvas_height: result.canvasHeight }
+        : {};
+
       if (existing) {
         await supabase
           .from('pdf_text_pages')
@@ -95,6 +101,7 @@ export async function saveOcrResults(
             text_content: result.text,
             ocr_status: 'ocr',
             word_boxes: result.wordBoxes,
+            ...canvasDims,
           })
           .eq('id', existing.id);
       } else {
@@ -106,6 +113,7 @@ export async function saveOcrResults(
             text_content: result.text,
             ocr_status: 'ocr',
             word_boxes: result.wordBoxes,
+            ...canvasDims,
           });
       }
     }

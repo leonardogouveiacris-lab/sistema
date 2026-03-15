@@ -43,7 +43,7 @@ async function renderPageToCanvas(
 async function recognizeCanvasText(
   canvas: HTMLCanvasElement,
   pageNumber: number
-): Promise<{ text: string; confidence: number; wordBoxes: OcrWordBox[] }> {
+): Promise<{ text: string; confidence: number; wordBoxes: OcrWordBox[]; canvasWidth: number; canvasHeight: number }> {
   const imageBase64 = canvas.toDataURL('image/png').split(',')[1];
 
   const response = await fetch(`${SUPABASE_URL}/functions/v1/ocr-page`, {
@@ -66,6 +66,8 @@ async function recognizeCanvasText(
     text: data.text ?? '',
     confidence: data.confidence ?? 95,
     wordBoxes: (data.wordBoxes ?? []) as OcrWordBox[],
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
   };
 }
 
@@ -104,9 +106,9 @@ export async function runOcrOnPages(
         status: 'recognizing',
       });
 
-      const { text, confidence, wordBoxes } = await recognizeCanvasText(canvas, pageNumber);
+      const { text, confidence, wordBoxes, canvasWidth, canvasHeight } = await recognizeCanvasText(canvas, pageNumber);
 
-      results.push({ pageNumber, text, confidence, wordBoxes });
+      results.push({ pageNumber, text, confidence, wordBoxes, canvasWidth, canvasHeight });
 
       logger.info(
         `OCR page ${pageNumber}: ${text.length} chars, confidence ${confidence}%`,

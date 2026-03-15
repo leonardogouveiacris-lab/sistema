@@ -49,7 +49,7 @@ function buildWordBoxesFallback(text: string, canvasWidth: number, canvasHeight:
   const marginBottom = canvasHeight * 0.04;
   const marginLeft = canvasWidth * 0.06;
   const usableHeight = canvasHeight - marginTop - marginBottom;
-  const lineHeight = Math.min(usableHeight / lines.length, canvasHeight * 0.025);
+  const lineHeight = usableHeight / lines.length;
   const lineSpacing = lines.length > 1 ? (usableHeight - lineHeight * lines.length) / (lines.length - 1) : 0;
 
   for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {

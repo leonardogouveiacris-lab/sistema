@@ -15,6 +15,8 @@ interface OcrTextOverlayProps {
 
 interface OcrPageData {
   wordBoxes: OcrWordBox[];
+  canvasWidth: number | null;
+  canvasHeight: number | null;
 }
 
 const ocrDataCache = new Map<string, OcrPageData | null>();
@@ -40,7 +42,7 @@ async function fetchOcrData(documentId: string, pageNumber: number, bust = false
 
   const { data } = await supabase
     .from('pdf_text_pages')
-    .select('word_boxes, ocr_status')
+    .select('word_boxes, ocr_status, canvas_width, canvas_height')
     .eq('process_document_id', documentId)
     .eq('page_number', pageNumber)
     .eq('ocr_status', 'ocr')
@@ -51,7 +53,12 @@ async function fetchOcrData(documentId: string, pageNumber: number, bust = false
     return null;
   }
 
-  const result: OcrPageData = { wordBoxes: data.word_boxes as OcrWordBox[] };
+  const row = data as Record<string, unknown>;
+  const result: OcrPageData = {
+    wordBoxes: data.word_boxes as OcrWordBox[],
+    canvasWidth: typeof row.canvas_width === 'number' ? row.canvas_width : null,
+    canvasHeight: typeof row.canvas_height === 'number' ? row.canvas_height : null,
+  };
   ocrDataCache.set(cacheKey, result);
   return result;
 }
@@ -121,8 +128,12 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
   const r = ((rotation % 360) + 360) % 360;
   const isSwapped = r === 90 || r === 270;
 
-  const ocrCanvasWidth = isSwapped ? pageHeight * OCR_RENDER_SCALE : pageWidth * OCR_RENDER_SCALE;
-  const ocrCanvasHeight = isSwapped ? pageWidth * OCR_RENDER_SCALE : pageHeight * OCR_RENDER_SCALE;
+  const ocrCanvasWidth = data.canvasWidth
+    ? data.canvasWidth
+    : (isSwapped ? pageHeight * OCR_RENDER_SCALE : pageWidth * OCR_RENDER_SCALE);
+  const ocrCanvasHeight = data.canvasHeight
+    ? data.canvasHeight
+    : (isSwapped ? pageWidth * OCR_RENDER_SCALE : pageHeight * OCR_RENDER_SCALE);
 
   const scaleX = displayWidth / ocrCanvasWidth;
   const scaleY = displayHeight / ocrCanvasHeight;
