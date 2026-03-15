@@ -1,6 +1,6 @@
 import { pdfjs } from 'react-pdf';
 import logger from './logger';
-import type { OcrPageResult } from '../services/pdfOcr.service';
+import type { OcrPageResult, OcrWordBox } from '../services/pdfOcr.service';
 
 const OCR_RENDER_SCALE = 2.0;
 const OCR_LANGUAGE = 'por';
@@ -40,7 +40,7 @@ async function renderPageToCanvas(
 
 async function recognizeCanvasText(
   canvas: HTMLCanvasElement
-): Promise<{ text: string; confidence: number }> {
+): Promise<{ text: string; confidence: number; wordBoxes: OcrWordBox[] }> {
   const { createWorker } = await import('tesseract.js');
 
   const worker = await createWorker(OCR_LANGUAGE, 1, {
@@ -59,7 +59,20 @@ async function recognizeCanvasText(
     const text = result.data.text.trim();
     const confidence = result.data.confidence;
 
-    return { text, confidence };
+    const wordBoxes: OcrWordBox[] = [];
+    for (const word of result.data.words) {
+      const wordText = word.text.trim();
+      if (!wordText) continue;
+      wordBoxes.push({
+        text: wordText,
+        x: word.bbox.x0,
+        y: word.bbox.y0,
+        w: word.bbox.x1 - word.bbox.x0,
+        h: word.bbox.y1 - word.bbox.y0,
+      });
+    }
+
+    return { text, confidence, wordBoxes };
   } finally {
     await worker.terminate();
   }
@@ -100,12 +113,12 @@ export async function runOcrOnPages(
         status: 'recognizing',
       });
 
-      const { text, confidence } = await recognizeCanvasText(canvas);
+      const { text, confidence, wordBoxes } = await recognizeCanvasText(canvas);
 
-      results.push({ pageNumber, text, confidence });
+      results.push({ pageNumber, text, confidence, wordBoxes });
 
       logger.info(
-        `OCR page ${pageNumber}: ${text.length} chars, confidence ${confidence.toFixed(1)}%`,
+        `OCR page ${pageNumber}: ${text.length} chars, ${wordBoxes.length} words, confidence ${confidence.toFixed(1)}%`,
         'pdfOcrEngine.runOcrOnPages'
       );
     } catch (error) {
@@ -115,7 +128,7 @@ export async function runOcrOnPages(
         { pageNumber },
         error
       );
-      results.push({ pageNumber, text: '', confidence: 0 });
+      results.push({ pageNumber, text: '', confidence: 0, wordBoxes: [] });
     }
   }
 

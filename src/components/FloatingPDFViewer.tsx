@@ -6672,6 +6672,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                 scale={state.displayZoom}
                                 pageWidth={getPageWidth(state.currentPage) / state.zoom}
                                 pageHeight={getPageHeight(state.currentPage) / state.zoom}
+                                rotation={getPageRotation(state.currentPage)}
                               />
                               </MemoizedPDFPage>
                             </div>
@@ -6800,6 +6801,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                           scale={state.displayZoom}
                                           pageWidth={pageWidth / state.zoom}
                                           pageHeight={pageHeight / state.zoom}
+                                          rotation={getPageRotation(globalPageNum)}
                                         />
                                           </MemoizedPDFPage>
                                       </>
