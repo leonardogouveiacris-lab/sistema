@@ -11,6 +11,7 @@ export function useNavigateToReference(processId: string) {
     navigateToPageWithHighlight,
     scrollToMultipleHighlights,
     setPendingNavigation,
+    toggleMinimize: pdfToggleMinimize,
   } = usePDFViewer();
 
   const {
@@ -21,6 +22,9 @@ export function useNavigateToReference(processId: string) {
 
   const navigate = useCallback(async (item: LancamentoReferenceItem) => {
     if (item.type === 'tabela') {
+      if (pdfState.isOpen && !pdfState.isMinimized) {
+        pdfToggleMinimize();
+      }
       if (!tableState.isOpen) {
         openTableViewer(processId);
         setTimeout(() => {
@@ -100,6 +104,7 @@ export function useNavigateToReference(processId: string) {
     setPendingNavigation,
     openTableViewer,
     toggleMinimize,
+    pdfToggleMinimize,
   ]);
 
   return navigate;
