@@ -105,6 +105,12 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const posY = comment.positionY * scale;
 
   useEffect(() => {
+    if (isSelected && !isExpanded) {
+      setIsExpanded(true);
+    }
+  }, [isSelected]);
+
+  useEffect(() => {
     if (isExpanded && isEditing && editableRef.current) {
       editableRef.current.innerHTML = buildEditableHTML(content);
       editableRef.current.focus();
