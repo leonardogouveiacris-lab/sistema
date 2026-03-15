@@ -359,7 +359,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
           gap: 3px;
           padding: 1px 6px;
           border-radius: 4px;
-          font-size: 0.75rem;
+          font-size: inherit;
           font-weight: inherit;
           cursor: pointer;
           text-decoration: none;
