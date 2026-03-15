@@ -1,10 +1,8 @@
-import React, { useState } from 'react';
-import { Table as TableIcon, FileText, X, Minus, MoreVertical } from 'lucide-react';
+import React from 'react';
+import { Table as TableIcon, FileText, X, Minus } from 'lucide-react';
 import { useTableViewer } from '../contexts/TableViewerContext';
 import { usePDFViewer } from '../contexts/PDFViewerContext';
 import { TabelaTab } from './table';
-import { TableOptionsDrawer } from './table/TableOptionsDrawer';
-import { useProcessTable } from '../hooks/useProcessTable';
 
 interface FloatingTableViewerProps {
   processId?: string;
@@ -13,11 +11,8 @@ interface FloatingTableViewerProps {
 const FloatingTableViewer: React.FC<FloatingTableViewerProps> = ({ processId }) => {
   const { state, closeTableViewer, toggleMinimize } = useTableViewer();
   const { state: pdfState, toggleMinimize: pdfToggleMinimize } = usePDFViewer();
-  const [showDrawer, setShowDrawer] = useState(false);
 
   const effectiveProcessId = state.processId || processId || '';
-
-  const { table, importing, importTableData, removeTable } = useProcessTable(effectiveProcessId);
 
   if (!state.isOpen || !effectiveProcessId) return null;
 
@@ -79,14 +74,7 @@ const FloatingTableViewer: React.FC<FloatingTableViewerProps> = ({ processId }) 
           </div>
         </div>
 
-        <div className="flex items-center gap-1 ml-4 shrink-0">
-          <button
-            onClick={() => setShowDrawer((v) => !v)}
-            className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-200 rounded transition-colors"
-            title="Opções"
-          >
-            <MoreVertical size={15} />
-          </button>
+        <div className="flex items-center space-x-1 ml-4 shrink-0">
           <button
             onClick={toggleMinimize}
             className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors duration-200"
@@ -104,25 +92,8 @@ const FloatingTableViewer: React.FC<FloatingTableViewerProps> = ({ processId }) 
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto relative">
-        <TabelaTab
-          processId={effectiveProcessId}
-          onImportRequest={() => setShowDrawer(true)}
-        />
-
-        {showDrawer && (
-          <TableOptionsDrawer
-            hasTable={!!table}
-            importing={importing}
-            onImport={async (parsed, name) => {
-              await importTableData(parsed, name);
-            }}
-            onDeleteTable={async () => {
-              await removeTable();
-            }}
-            onClose={() => setShowDrawer(false)}
-          />
-        )}
+      <div className="flex-1 overflow-auto">
+        <TabelaTab processId={effectiveProcessId} />
       </div>
     </div>
   );

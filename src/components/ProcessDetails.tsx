@@ -7,8 +7,10 @@ import DecisionList from './DecisionList';
 import ProcessVerbaList from './ProcessVerbaList';
 import ProcessDocumentoList from './ProcessDocumentoList';
 import ProcessDocumentManager from './ProcessDocumentManager';
-import { AlertTriangle, ArrowLeft, Trash2, CheckCircle2, Clock, AlertCircle, Table as TableIcon } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Trash2, CheckCircle2, Clock, AlertCircle, Table as TableIcon, MoreVertical, Upload, X } from 'lucide-react';
 import { useTableViewer } from '../contexts/TableViewerContext';
+import { useProcessTable } from '../hooks/useProcessTable';
+import { TableImportUpload } from './table/TableImportUpload';
 
 const getStatusVerbasBadge = (status: StatusVerbas) => {
   switch (status) {
@@ -63,6 +65,10 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
   onRemoveProcess
 }) => {
   const { openTableViewer } = useTableViewer();
+  const { table, importing, importTableData, removeTable } = useProcessTable(process.id);
+  const [showTableMenu, setShowTableMenu] = React.useState(false);
+  const [showTableImport, setShowTableImport] = React.useState(false);
+  const [showTableDelete, setShowTableDelete] = React.useState(false);
   const [isEditingBasicInfo, setIsEditingBasicInfo] = React.useState(false);
   const [isSavingBasicInfo, setIsSavingBasicInfo] = React.useState(false);
   const [editData, setEditData] = React.useState({
@@ -216,18 +222,127 @@ const ProcessDetails: React.FC<ProcessDetailsProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Tabela de Dados</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Planilhas Excel ou CSV importadas para o processo</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {table ? table.name : 'Planilhas Excel ou CSV importadas para o processo'}
+              </p>
             </div>
           </div>
-          <button
-            onClick={() => openTableViewer(process.id)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-700 hover:bg-slate-800 rounded-lg transition-colors duration-200"
-          >
-            <TableIcon size={15} />
-            Abrir Tabela
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => openTableViewer(process.id)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-700 hover:bg-slate-800 rounded-lg transition-colors duration-200"
+            >
+              <TableIcon size={15} />
+              Abrir Tabela
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowTableMenu((v) => !v)}
+                className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Opções"
+              >
+                <MoreVertical size={16} />
+              </button>
+              {showTableMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowTableMenu(false)} />
+                  <div className="absolute top-full right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 min-w-[190px]">
+                    <button
+                      onClick={() => { setShowTableMenu(false); setShowTableImport(true); }}
+                      className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <Upload size={13} className="text-slate-400" />
+                      {table ? 'Substituir planilha' : 'Importar planilha'}
+                    </button>
+                    {table && (
+                      <>
+                        <div className="my-1 border-t border-slate-100" />
+                        <button
+                          onClick={() => { setShowTableMenu(false); setShowTableDelete(true); }}
+                          className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 size={13} />
+                          Excluir tabela
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Modal importar/substituir planilha */}
+      {showTableImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-800">
+                {table ? 'Substituir planilha' : 'Importar planilha'}
+              </h3>
+              <button
+                onClick={() => setShowTableImport(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="p-5">
+              {table && (
+                <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+                  <AlertCircle size={14} className="text-amber-500 mt-0.5 shrink-0" />
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    Substituir apagará todos os dados e colunas de fórmula atuais.
+                  </p>
+                </div>
+              )}
+              <TableImportUpload
+                onConfirm={async (parsed, name) => {
+                  await importTableData(parsed, name);
+                  setShowTableImport(false);
+                }}
+                onCancel={() => setShowTableImport(false)}
+                isReplacing={!!table}
+                importing={importing}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal excluir tabela */}
+      {showTableDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <div className="p-3 w-fit bg-red-50 rounded-xl">
+                <AlertCircle size={20} className="text-red-500" />
+              </div>
+              <h3 className="text-base font-semibold text-slate-800">Excluir tabela</h3>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                Todos os dados importados e colunas de fórmula serão removidos permanentemente.
+                Esta ação não pode ser desfeita.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowTableDelete(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => { await removeTable(); setShowTableDelete(false); }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+              >
+                Excluir tabela
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Informações principais do processo */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
