@@ -20,6 +20,9 @@ export { default as HTMLHeaderFooter } from './htmlHeader';
 // Utilitários de exportação PDF
 export { default as PDFExporter } from './pdfExporter';
 
+// Utilitário de exportação de planilha
+export { exportProcessSpreadsheet } from './exportSpreadsheet';
+
 // Utilitários de formatação de texto
 export { formatPDFText, formatPDFTextAdvanced } from './textFormatter';
 
