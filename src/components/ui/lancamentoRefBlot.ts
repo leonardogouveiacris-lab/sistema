@@ -26,7 +26,7 @@ class LancamentoRefBlot extends Embed {
 
     if (value.type === 'tabela') {
       const colLetter = value.tableColumnLetter || value.sublabel || '';
-      node.textContent = `⊞ Col. ${colLetter}`;
+      node.textContent = `Col. ${colLetter}`;
       if (value.tableColumnLetter) {
         node.setAttribute('data-column-letter', value.tableColumnLetter);
       }
@@ -34,12 +34,11 @@ class LancamentoRefBlot extends Embed {
         node.setAttribute('data-table-name', value.tableName);
       }
     } else {
-      const icon = value.type === 'verba' ? '⬡' : value.type === 'decisao' ? '◈' : '⬜';
       const label = value.sublabel
         ? `${value.label} · ${value.sublabel}`
         : value.label;
       const page = value.paginaVinculada ? ` p.${value.paginaVinculada}` : '';
-      node.textContent = `${icon} ${label}${page}`;
+      node.textContent = `${label}${page}`;
     }
 
     if (value.paginaVinculada !== undefined) {
