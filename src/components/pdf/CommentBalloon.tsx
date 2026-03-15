@@ -5,6 +5,9 @@ import { PDFComment, CommentColor, COMMENT_COLORS, ConnectorType } from '../../t
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
 import logger from '../../utils/logger';
+import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
+import LancamentoReferencePicker from '../ui/LancamentoReferencePicker';
+import { LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 
 interface CommentBalloonProps {
   comment: PDFComment;
@@ -12,6 +15,7 @@ interface CommentBalloonProps {
   pageWidth: number;
   pageHeight: number;
   onStartDrawConnector: (commentId: string, type: ConnectorType) => void;
+  processId?: string;
 }
 
 const COLOR_OPTIONS: CommentColor[] = ['yellow', 'green', 'blue', 'pink', 'orange', 'red'];
@@ -21,7 +25,8 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   scale,
   pageWidth,
   pageHeight,
-  onStartDrawConnector
+  onStartDrawConnector,
+  processId = ''
 }) => {
   const { updateComment, removeComment, selectComment, state } = usePDFViewer();
   const [isExpanded, setIsExpanded] = useState(!comment.isMinimized);
@@ -31,6 +36,13 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const [showColorDropdown, setShowColorDropdown] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerAnchor, setPickerAnchor] = useState<DOMRect | null>(null);
+  const pickerInsertIndexRef = useRef<number>(0);
+
+  const referenceItems = useLancamentosForReference(processId);
 
   const balloonRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -91,6 +103,39 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     setContent(comment.content);
     setIsEditing(false);
   };
+
+  const handleTextareaKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === '=' && !e.ctrlKey && !e.metaKey && !e.altKey && referenceItems.length > 0) {
+      e.preventDefault();
+      const el = textareaRef.current;
+      if (!el) return;
+      const idx = el.selectionStart ?? content.length;
+      pickerInsertIndexRef.current = idx;
+      setPickerQuery('');
+      setPickerAnchor(el.getBoundingClientRect());
+      setPickerOpen(true);
+    } else if (pickerOpen) {
+      if (e.key === 'Escape') {
+        setPickerOpen(false);
+      } else if (e.key === 'Backspace') {
+        setPickerQuery(q => q.slice(0, -1));
+      } else if (e.key.length === 1) {
+        setPickerQuery(q => q + e.key);
+      }
+    }
+  }, [content, pickerOpen, referenceItems.length]);
+
+  const handleReferenceSelect = useCallback((item: LancamentoReferenceItem) => {
+    const tag = `[=${item.type}:${item.id}:${item.label}]`;
+    const idx = pickerInsertIndexRef.current;
+    const before = content.slice(0, idx);
+    const after = content.slice(idx);
+    setContent(before + tag + after);
+    setPickerOpen(false);
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
+  }, [content]);
 
   const handleClose = async () => {
     if (isEditing && content !== comment.content) {
@@ -273,13 +318,26 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
           <div className="p-3">
             {isEditing ? (
+              <>
               <textarea
                 ref={textareaRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Digite seu comentário..."
+                onKeyDown={handleTextareaKeyDown}
+                placeholder="Digite seu comentário... (= para referenciar)"
                 className="w-full h-24 p-2 text-sm border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              {pickerOpen && createPortal(
+                <LancamentoReferencePicker
+                  items={referenceItems}
+                  query={pickerQuery}
+                  anchorRect={pickerAnchor}
+                  onSelect={handleReferenceSelect}
+                  onClose={() => setPickerOpen(false)}
+                />,
+                document.body
+              )}
+              </>
             ) : (
               <div
                 onClick={() => setIsEditing(true)}

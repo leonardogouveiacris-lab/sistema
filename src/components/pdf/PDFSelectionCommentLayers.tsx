@@ -10,6 +10,7 @@ interface PDFSelectionCommentLayersProps {
   pageWidth: number;
   pageHeight: number;
   processDocumentId: string;
+  processId?: string;
   localPageNumber: number;
   searchResults: unknown[];
   currentSearchIndex: number;
@@ -24,6 +25,7 @@ const PDFSelectionCommentLayers: React.FC<PDFSelectionCommentLayersProps> = ({
   pageWidth,
   pageHeight,
   processDocumentId,
+  processId,
   localPageNumber,
   searchResults,
   currentSearchIndex,
@@ -39,6 +41,7 @@ const PDFSelectionCommentLayers: React.FC<PDFSelectionCommentLayersProps> = ({
       pageWidth={pageWidth}
       pageHeight={pageHeight}
       processDocumentId={processDocumentId}
+      processId={processId}
     />
     <PDFSearchHighlightLayer
       pageNumber={pageNumber}

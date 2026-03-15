@@ -15,6 +15,7 @@ interface CommentLayerProps {
   pageWidth: number;
   pageHeight: number;
   processDocumentId: string;
+  processId?: string;
 }
 
 const CommentLayer: React.FC<CommentLayerProps> = ({
@@ -22,7 +23,8 @@ const CommentLayer: React.FC<CommentLayerProps> = ({
   scale,
   pageWidth,
   pageHeight,
-  processDocumentId
+  processDocumentId,
+  processId
 }) => {
   const {
     state,
@@ -186,6 +188,7 @@ const CommentLayer: React.FC<CommentLayerProps> = ({
             pageWidth={pageWidth}
             pageHeight={pageHeight}
             onStartDrawConnector={handleStartDrawConnector}
+            processId={processId}
           />
         </div>
       ))}
