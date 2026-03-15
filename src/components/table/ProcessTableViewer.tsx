@@ -312,7 +312,7 @@ export function ProcessTableViewer({
               <col key={col.id} style={{ width: COL_WIDTH }} />
             ))}
           </colgroup>
-          <thead className="sticky top-0 z-20">
+          <thead className="sticky top-0 z-20 overflow-visible">
             <tr>
               <th
                 className="sticky left-0 z-30 bg-slate-100 border-b border-r border-slate-300 text-slate-400 font-normal text-center"
@@ -490,7 +490,7 @@ function ColumnHeader({
   return (
     <th
       className={`
-        relative px-2 py-2 border-b border-r border-slate-300 font-medium text-left overflow-hidden
+        relative px-2 py-2 border-b border-r border-slate-300 font-medium text-left overflow-visible
         ${isFormula ? 'bg-emerald-100/60' : 'bg-slate-100'}
       `}
       style={{ width: COL_WIDTH }}
@@ -550,7 +550,7 @@ function ColumnHeader({
 
       {showMenu && (
         <div
-          className="absolute top-full left-0 z-40 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 min-w-[170px]"
+          className="absolute top-full left-0 z-[100] mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 min-w-[170px]"
           onClick={(e) => e.stopPropagation()}
         >
           {!isFormula && (
