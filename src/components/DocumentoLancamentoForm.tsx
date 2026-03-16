@@ -236,7 +236,6 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
           value={comentarios}
           onChange={setComentarios}
           rows={3}
-          onExpand={handleExpandText}
           referenceItems={referenceItems}
         />
 

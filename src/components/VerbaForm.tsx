@@ -304,7 +304,6 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
               value={formData.lancamento.fundamentacao || ''}
               onChange={(value) => handleInputChange('fundamentacao', value)}
               rows={4}
-              onExpand={() => handleExpandText('fundamentacao', 'Fundamentação')}
               fieldType="fundamentacao"
             />
 
@@ -315,7 +314,6 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
               value={formData.lancamento.comentariosCalculistas || ''}
               onChange={(value) => handleInputChange('comentariosCalculistas', value)}
               rows={4}
-              onExpand={() => handleExpandText('comentariosCalculistas', 'Comentários')}
               fieldType="comentariosCalculistas"
             />
 

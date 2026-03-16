@@ -273,6 +273,39 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const toast = useToast();
   const { config: responsiveConfig } = useResponsivePanel();
 
+  const [sidebarWidth, setSidebarWidth] = useState<number | null>(null);
+  const effectiveSidebarWidth = sidebarWidth ?? responsiveConfig.sidebarWidth;
+  const isResizingSidebar = useRef(false);
+  const sidebarResizeStartX = useRef(0);
+  const sidebarResizeStartWidth = useRef(0);
+
+  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingSidebar.current = true;
+    sidebarResizeStartX.current = e.clientX;
+    sidebarResizeStartWidth.current = effectiveSidebarWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isResizingSidebar.current) return;
+      const delta = sidebarResizeStartX.current - ev.clientX;
+      const newWidth = Math.max(240, Math.min(700, sidebarResizeStartWidth.current + delta));
+      setSidebarWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      isResizingSidebar.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [effectiveSidebarWidth]);
+
   const [documentPages, setDocumentPages] = useState<Map<string, number>>(new Map());
   const {
     documentBookmarks,
@@ -6834,8 +6867,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
           <PDFViewerSidebarArea
             isVisible={state.isSidebarVisible}
-            width={responsiveConfig.sidebarWidth}
+            width={effectiveSidebarWidth}
             processId={processId}
+            onResizeStart={handleSidebarResizeStart}
           />
         </div>
       </div>

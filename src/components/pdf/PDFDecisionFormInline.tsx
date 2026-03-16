@@ -289,7 +289,6 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           value={formData.observacoes}
           onChange={(value) => handleInputChange('observacoes', value)}
           rows={3}
-          onExpand={handleExpandText}
           fieldType="comentariosDecisao"
           referenceItems={referenceItems}
           onReferenceClick={handleReferenceClick}

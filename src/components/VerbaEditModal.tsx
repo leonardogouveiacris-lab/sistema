@@ -366,7 +366,6 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
               value={formData.fundamentacao || ''}
               onChange={(value) => handleInputChange('fundamentacao', value)}
               rows={4}
-              onExpand={() => handleExpandText('fundamentacao', 'Fundamentação')}
               fieldType="fundamentacao"
               referenceItems={referenceItems}
             />
@@ -377,7 +376,6 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
               value={formData.comentariosCalculistas || ''}
               onChange={(value) => handleInputChange('comentariosCalculistas', value)}
               rows={4}
-              onExpand={() => handleExpandText('comentariosCalculistas', 'Comentários')}
               fieldType="comentariosCalculistas"
               referenceItems={referenceItems}
             />

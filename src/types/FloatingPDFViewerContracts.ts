@@ -26,6 +26,7 @@ export interface PDFViewerSidebarAreaProps {
   isVisible: boolean;
   width: number;
   processId?: string;
+  onResizeStart?: (e: React.MouseEvent) => void;
 }
 
 export interface UsePDFPageNavigationParams {

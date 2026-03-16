@@ -539,7 +539,6 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
           value={formData.lancamento.fundamentacao || ''}
           onChange={(value) => handleInputChange('fundamentacao', value)}
           rows={3}
-          onExpand={() => handleExpandText('fundamentacao', 'Fundamentação')}
           fieldType="fundamentacao"
           referenceItems={referenceItems}
           onReferenceClick={handleReferenceClick}
@@ -551,7 +550,6 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
           value={formData.lancamento.comentariosCalculistas || ''}
           onChange={(value) => handleInputChange('comentariosCalculistas', value)}
           rows={3}
-          onExpand={() => handleExpandText('comentariosCalculistas', 'Comentários')}
           fieldType="comentariosCalculistas"
           referenceItems={referenceItems}
           onReferenceClick={handleReferenceClick}

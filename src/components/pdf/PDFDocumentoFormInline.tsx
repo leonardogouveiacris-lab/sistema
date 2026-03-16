@@ -448,7 +448,6 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           value={formData.comentarios || ''}
           onChange={(value) => handleInputChange('comentarios', value)}
           rows={3}
-          onExpand={handleExpandText}
           fieldType="comentariosDocumento"
           referenceItems={referenceItems}
           onReferenceClick={handleReferenceClick}

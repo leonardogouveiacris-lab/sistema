@@ -258,7 +258,6 @@ const DecisionEditModal: React.FC<DecisionEditModalProps> = ({
               value={formData.observacoes}
               onChange={(value) => handleInputChange('observacoes', value)}
               rows={4}
-              onExpand={handleExpandText}
             />
 
             <div className="pt-3 border-t border-gray-100 flex items-center gap-4 text-xs text-gray-400">

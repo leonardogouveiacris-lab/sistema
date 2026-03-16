@@ -216,7 +216,6 @@ const DecisionForm: React.FC<DecisionFormProps> = ({ processId, processNumber, o
             value={formData.observacoes}
             onChange={(value) => handleInputChange('observacoes', value)}
             rows={4}
-            onExpand={handleExpandText}
           />
 
           {/* Botão de salvamento */}
