@@ -250,12 +250,11 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
     <>
       <div
         className="fixed inset-0 bg-black bg-opacity-50 z-40"
-        onClick={onClose}
       />
 
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
         <div
-          className="bg-white rounded-xl border border-gray-200 shadow-xl w-full max-w-4xl max-h-screen overflow-y-auto"
+          className="bg-white rounded-xl border border-gray-200 shadow-xl w-full max-w-[70rem] max-h-screen overflow-y-auto"
           onClick={e => e.stopPropagation()}
           onKeyDown={handleKeyDown}
           tabIndex={-1}

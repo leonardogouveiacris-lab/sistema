@@ -97,16 +97,11 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 pointer-events-none">
-      <div
-        className="absolute inset-0 pointer-events-auto"
-        onClick={onClose}
-      />
-
+    <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center">
       <div
         ref={panelRef}
         style={style}
-        className="absolute right-4 top-4 pointer-events-auto w-[580px] bg-white shadow-2xl flex flex-col border border-gray-200 rounded-xl max-h-[calc(100vh-2rem)] overflow-hidden relative"
+        className="pointer-events-auto w-[725px] bg-white shadow-2xl flex flex-col border border-gray-200 rounded-xl max-h-[calc(100vh-2rem)] overflow-hidden relative"
       >
         <div
           className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-green-100 bg-green-50 flex-shrink-0 cursor-grab active:cursor-grabbing select-none"
