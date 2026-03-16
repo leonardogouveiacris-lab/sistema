@@ -5,8 +5,8 @@ import type { PDFViewerSidebarAreaProps } from '../../types/FloatingPDFViewerCon
 
 const PDFViewerSidebarArea: React.FC<PDFViewerSidebarAreaProps> = ({ isVisible, width, processId, onResizeStart }) => (
   <div
-    className={`relative border-l border-gray-300 bg-gray-50 transition-[opacity,width] duration-300 ease-in-out overflow-hidden flex-shrink-0 ${
-      isVisible ? 'opacity-100' : 'opacity-0 w-0'
+    className={`relative border-l border-gray-300 bg-gray-50 overflow-hidden flex-shrink-0 ${
+      isVisible ? 'opacity-100 transition-opacity duration-300' : 'opacity-0 w-0'
     }`}
     style={{ width: isVisible ? `${width}px` : '0px' }}
   >

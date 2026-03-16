@@ -288,7 +288,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const onMouseMove = (ev: MouseEvent) => {
       if (!isResizingSidebar.current) return;
       const delta = sidebarResizeStartX.current - ev.clientX;
-      const newWidth = Math.max(240, Math.min(700, sidebarResizeStartWidth.current + delta));
+      const newWidth = Math.max(responsiveConfig.sidebarWidth, Math.min(700, sidebarResizeStartWidth.current + delta));
       setSidebarWidth(newWidth);
     };
 
