@@ -336,12 +336,12 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
 
       <style>{`
         .ql-container {
-          min-height: ${rows * 1.5}em;
-          max-height: ${rows * 3}em;
+          min-height: ${rows * 1.5 * 1.75}em;
+          max-height: ${rows * 3 * 1.75}em;
           overflow-y: auto;
         }
         .ql-editor {
-          min-height: ${rows * 1.2}em;
+          min-height: ${rows * 1.2 * 1.75}em;
           padding: 12px 15px;
         }
         .ql-toolbar {
