@@ -341,7 +341,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
               <BookOpen size={12} className="text-green-700" />
             </div>
             <div className="min-w-0">
-              {isEditMode && isRenamingTipo ? (
+              {isRenamingTipo ? (
                 <div className="flex items-center gap-1 mb-0.5">
                   <input
                     value={renameTipoValue}
@@ -363,7 +363,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
                   <span className="text-sm font-bold text-gray-900 truncate">
                     {formData.tipoVerba || (isEditMode ? 'Editar Verba' : 'Nova Verba')}
                   </span>
-                  {isEditMode && (
+                  {formData.tipoVerba && (
                     <button
                       onClick={() => { setRenameTipoValue(formData.tipoVerba); setIsRenamingTipo(true); }}
                       className="p-0.5 text-gray-400 hover:text-blue-600 flex-shrink-0"
