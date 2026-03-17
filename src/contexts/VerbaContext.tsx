@@ -22,87 +22,124 @@ interface VerbaContextValue {
   getVerbasByProcess: (processId: string) => Verba[];
   getLancamentoById: (verbaId: string, lancamentoId: string) => VerbaLancamento | undefined;
   refreshVerbas: () => Promise<void>;
+  refreshVerbasByProcess: (processId: string) => Promise<void>;
   importBackup: (backupData: Verba[]) => Promise<boolean>;
   exportBackup: () => string;
 }
 
 const VerbaContext = createContext<VerbaContextValue | null>(null);
 
-export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [verbas, setVerbas] = useState<Verba[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+interface VerbaProviderProps {
+  children: ReactNode;
+  activeProcessId?: string | null;
+}
+
+export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activeProcessId }) => {
+  const [cacheByProcess, setCacheByProcess] = useState<Map<string, Verba[]>>(new Map());
+  const [loadedProcessIds, setLoadedProcessIds] = useState<Set<string>>(new Set());
+  const [loadingProcessIds, setLoadingProcessIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const refreshVerbas = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await VerbasService.getAll();
-      setVerbas(data);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao recarregar';
-      setError(errorMessage);
-      logger.errorWithException('Falha ao recarregar verbas', err as Error, 'VerbaContext');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const activeProcessIdRef = useRef<string | null | undefined>(activeProcessId);
 
   useEffect(() => {
-    let completed = false;
-    const loadInitial = async () => {
-      const timeoutId = setTimeout(() => {
-        if (!completed) {
-          setIsLoading(false);
-          setError('Timeout ao carregar verbas.');
-        }
-      }, 15000);
+    activeProcessIdRef.current = activeProcessId;
+  }, [activeProcessId]);
 
-      try {
-        setIsLoading(true);
-        setError(null);
-        const data = await VerbasService.getAll();
-        completed = true;
-        setVerbas(data);
-      } catch (err) {
-        completed = true;
-        const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
-        setError(errorMessage);
-        setVerbas([]);
-      } finally {
-        clearTimeout(timeoutId);
-        setIsLoading(false);
-      }
-    };
-    loadInitial();
-  }, []);
+  const loadVerbasByProcess = useCallback(async (processId: string) => {
+    if (loadingProcessIds.has(processId)) return;
+
+    setLoadingProcessIds(prev => new Set(prev).add(processId));
+    try {
+      setError(null);
+      const data = await VerbasService.getByProcessId(processId);
+      setCacheByProcess(prev => {
+        const next = new Map(prev);
+        next.set(processId, data);
+        return next;
+      });
+      setLoadedProcessIds(prev => new Set(prev).add(processId));
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar verbas';
+      setError(errorMessage);
+      logger.errorWithException('Falha ao carregar verbas do processo', err as Error, 'VerbaContext', { processId });
+    } finally {
+      setLoadingProcessIds(prev => {
+        const next = new Set(prev);
+        next.delete(processId);
+        return next;
+      });
+    }
+  }, [loadingProcessIds]);
+
+  useEffect(() => {
+    if (activeProcessId && !loadedProcessIds.has(activeProcessId) && !loadingProcessIds.has(activeProcessId)) {
+      loadVerbasByProcess(activeProcessId);
+    }
+  }, [activeProcessId, loadedProcessIds, loadingProcessIds, loadVerbasByProcess]);
+
+  const verbas = useMemo((): Verba[] => {
+    if (!activeProcessId) return [];
+    return cacheByProcess.get(activeProcessId) || [];
+  }, [activeProcessId, cacheByProcess]);
+
+  const isLoading = useMemo((): boolean => {
+    if (!activeProcessId) return false;
+    return loadingProcessIds.has(activeProcessId);
+  }, [activeProcessId, loadingProcessIds]);
+
+  const refreshVerbasByProcess = useCallback(async (processId: string) => {
+    setLoadedProcessIds(prev => {
+      const next = new Set(prev);
+      next.delete(processId);
+      return next;
+    });
+    await loadVerbasByProcess(processId);
+  }, [loadVerbasByProcess]);
+
+  const refreshVerbas = useCallback(async () => {
+    const pid = activeProcessIdRef.current;
+    if (!pid) return;
+    await refreshVerbasByProcess(pid);
+  }, [refreshVerbasByProcess]);
 
   const debouncedRefresh = useCallback(() => {
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
     }
     refreshTimeoutRef.current = setTimeout(async () => {
-      logRealtimeEvent('Realtime refresh requested', 'VerbaContext', 'refresh_requested', { table: 'verbas' });
+      const pid = activeProcessIdRef.current;
+      if (!pid) return;
+      logRealtimeEvent('Realtime refresh requested', 'VerbaContext', 'refresh_requested', { table: 'verbas', processId: pid });
       try {
-        const data = await VerbasService.getAll();
-        setVerbas(data);
+        const data = await VerbasService.getByProcessId(pid);
+        setCacheByProcess(prev => {
+          const next = new Map(prev);
+          next.set(pid, data);
+          return next;
+        });
       } catch {
         logRealtimeEvent('Realtime refresh failed', 'VerbaContext', 'refresh_failed', { table: 'verbas' }, 'error');
       }
     }, 400);
   }, []);
 
+  const realtimeFilter = useMemo(() =>
+    activeProcessId ? `process_id=eq.${activeProcessId}` : undefined,
+    [activeProcessId]
+  );
+
   useRealtimeSubscription({
     table: 'verbas',
+    filter: realtimeFilter,
     onAnyChange: debouncedRefresh,
-    enabled: true
+    enabled: !!activeProcessId
   });
 
   useRealtimeSubscription({
     table: 'verba_lancamentos',
     onAnyChange: debouncedRefresh,
-    enabled: true
+    enabled: !!activeProcessId
   });
 
   useEffect(() => {
@@ -123,14 +160,19 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
 
       const createdVerba = await VerbasService.createVerbaComLancamento(novaVerba);
-      setVerbas(prev => {
-        const existingIndex = prev.findIndex(v => v.id === createdVerba.id);
+      const pid = novaVerba.processId;
+      setCacheByProcess(prev => {
+        const next = new Map(prev);
+        const existing = next.get(pid) || [];
+        const existingIndex = existing.findIndex(v => v.id === createdVerba.id);
         if (existingIndex >= 0) {
-          const updated = [...prev];
+          const updated = [...existing];
           updated[existingIndex] = createdVerba;
-          return updated;
+          next.set(pid, updated);
+        } else {
+          next.set(pid, [createdVerba, ...existing]);
         }
-        return [createdVerba, ...prev];
+        return next;
       });
       setError(null);
       return { success: true };
@@ -150,15 +192,23 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   ): Promise<OperationResult> => {
     try {
       const updatedLancamento = await VerbasService.updateLancamento(verbaId, lancamentoId, updatedData);
-      setVerbas(prev => prev.map(v =>
-        v.id === verbaId
-          ? {
-              ...v,
-              lancamentos: v.lancamentos.map(l => l.id === lancamentoId ? updatedLancamento : l),
+      setCacheByProcess(prev => {
+        const next = new Map(prev);
+        for (const [pid, verbas] of next.entries()) {
+          const idx = verbas.findIndex(v => v.id === verbaId);
+          if (idx >= 0) {
+            const updated = [...verbas];
+            updated[idx] = {
+              ...updated[idx],
+              lancamentos: updated[idx].lancamentos.map(l => l.id === lancamentoId ? updatedLancamento : l),
               dataAtualizacao: new Date()
-            }
-          : v
-      ));
+            };
+            next.set(pid, updated);
+            break;
+          }
+        }
+        return next;
+      });
       setError(null);
       return { success: true };
     } catch (err) {
@@ -173,18 +223,24 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       await VerbasService.removeLancamento(verbaId, lancamentoId);
 
-      setVerbas(prev => {
-        const verba = prev.find(v => v.id === verbaId);
-        const isLastLancamento = verba ? verba.lancamentos.length === 1 : false;
-
-        if (isLastLancamento) {
-          return prev.filter(v => v.id !== verbaId);
+      setCacheByProcess(prev => {
+        const next = new Map(prev);
+        for (const [pid, verbas] of next.entries()) {
+          const verba = verbas.find(v => v.id === verbaId);
+          if (!verba) continue;
+          const isLastLancamento = verba.lancamentos.length === 1;
+          if (isLastLancamento) {
+            next.set(pid, verbas.filter(v => v.id !== verbaId));
+          } else {
+            next.set(pid, verbas.map(v =>
+              v.id === verbaId
+                ? { ...v, lancamentos: v.lancamentos.filter(l => l.id !== lancamentoId), dataAtualizacao: new Date() }
+                : v
+            ));
+          }
+          break;
         }
-        return prev.map(v =>
-          v.id === verbaId
-            ? { ...v, lancamentos: v.lancamentos.filter(l => l.id !== lancamentoId), dataAtualizacao: new Date() }
-            : v
-        );
+        return next;
       });
       setError(null);
       return { success: true };
@@ -199,7 +255,16 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const removeVerba = useCallback(async (verbaId: string, skipGlobalError = false): Promise<OperationResult> => {
     try {
       await VerbasService.removeVerba(verbaId);
-      setVerbas(prev => prev.filter(v => v.id !== verbaId));
+      setCacheByProcess(prev => {
+        const next = new Map(prev);
+        for (const [pid, verbas] of next.entries()) {
+          if (verbas.some(v => v.id === verbaId)) {
+            next.set(pid, verbas.filter(v => v.id !== verbaId));
+            break;
+          }
+        }
+        return next;
+      });
       setError(null);
       return { success: true };
     } catch (err) {
@@ -211,17 +276,21 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
 
   const getVerbaById = useCallback((id: string): Verba | undefined => {
-    return verbas.find(v => v.id === id);
-  }, [verbas]);
+    for (const verbas of cacheByProcess.values()) {
+      const found = verbas.find(v => v.id === id);
+      if (found) return found;
+    }
+    return undefined;
+  }, [cacheByProcess]);
 
   const getVerbasByProcess = useCallback((processId: string): Verba[] => {
-    return verbas.filter(v => v.processId === processId);
-  }, [verbas]);
+    return cacheByProcess.get(processId) || [];
+  }, [cacheByProcess]);
 
   const getLancamentoById = useCallback((verbaId: string, lancamentoId: string): VerbaLancamento | undefined => {
-    const verba = verbas.find(v => v.id === verbaId);
+    const verba = getVerbaById(verbaId);
     return verba?.lancamentos.find(l => l.id === lancamentoId);
-  }, [verbas]);
+  }, [getVerbaById]);
 
   const importBackup = useCallback(async (backupData: Verba[]): Promise<boolean> => {
     try {
@@ -252,8 +321,15 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }
         }
       }
-      const allVerbas = await VerbasService.getAll();
-      setVerbas(allVerbas);
+      const pid = activeProcessIdRef.current;
+      if (pid) {
+        const allVerbas = await VerbasService.getByProcessId(pid);
+        setCacheByProcess(prev => {
+          const next = new Map(prev);
+          next.set(pid, allVerbas);
+          return next;
+        });
+      }
       setError(null);
       return true;
     } catch (err) {
@@ -285,6 +361,7 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     getVerbasByProcess,
     getLancamentoById,
     refreshVerbas,
+    refreshVerbasByProcess,
     importBackup,
     exportBackup
   }), [
@@ -299,6 +376,7 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     getVerbasByProcess,
     getLancamentoById,
     refreshVerbas,
+    refreshVerbasByProcess,
     importBackup,
     exportBackup
   ]);

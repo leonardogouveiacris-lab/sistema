@@ -35,7 +35,11 @@ const isProcessRequiredTab = (tab: string): boolean => {
   return PROCESS_REQUIRED_TABS.includes(tab as AppTabs);
 };
 
-function AppContent() {
+interface AppContentProps {
+  onSelectedProcessIdChange: (id: string | null) => void;
+}
+
+function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
   const [activeTab, setActiveTab] = useState<string>(AppTabs.LISTA_PROCESSOS);
   const [selectedProcess, setSelectedProcess] = useState<Process | null>(null);
   const [globalError, setGlobalError] = useState<string>('');
@@ -211,6 +215,10 @@ function AppContent() {
     setGlobalError('');
     logger.info('Retorno para lista de processos', 'App - handleBackToList');
   }, []);
+
+  useEffect(() => {
+    onSelectedProcessIdChange(selectedProcess?.id ?? null);
+  }, [selectedProcess, onSelectedProcessIdChange]);
 
   useEffect(() => {
     if (!selectedProcess) return;
@@ -434,14 +442,16 @@ function AppContent() {
 }
 
 function App() {
+  const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
+
   return (
     <ToastProvider>
       <DecisionProvider>
-        <VerbaProvider>
+        <VerbaProvider activeProcessId={selectedProcessId}>
           <DocumentoProvider>
             <PDFViewerProvider>
               <TableViewerProvider>
-                <AppContent />
+                <AppContent onSelectedProcessIdChange={setSelectedProcessId} />
               </TableViewerProvider>
             </PDFViewerProvider>
           </DocumentoProvider>
