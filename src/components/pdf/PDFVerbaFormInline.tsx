@@ -59,9 +59,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
   const referenceItems = useLancamentosForReference(processId, processTable);
 
   const navigateToReference = useNavigateToReference(processId);
-  const handleReferenceClick = useCallback((item: Parameters<typeof navigateToReference>[0]) => {
-    navigateToReference(item);
-  }, [navigateToReference]);
+  const handleReferenceClick = navigateToReference;
 
   const [formData, setFormData] = useState<NewVerbaComLancamento>({
     tipoVerba: editingVerba?.verba.tipoVerba || '',
@@ -156,7 +154,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleInputChange = (field: string, value: string | number | boolean) => {
+  const handleInputChange = useCallback((field: string, value: string | number | boolean) => {
     if (field === 'tipoVerba') {
       setFormData(prev => ({ ...prev, tipoVerba: value as string }));
     } else if (field === 'paginaVinculada') {
@@ -171,10 +169,11 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
       }));
     }
 
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
-  };
+    setErrors(prev => {
+      if (!prev[field]) return prev;
+      return { ...prev, [field]: '' };
+    });
+  }, []);
 
   const existingHighlightIds = useMemo(() => {
     if (!isEditMode || !editingVerba?.lancamento) return [];
@@ -184,7 +183,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
     return storedIds.filter(id => currentHighlightIds.has(id));
   }, [isEditMode, editingVerba, state.highlights]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!validateForm()) {
       return;
     }
@@ -237,9 +236,9 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [onSave, formData, isEditMode, processId, state.currentPage, state.highlightIdsToLink, existingHighlightIds, clearHighlightIdsToLink, getCurrentDocument, editingVerba]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!editingVerba?.verba.id || !editingVerba?.lancamento.id || !onDelete) return;
     setIsDeleting(true);
     try {
@@ -247,7 +246,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [editingVerba?.verba.id, editingVerba?.lancamento.id, onDelete]);
 
   const handleExpandText = useCallback((field: string, title: string) => {
     let content = '';
@@ -275,7 +274,7 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
 
     handleInputChange(originalField, content);
     handleCloseExpandedModal();
-  }, [expandedTextModal.field, handleCloseExpandedModal]);
+  }, [expandedTextModal.field, handleInputChange, handleCloseExpandedModal]);
 
   const handleConfirmRename = () => {
     if (renameTipoValue.trim()) {

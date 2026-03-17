@@ -185,6 +185,7 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
 
       if (success) {
         setDocument(null);
+        setDocuments([]);
       } else {
         setError('Erro ao remover documento');
       }

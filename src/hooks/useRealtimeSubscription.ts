@@ -87,8 +87,8 @@ export const useRealtimeSubscription = <T extends { id: string }>({
     }
 
     const channelName = filter
-      ? `rt-${table}-${schema}-${filter}-${Date.now()}`
-      : `rt-${table}-${schema}-${Date.now()}`;
+      ? `rt-${table}-${schema}-${filter}`
+      : `rt-${table}-${schema}`;
 
     const channelConfig: {
       event: PostgresChangeEvent;

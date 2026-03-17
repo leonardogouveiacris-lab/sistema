@@ -61,9 +61,11 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   const referenceItems = useLancamentosForReference(processId, processTable);
   const navigateToReference = useNavigateToReference(processId);
 
-  const handleReferenceClick = useCallback((item: Parameters<typeof navigateToReference>[0]) => {
-    navigateToReference(item);
-  }, [navigateToReference]);
+  const handleReferenceClick = navigateToReference;
+
+  const handleTipoDocumentoCreated = useCallback(() => {
+    refreshEnumValues(DynamicEnumType.TIPO_DOCUMENTO);
+  }, [refreshEnumValues]);
 
   const [formData, setFormData] = useState<NewDocumento>({
     tipoDocumento: editingDocumento?.tipoDocumento || '',
@@ -137,13 +139,13 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleInputChange = (field: keyof NewDocumento, value: string | number) => {
+  const handleInputChange = useCallback((field: keyof NewDocumento, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
-  };
+    setErrors(prev => {
+      if (!prev[field]) return prev;
+      return { ...prev, [field]: '' };
+    });
+  }, []);
 
   const existingHighlightIds = useMemo(() => {
     if (!isEditMode || !editingDocumento) return [];
@@ -198,7 +200,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
     isDeleting: (tipo: string) => deletingTipo === tipo,
   }), [handleEditarTipo, handleExcluirTipo, deletingTipo, isSystemTipo]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!validateForm()) {
       return;
     }
@@ -262,9 +264,9 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [onSave, formData, isEditMode, processId, state.highlightIdsToLink, state.currentPage, existingHighlightIds, clearHighlightIdsToLink, getCurrentDocument, editingDocumento, isSystemTipo, renameCustomValue, refreshEnumValues, onRenameTipo, toast]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!editingDocumento?.id || !onDelete) return;
     setIsDeleting(true);
     try {
@@ -272,7 +274,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [editingDocumento?.id, onDelete]);
 
   const handleExpandText = useCallback(() => {
     setExpandedTextModal({
@@ -289,7 +291,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   const handleSaveExpandedText = useCallback((content: string) => {
     handleInputChange('comentarios', content);
     handleCloseExpandedModal();
-  }, [handleCloseExpandedModal]);
+  }, [handleInputChange, handleCloseExpandedModal]);
 
   const currentTipo = formData.tipoDocumento;
   const canRenameTipo = isEditMode && currentTipo && !isSystemTipo(currentTipo);
@@ -396,7 +398,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           allowCustomValues={true}
           enumType={DynamicEnumType.TIPO_DOCUMENTO}
           processId={processId}
-          onValueCreated={() => refreshEnumValues(DynamicEnumType.TIPO_DOCUMENTO)}
+          onValueCreated={handleTipoDocumentoCreated}
           itemActions={tipoItemActions}
         />
 

@@ -86,7 +86,7 @@ class Logger {
     data?: LogData,
     error?: LogError
   ): void {
-    if (!this.shouldLog(level)) {
+    if (!this.shouldLog(level) || !this.consoleEnabled) {
       return;
     }
 
@@ -100,10 +100,6 @@ class Logger {
 
     if (error !== undefined) {
       extra.push(error);
-    }
-
-    if (!this.consoleEnabled) {
-      return;
     }
 
     switch (level) {

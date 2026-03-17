@@ -60,6 +60,19 @@ const ENUM_CACHE_MAX_SIZE = 128;
 export const useDynamicEnums = (): UseDynamicEnumsReturn => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const activeRequestsRef = useRef(0);
+
+  const beginLoading = useCallback(() => {
+    activeRequestsRef.current += 1;
+    setIsLoading(true);
+  }, []);
+
+  const endLoading = useCallback(() => {
+    activeRequestsRef.current = Math.max(0, activeRequestsRef.current - 1);
+    if (activeRequestsRef.current === 0) {
+      endLoading();
+    }
+  }, []);
 
   const enumCacheRef = useRef<Map<string, string[]>>(new Map());
 
@@ -81,7 +94,7 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
   ): Promise<EnumValues> => {
     try {
       setError(null);
-      setIsLoading(true);
+      beginLoading();
 
       const cacheKey = `combined_${enumType}_${processId || 'global'}`;
       const cached = enumCacheRef.current.get(cacheKey);
@@ -122,9 +135,9 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
         custom: Object.freeze([])
       };
     } finally {
-      setIsLoading(false);
+      endLoading();
     }
-  }, [setCacheValue]);
+  }, [setCacheValue, beginLoading, endLoading]);
 
   const getValuesFromDatabase = useCallback(async (
     enumType: DynamicEnumType,
@@ -132,7 +145,7 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
   ): Promise<EnumValues> => {
     try {
       setError(null);
-      setIsLoading(true);
+      beginLoading();
 
       const cacheKey = `db_${enumType}_${processId || 'global'}`;
       const cached = enumCacheRef.current.get(cacheKey);
@@ -185,9 +198,9 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
         custom: Object.freeze([])
       };
     } finally {
-      setIsLoading(false);
+      endLoading();
     }
-  }, [setCacheValue]);
+  }, [setCacheValue, beginLoading, endLoading]);
 
   const addCustomValue = useCallback(async (
     enumType: DynamicEnumType,
@@ -266,7 +279,7 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
         { enumType, value, processId }
       );
 
-      return true;
+      return false;
     }
   }, [addCustomValue]);
 

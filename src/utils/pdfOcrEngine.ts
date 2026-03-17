@@ -51,6 +51,18 @@ function applyAdaptiveBinarization(canvas: HTMLCanvasElement): HTMLCanvasElement
   const halfBlock = Math.floor(blockSize / 2);
   const C = 8;
 
+  // Build integral image (summed-area table) for O(1) block mean queries
+  const integral = new Float64Array((width + 1) * (height + 1));
+  for (let y = 1; y <= height; y++) {
+    for (let x = 1; x <= width; x++) {
+      integral[y * (width + 1) + x] =
+        gray[(y - 1) * width + (x - 1)] +
+        integral[(y - 1) * (width + 1) + x] +
+        integral[y * (width + 1) + (x - 1)] -
+        integral[(y - 1) * (width + 1) + (x - 1)];
+    }
+  }
+
   const output = document.createElement('canvas');
   output.width = width;
   output.height = height;
@@ -62,18 +74,18 @@ function applyAdaptiveBinarization(canvas: HTMLCanvasElement): HTMLCanvasElement
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      let sum = 0;
-      let count = 0;
       const x0 = Math.max(0, x - halfBlock);
       const x1 = Math.min(width - 1, x + halfBlock);
       const y0 = Math.max(0, y - halfBlock);
       const y1 = Math.min(height - 1, y + halfBlock);
-      for (let ky = y0; ky <= y1; ky++) {
-        for (let kx = x0; kx <= x1; kx++) {
-          sum += gray[ky * width + kx];
-          count++;
-        }
-      }
+
+      const count = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const sum =
+        integral[(y1 + 1) * (width + 1) + (x1 + 1)] -
+        integral[y0 * (width + 1) + (x1 + 1)] -
+        integral[(y1 + 1) * (width + 1) + x0] +
+        integral[y0 * (width + 1) + x0];
+
       const mean = sum / count;
       const pixel = gray[y * width + x] < mean - C ? 0 : 255;
       const idx = (y * width + x) * 4;
@@ -124,7 +136,8 @@ function preprocessCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
 async function renderPageToCanvas(
   pdfDocument: pdfjs.PDFDocumentProxy,
   pageNumber: number,
-  renderScale: number
+  renderScale: number,
+  abortSignal?: AbortSignal
 ): Promise<HTMLCanvasElement> {
   const page = await pdfDocument.getPage(pageNumber);
   const viewport = page.getViewport({ scale: renderScale });
@@ -141,10 +154,22 @@ async function renderPageToCanvas(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  await page.render({
+  const renderTask = page.render({
     canvasContext: ctx,
     viewport,
-  }).promise;
+  });
+
+  if (abortSignal) {
+    const onAbort = () => renderTask.cancel();
+    abortSignal.addEventListener('abort', onAbort, { once: true });
+    try {
+      await renderTask.promise;
+    } finally {
+      abortSignal.removeEventListener('abort', onAbort);
+    }
+  } else {
+    await renderTask.promise;
+  }
 
   return canvas;
 }
@@ -173,48 +198,30 @@ function postProcessText(text: string): string {
 }
 
 async function recognizeCanvasText(
-  canvas: HTMLCanvasElement,
-  pageSegMode: OcrParams['pageSegMode']
+  worker: import('tesseract.js').Worker,
+  canvas: HTMLCanvasElement
 ): Promise<{ text: string; confidence: number; wordBoxes: OcrWordBox[] }> {
-  const { createWorker } = await import('tesseract.js');
-
   const processedCanvas = preprocessCanvas(canvas);
 
-  const worker = await createWorker(OCR_LANGUAGE, 1, {
-    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
-    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
-    logger: () => {},
-  });
+  const result = await worker.recognize(processedCanvas);
+  const rawText = result.data.text.trim();
+  const text = postProcessText(rawText);
+  const confidence = result.data.confidence;
 
-  try {
-    await worker.setParameters({
-      tessedit_pageseg_mode: pageSegMode,
-      preserve_interword_spaces: '1',
+  const wordBoxes: OcrWordBox[] = [];
+  for (const word of result.data.words) {
+    const wordText = word.text.trim();
+    if (!wordText) continue;
+    wordBoxes.push({
+      text: wordText,
+      x: word.bbox.x0,
+      y: word.bbox.y0,
+      w: word.bbox.x1 - word.bbox.x0,
+      h: word.bbox.y1 - word.bbox.y0,
     });
-
-    const result = await worker.recognize(processedCanvas);
-    const rawText = result.data.text.trim();
-    const text = postProcessText(rawText);
-    const confidence = result.data.confidence;
-
-    const wordBoxes: OcrWordBox[] = [];
-    for (const word of result.data.words) {
-      const wordText = word.text.trim();
-      if (!wordText) continue;
-      wordBoxes.push({
-        text: wordText,
-        x: word.bbox.x0,
-        y: word.bbox.y0,
-        w: word.bbox.x1 - word.bbox.x0,
-        h: word.bbox.y1 - word.bbox.y0,
-      });
-    }
-
-    return { text, confidence, wordBoxes };
-  } finally {
-    await worker.terminate();
   }
+
+  return { text, confidence, wordBoxes };
 }
 
 export async function runOcrOnPages(
@@ -227,64 +234,76 @@ export async function runOcrOnPages(
   const results: OcrPageResult[] = [];
   const total = pageNumbers.length;
 
-  for (let i = 0; i < pageNumbers.length; i++) {
-    if (abortSignal?.aborted) {
-      break;
-    }
+  const { createWorker } = await import('tesseract.js');
+  const worker = await createWorker(OCR_LANGUAGE, 1, {
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
+    logger: () => {},
+  });
 
-    const pageNumber = pageNumbers[i];
+  try {
+    await worker.setParameters({
+      tessedit_pageseg_mode: params.pageSegMode,
+      preserve_interword_spaces: '1',
+    });
 
-    try {
-      onProgress?.({
-        currentPage: i + 1,
-        totalPages: total,
-        status: 'rendering',
-      });
-
-      const canvas = await renderPageToCanvas(pdfDocument, pageNumber, params.renderScale);
-
+    for (let i = 0; i < pageNumbers.length; i++) {
       if (abortSignal?.aborted) {
         break;
       }
 
-      onProgress?.({
-        currentPage: i + 1,
-        totalPages: total,
-        status: 'preprocessing',
-      });
+      const pageNumber = pageNumbers[i];
 
-      onProgress?.({
-        currentPage: i + 1,
-        totalPages: total,
-        status: 'recognizing',
-      });
+      try {
+        onProgress?.({
+          currentPage: i + 1,
+          totalPages: total,
+          status: 'rendering',
+        });
 
-      const { text, confidence, wordBoxes: rawWordBoxes } = await recognizeCanvasText(canvas, params.pageSegMode);
+        const canvas = await renderPageToCanvas(pdfDocument, pageNumber, params.renderScale, abortSignal);
 
-      const rs = params.renderScale;
-      const wordBoxes: OcrWordBox[] = rawWordBoxes.map(wb => ({
-        text: wb.text,
-        x: wb.x / rs,
-        y: wb.y / rs,
-        w: wb.w / rs,
-        h: wb.h / rs,
-      }));
+        if (abortSignal?.aborted) {
+          break;
+        }
 
-      results.push({ pageNumber, text, confidence, wordBoxes });
+        onProgress?.({
+          currentPage: i + 1,
+          totalPages: total,
+          status: 'recognizing',
+        });
 
-      logger.info(
-        `OCR page ${pageNumber}: ${text.length} chars, ${wordBoxes.length} words, confidence ${confidence.toFixed(1)}%`,
-        'pdfOcrEngine.runOcrOnPages'
-      );
-    } catch (error) {
-      logger.error(
-        `OCR failed for page ${pageNumber}`,
-        'pdfOcrEngine.runOcrOnPages',
-        { pageNumber },
-        error
-      );
-      results.push({ pageNumber, text: '', confidence: 0, wordBoxes: [] });
+        const { text, confidence, wordBoxes: rawWordBoxes } = await recognizeCanvasText(worker, canvas);
+
+        const rs = params.renderScale;
+        const wordBoxes: OcrWordBox[] = rawWordBoxes.map(wb => ({
+          text: wb.text,
+          x: wb.x / rs,
+          y: wb.y / rs,
+          w: wb.w / rs,
+          h: wb.h / rs,
+        }));
+
+        results.push({ pageNumber, text, confidence, wordBoxes });
+
+        logger.info(
+          `OCR page ${pageNumber}: ${text.length} chars, ${wordBoxes.length} words, confidence ${confidence.toFixed(1)}%`,
+          'pdfOcrEngine.runOcrOnPages'
+        );
+      } catch (error) {
+        if (abortSignal?.aborted) break;
+        logger.error(
+          `OCR failed for page ${pageNumber}`,
+          'pdfOcrEngine.runOcrOnPages',
+          { pageNumber },
+          error
+        );
+        results.push({ pageNumber, text: '', confidence: 0, wordBoxes: [] });
+      }
     }
+  } finally {
+    await worker.terminate();
   }
 
   return results;

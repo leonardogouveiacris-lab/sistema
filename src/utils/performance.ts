@@ -12,7 +12,7 @@
  * @param delay - Delay in milliseconds
  * @returns Debounced function
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: Parameters<T>) => ReturnType<T>>(
   fn: T,
   delay: number
 ): (...args: Parameters<T>) => void {
@@ -38,7 +38,7 @@ export function debounce<T extends (...args: any[]) => any>(
  * @param limit - Minimum time between calls in milliseconds
  * @returns Throttled function
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: Parameters<T>) => ReturnType<T>>(
   fn: T,
   limit: number
 ): (...args: Parameters<T>) => void {
@@ -73,7 +73,7 @@ export function throttle<T extends (...args: any[]) => any>(
  */
 const MEMOIZE_MAX_CACHE_SIZE = 256;
 
-export function memoize<T extends (...args: any[]) => any>(
+export function memoize<T extends (...args: Parameters<T>) => ReturnType<T>>(
   fn: T,
   keyFn?: (...args: Parameters<T>) => string,
   maxSize: number = MEMOIZE_MAX_CACHE_SIZE
@@ -141,7 +141,7 @@ export function runWhenIdle(
  * @param fn - Function to batch
  * @returns Batched function
  */
-export function batchOnAnimationFrame<T extends (...args: any[]) => any>(
+export function batchOnAnimationFrame<T extends (...args: Parameters<T>) => ReturnType<T>>(
   fn: T
 ): (...args: Parameters<T>) => void {
   let rafId: number | null = null;

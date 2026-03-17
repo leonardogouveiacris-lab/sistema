@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ProcessTable, FormulaColumnDef, ParsedTableData, AggregateRow, AggregateOperation } from '../types/ProcessTable';
 import {
   getProcessTable,
@@ -39,6 +39,12 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const tableRef = useRef<ProcessTable | null>(null);
+
+  const syncTableRef = (t: ProcessTable | null) => {
+    tableRef.current = t;
+    return t;
+  };
 
   const load = useCallback(async () => {
     if (!processId) return;
@@ -46,7 +52,7 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
     setError(null);
     try {
       const data = await getProcessTable(processId);
-      setTable(data);
+      setTable(syncTableRef(data));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -64,7 +70,7 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
       setError(null);
       try {
         const result = await importTable(processId, tableName, parsed);
-        setTable(result);
+        setTable(syncTableRef(result));
       } catch (err) {
         setError((err as Error).message);
         throw err;
@@ -111,19 +117,22 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
 
   const addFormula = useCallback(
     async (def: FormulaColumnDef) => {
-      if (!table) return;
-      const nextIndex = table.columns.reduce((max, c) => Math.max(max, c.index), -1) + 1;
-      const newCol = await addFormulaColumn(table.id, nextIndex, def);
+      const current = tableRef.current;
+      if (!current) return;
+      const nextIndex = current.columns.reduce((max, c) => Math.max(max, c.index), -1) + 1;
+      const newCol = await addFormulaColumn(current.id, nextIndex, def);
       setTable((prev) => {
         if (!prev) return prev;
-        return {
+        const updated = {
           ...prev,
           columns: [...prev.columns, newCol],
           totalColumns: prev.totalColumns + 1,
         };
+        tableRef.current = updated;
+        return updated;
       });
     },
-    [table]
+    []
   );
 
   const editFormula = useCallback(
@@ -161,47 +170,61 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
 
   const removeColumn = useCallback(
     async (columnId: string) => {
-      if (!table) return;
-      await deleteColumn(columnId, table.id);
+      const current = tableRef.current;
+      if (!current) return;
+      await deleteColumn(columnId, current.id);
       setTable((prev) => {
         if (!prev) return prev;
-        return {
+        const updated = {
           ...prev,
           columns: prev.columns.filter((c) => c.id !== columnId),
           totalColumns: prev.totalColumns - 1,
           aggregateRows: prev.aggregateRows.filter((a) => a.columnId !== columnId),
         };
+        tableRef.current = updated;
+        return updated;
       });
     },
-    [table]
+    []
   );
 
   const removeTable = useCallback(async () => {
-    if (!table) return;
-    await deleteProcessTable(table.id);
+    const current = tableRef.current;
+    if (!current) return;
+    await deleteProcessTable(current.id);
     setTable(null);
-  }, [table]);
+    tableRef.current = null;
+  }, []);
 
   const renameTable = useCallback(
     async (name: string) => {
-      if (!table) return;
-      await updateTableName(table.id, name);
-      setTable((prev) => (prev ? { ...prev, name } : prev));
+      const current = tableRef.current;
+      if (!current) return;
+      await updateTableName(current.id, name);
+      setTable((prev) => {
+        if (!prev) return prev;
+        const updated = { ...prev, name };
+        tableRef.current = updated;
+        return updated;
+      });
     },
-    [table]
+    []
   );
 
   const addAggregate = useCallback(
     async (columnId: string, operation: AggregateOperation, rangeStart: number | null, rangeEnd: number | null) => {
-      if (!table) return;
-      const nextOrder = table.aggregateRows.length;
-      const newAgg = await addAggregateRow(table.id, columnId, operation, rangeStart, rangeEnd, nextOrder);
+      const current = tableRef.current;
+      if (!current) return;
+      const nextOrder = current.aggregateRows.length;
+      const newAgg = await addAggregateRow(current.id, columnId, operation, rangeStart, rangeEnd, nextOrder);
       setTable((prev) => {
         if (!prev) return prev;
-        return { ...prev, aggregateRows: [...prev.aggregateRows, newAgg] };
+        const updated = { ...prev, aggregateRows: [...prev.aggregateRows, newAgg] };
+        tableRef.current = updated;
+        return updated;
       });
     },
-    [table]
+    []
   );
 
   const editAggregate = useCallback(

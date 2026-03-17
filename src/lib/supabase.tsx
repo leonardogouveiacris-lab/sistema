@@ -99,7 +99,6 @@ export const testSupabaseConnection = async (): Promise<boolean> => {
       
       logger.error(
         'Erro ao conectar com Supabase',
-        error,
         'supabase-config',
         { errorCode: error.code, errorMessage: error.message }
       );

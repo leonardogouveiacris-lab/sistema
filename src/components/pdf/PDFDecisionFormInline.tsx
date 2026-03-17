@@ -53,9 +53,15 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
   const referenceItems = useLancamentosForReference(processId, processTable);
   const navigateToReference = useNavigateToReference(processId);
 
-  const handleReferenceClick = useCallback((item: Parameters<typeof navigateToReference>[0]) => {
-    navigateToReference(item);
-  }, [navigateToReference]);
+  const handleReferenceClick = navigateToReference;
+
+  const handleTipoDecisaoCreated = useCallback(() => {
+    refreshEnumValues(DynamicEnumType.TIPO_DECISAO);
+  }, [refreshEnumValues]);
+
+  const handleSituacaoDecisaoCreated = useCallback(() => {
+    refreshEnumValues(DynamicEnumType.SITUACAO_DECISAO);
+  }, [refreshEnumValues]);
 
   const [formData, setFormData] = useState<NewDecision>({
     tipoDecisao: editingDecision?.tipoDecisao || '',
@@ -110,15 +116,15 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleInputChange = (field: keyof NewDecision, value: string | number) => {
+  const handleInputChange = useCallback((field: keyof NewDecision, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    setErrors(prev => {
+      if (!prev[field]) return prev;
+      return { ...prev, [field]: '' };
+    });
+  }, []);
 
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
-  };
-
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!validateForm()) return;
 
     setIsSaving(true);
@@ -140,9 +146,9 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [onSave, formData, isEditMode, processId, state.currentPage]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!editingDecision?.id || !onDelete) return;
     setIsDeleting(true);
     try {
@@ -150,7 +156,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [editingDecision?.id, onDelete]);
 
   const handleExpandText = useCallback(() => {
     setExpandedTextModal({
@@ -167,7 +173,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
   const handleSaveExpandedText = useCallback((content: string) => {
     handleInputChange('observacoes', content);
     handleCloseExpandedModal();
-  }, [handleCloseExpandedModal]);
+  }, [handleInputChange, handleCloseExpandedModal]);
 
   const currentSituacao = formData.situacao;
 
@@ -231,7 +237,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           processId={processId}
           onChange={(value) => handleInputChange('tipoDecisao', value)}
           allowCustomValues={true}
-          onValueCreated={() => refreshEnumValues(DynamicEnumType.TIPO_DECISAO)}
+          onValueCreated={handleTipoDecisaoCreated}
         />
 
         <CustomDropdown
@@ -244,7 +250,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           processId={processId}
           onChange={(value) => handleInputChange('situacao', value)}
           allowCustomValues={true}
-          onValueCreated={() => refreshEnumValues(DynamicEnumType.SITUACAO_DECISAO)}
+          onValueCreated={handleSituacaoDecisaoCreated}
         />
 
         <div>
@@ -371,7 +377,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
             {isSaving ? (
               <><span className="animate-spin text-xs">⟳</span><span>Salvando...</span></>
             ) : (
-              <><Save size={11} /><span>{isEditMode ? 'Salvar' : 'Salvar'}</span></>
+              <><Save size={11} /><span>Salvar</span></>
             )}
           </button>
         </div>

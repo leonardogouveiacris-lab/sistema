@@ -49,6 +49,7 @@ type SelectionProgrammaticSource =
 
 const MOUSEUP_PROTECTION_MS = 50;
 const SCROLL_DEBOUNCE_MS = 16;
+const CARET_MOVABLE_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
 
 export function useSelectionOverlay(
   containerRef: React.RefObject<HTMLElement | null>
@@ -634,8 +635,7 @@ export function useSelectionOverlay(
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const movable = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
-      if (movable.includes(e.key) && caretGlyphRef.current && glyphMapRef.current) {
+      if (CARET_MOVABLE_KEYS.has(e.key) && caretGlyphRef.current && glyphMapRef.current) {
         e.preventDefault();
         const glyphs = glyphMapRef.current.glyphs;
         const current = caretGlyphRef.current;

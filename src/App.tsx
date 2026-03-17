@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef, ReactNode } from 'react';
 import {
   ErrorBoundary,
   Header,
@@ -19,8 +19,8 @@ import { ToastProvider } from './contexts/ToastContext';
 import { VerbaProvider } from './contexts/VerbaContext';
 import { DecisionProvider } from './contexts/DecisionContext';
 import { DocumentoProvider } from './contexts/DocumentoContext';
-import { useProcesses, useDecisions, useVerbas, useDocumentos, OperationResult } from './hooks';
-import { Process, NewProcess, NewDecision, NewVerbaComLancamento, NewVerbaLancamento, NewDocumento } from './types';
+import { useProcesses, useDecisions, useVerbas, useDocumentos } from './hooks';
+import { Process, NewProcess } from './types';
 import { logger, getUserFriendlyMessage } from './utils';
 
 enum AppTabs {
@@ -286,7 +286,7 @@ function AppContent() {
     input.click();
   }, [importProcessBackup]);
 
-  const renderGlobalError = useCallback(() => {
+  const renderGlobalError = (): ReactNode => {
     if (!systemError) return null;
     return (
       <div className="bg-red-50 border-b border-red-200 px-6 py-3" role="alert">
@@ -314,10 +314,9 @@ function AppContent() {
         </div>
       </div>
     );
-  }, [systemError, handleRetryConnection]);
+  };
 
-  const renderContent = useCallback(() => {
-    // Em caso de erro, priorizamos o alerta em vez de bloquear a UI com loading cheio.
+  const renderContent = (): ReactNode => {
     if (isInitialLoading && !systemError) {
       return (
         <div className="flex items-center justify-center py-16">
@@ -397,22 +396,7 @@ function AppContent() {
           />
         );
     }
-  }, [
-    activeTab,
-    selectedProcess,
-    processes,
-    decisions,
-    verbas,
-    documentos,
-    isInitialLoading,
-    systemError,
-    handleSaveProcess,
-    handleImportBackup,
-    handleSelectProcess,
-    handleBackToList,
-    handleUpdateProcess,
-    handleRemoveProcess
-  ]);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 notranslate" translate="no">
