@@ -311,42 +311,42 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
       {isExpanded && createPortal(
         <div
-          className={`fixed w-80 bg-white rounded-lg shadow-xl border ${colorConfig.border} z-[9999]`}
-          style={{ top: popupCoords.top, left: popupCoords.left }}
+          className={`fixed bg-white rounded-xl shadow-2xl border ${colorConfig.border} z-[9999] flex flex-col`}
+          style={{ top: popupCoords.top, left: popupCoords.left, width: 340 }}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className={`px-3 py-2 ${colorConfig.bg} flex items-center justify-between rounded-t-lg`}>
-            <span className="text-xs text-gray-600">{formattedDate}</span>
+          <div className={`px-3 py-2 ${colorConfig.bg} flex items-center justify-between rounded-t-xl shrink-0`}>
+            <span className="text-xs text-gray-500 font-medium">{formattedDate}</span>
             <button
               onClick={handleClose}
-              className="p-1 hover:bg-white/50 rounded transition-colors"
+              className="p-1 hover:bg-white/60 rounded-md transition-colors"
             >
-              <X size={16} className="text-gray-600" />
+              <X size={14} className="text-gray-500" />
             </button>
           </div>
 
-          <div className="p-3">
+          <div className="p-3 flex-1 min-h-0">
             {isEditing ? (
               <RichTextEditor
                 placeholder="Adicionar comentário..."
                 value={editContent}
                 onChange={setEditContent}
-                rows={2}
+                rows={5}
                 referenceItems={referenceItems}
                 onReferenceClick={handleReferenceClick}
               />
             ) : content && content !== '<p><br></p>' ? (
               <div
                 onClick={handleReadonlyChipClick}
-                className="min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg transition-colors leading-relaxed cursor-text text-gray-700 bg-gray-50 hover:bg-gray-100 ql-editor-readonly text-justify"
+                className="min-h-[120px] max-h-64 overflow-y-auto p-2.5 text-sm rounded-lg transition-colors leading-relaxed cursor-text text-gray-700 bg-gray-50 hover:bg-gray-100 ql-editor-readonly text-justify w-full"
                 style={{ wordBreak: 'break-word' }}
                 dangerouslySetInnerHTML={{ __html: content }}
               />
             ) : (
               <div
                 onClick={() => { setEditContent(content); setIsEditing(true); }}
-                className="min-h-[60px] p-2 text-sm rounded-lg bg-gray-50 hover:bg-gray-100 cursor-text"
+                className="min-h-[120px] p-2.5 text-sm rounded-lg bg-gray-50 hover:bg-gray-100 cursor-text flex items-start"
               >
                 <span className="text-gray-400 italic">Clique para adicionar comentário...</span>
               </div>
@@ -354,32 +354,32 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
           </div>
 
           {isEditing ? (
-            <div className="px-3 pb-3 flex justify-end gap-2">
+            <div className="px-3 pb-3 flex justify-end gap-2 shrink-0">
               <button
                 onClick={handleCancel}
-                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSave}
-                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Salvar
               </button>
             </div>
           ) : (
-            <div className="px-3 py-2 border-t border-gray-200 flex items-center justify-center gap-3">
+            <div className="px-3 py-2 border-t border-gray-100 flex items-center justify-center gap-1 shrink-0">
               <div className="relative" ref={connectorDropdownRef}>
                 <button
                   onClick={() => setShowConnectorDropdown(!showConnectorDropdown)}
-                  className={`p-1.5 rounded transition-colors ${showConnectorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                  className={`p-2 rounded-lg transition-colors ${showConnectorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
                   title="Adicionar conector"
                 >
-                  <Spline size={16} />
+                  <Spline size={15} />
                 </button>
                 {showConnectorDropdown && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-white rounded-lg shadow-xl border py-1 min-w-[120px] z-[100]">
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-white rounded-lg shadow-xl border py-1 min-w-[130px] z-[100]">
                     <button
                       onClick={handleStartArrow}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
@@ -401,14 +401,14 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
               <div className="relative" ref={colorDropdownRef}>
                 <button
                   onClick={() => setShowColorDropdown(!showColorDropdown)}
-                  className={`p-1.5 rounded transition-colors ${showColorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                  className={`p-2 rounded-lg transition-colors ${showColorDropdown ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
                   title="Mudar cor"
                 >
-                  <Palette size={16} />
+                  <Palette size={15} />
                 </button>
                 {showColorDropdown && (
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-white rounded-lg shadow-xl border p-2 z-[100]">
-                    <div className="flex gap-1">
+                    <div className="flex gap-1.5">
                       {COLOR_OPTIONS.map(color => (
                         <button
                           key={color}
@@ -426,10 +426,10 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
               <button
                 onClick={handleDelete}
-                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                 title="Excluir comentário"
               >
-                <Trash2 size={16} />
+                <Trash2 size={15} />
               </button>
             </div>
           )}
