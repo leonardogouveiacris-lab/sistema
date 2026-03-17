@@ -113,7 +113,8 @@ export async function getHighlights(filter: HighlightFilter = {}): Promise<PDFHi
       .from('pdf_highlights')
       .select('*')
       .order('page_number', { ascending: true })
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(10000);
 
     if (filter.processId) {
       query = query.eq('process_id', filter.processId);

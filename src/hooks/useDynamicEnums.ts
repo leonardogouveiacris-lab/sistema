@@ -70,7 +70,7 @@ export const useDynamicEnums = (): UseDynamicEnumsReturn => {
   const endLoading = useCallback(() => {
     activeRequestsRef.current = Math.max(0, activeRequestsRef.current - 1);
     if (activeRequestsRef.current === 0) {
-      endLoading();
+      setIsLoading(false);
     }
   }, []);
 

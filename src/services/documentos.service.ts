@@ -152,7 +152,8 @@ export class DocumentosService {
       const { data, error } = await supabase
         .from('lancamentos_documentos')
         .select('*')
-        .order('updated_at', { ascending: false });
+        .order('updated_at', { ascending: false })
+        .limit(10000);
 
       if (error) {
         throw new Error(`Erro ao buscar documentos: ${error.message}`);

@@ -274,7 +274,8 @@ export class DynamicEnumService {
         .select('*')
         .eq('enum_name', enumName)
         .is('created_by_process_id', null)
-        .order('enum_value');
+        .order('enum_value')
+        .limit(10000);
 
       if (globalError) {
         throw new Error(`Erro ao buscar valores globais: ${globalError.message}`);
@@ -287,7 +288,8 @@ export class DynamicEnumService {
           .select('*')
           .eq('enum_name', enumName)
           .eq('created_by_process_id', processId)
-          .order('enum_value');
+          .order('enum_value')
+          .limit(10000);
 
         if (error) {
           throw new Error(`Erro ao buscar valores do processo: ${error.message}`);

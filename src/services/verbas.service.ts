@@ -253,7 +253,8 @@ export class VerbasService {
           *,
           verba_lancamentos (*)
         `)
-        .order('updated_at', { ascending: false });
+        .order('updated_at', { ascending: false })
+        .limit(10000);
 
       if (error) {
         throw new Error(`Erro ao buscar verbas: ${error.message}`);
@@ -338,7 +339,8 @@ export class VerbasService {
           verba_lancamentos (*)
         `)
         .eq('process_id', processId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(10000);
 
       if (error) {
         throw new Error(`Erro ao buscar verbas do processo: ${error.message}`);

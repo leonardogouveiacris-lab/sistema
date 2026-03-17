@@ -127,7 +127,8 @@ export class DecisionsService {
       const { data, error } = await supabase
         .from('decisions')
         .select('*')
-        .order('updated_at', { ascending: false });
+        .order('updated_at', { ascending: false })
+        .limit(10000);
 
       if (error) {
         throw new Error(`Erro ao buscar decisões: ${error.message}`);
