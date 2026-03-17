@@ -19,7 +19,7 @@ import { PageRotationMap } from '../services/pageRotation.service';
 import * as PageRotationService from '../services/pageRotation.service';
 import logger from '../utils/logger';
 import { findFirstIndexByBottom, findLastIndexByTop } from '../utils/pageVisibilityIndex';
-import { createFlowContext, generateFlowId } from '../utils/flowId';
+import { generateFlowId } from '../utils/flowId';
 
 const CONTINUOUS_PAGE_GAP_PX = 16;
 

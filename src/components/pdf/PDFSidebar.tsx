@@ -223,7 +223,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
         refreshVerbas();
       }
     }
-  }, [state.sidebarTab, processId]);
+  }, [state.sidebarTab, processId, verbasLoading, allLancamentos.length, verbas, refreshVerbas]);
 
   useEffect(() => {
     if (state.formMode === 'edit-verba' || state.formMode === 'create-verba' ||

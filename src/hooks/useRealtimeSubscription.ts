@@ -86,6 +86,11 @@ export const useRealtimeSubscription = <T extends { id: string }>({
       channelRef.current = null;
     }
 
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+
     const channelName = filter
       ? `rt-${table}-${schema}-${filter}`
       : `rt-${table}-${schema}`;
@@ -125,7 +130,7 @@ export const useRealtimeSubscription = <T extends { id: string }>({
             'error'
           );
 
-          if (retryCountRef.current < MAX_RETRY_ATTEMPTS) {
+          if (retryCountRef.current < MAX_RETRY_ATTEMPTS && mountedRef.current) {
             const delay = Math.min(BASE_RETRY_DELAY_MS * Math.pow(2, retryCountRef.current), 30000);
             retryCountRef.current += 1;
 

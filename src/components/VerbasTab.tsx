@@ -141,7 +141,6 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
             onUpdateVerba={handleUpdateVerba}
             onRemoveVerba={handleRemoveVerba}
             onVerbasUpdated={handleVerbasUpdated}
-            refreshTrigger={verbasVersion}
             refreshVerbas={refreshVerbas}
             onForceRefreshVerbas={refreshVerbas}
           />

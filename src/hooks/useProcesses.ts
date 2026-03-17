@@ -262,15 +262,24 @@ export const useProcesses = () => {
   ): Promise<{ removed: number; failed: number }> => {
     let removed = 0;
     let failed = 0;
-    for (let i = 0; i < ids.length; i++) {
-      try {
-        isLocalUpdate.current = true;
-        await ProcessesService.delete(ids[i]);
-        removed++;
-      } catch {
-        failed++;
-      }
-      onProgress?.(i + 1, ids.length);
+    const CHUNK_SIZE = 10;
+
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + CHUNK_SIZE);
+      const results = await Promise.allSettled(
+        chunk.map(id => {
+          isLocalUpdate.current = true;
+          return ProcessesService.delete(id);
+        })
+      );
+      results.forEach(result => {
+        if (result.status === 'fulfilled') {
+          removed++;
+        } else {
+          failed++;
+        }
+      });
+      onProgress?.(Math.min(i + CHUNK_SIZE, ids.length), ids.length);
     }
     await loadProcesses();
     setError(null);
@@ -440,19 +449,33 @@ export const useProcesses = () => {
       };
     }
 
-    const now = new Date();
-    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+    const now = Date.now();
+    const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+    const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+    const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+
+    let ultima_semana = 0;
+    let ultimo_mes = 0;
+    let ultimo_ano = 0;
+
+    for (const p of processes) {
+      const age = now - p.dataCriacao.getTime();
+      if (age <= oneWeekMs) {
+        ultima_semana++;
+        ultimo_mes++;
+        ultimo_ano++;
+      } else if (age <= oneMonthMs) {
+        ultimo_mes++;
+        ultimo_ano++;
+      } else if (age <= oneYearMs) {
+        ultimo_ano++;
+      }
+    }
 
     return {
       total: processes.length,
-      recentes: processes.filter(p => p.dataCriacao >= oneWeekAgo).length,
-      porPeriodo: {
-        ultima_semana: processes.filter(p => p.dataCriacao >= oneWeekAgo).length,
-        ultimo_mes: processes.filter(p => p.dataCriacao >= oneMonthAgo).length,
-        ultimo_ano: processes.filter(p => p.dataCriacao >= oneYearAgo).length
-      }
+      recentes: ultima_semana,
+      porPeriodo: { ultima_semana, ultimo_mes, ultimo_ano }
     };
   }, [processes]);
 

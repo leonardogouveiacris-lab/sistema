@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Folder, Search, ChevronDown, Eye } from 'lucide-react';
 import { Process, ProcessFilter } from '../types/Process';
-import logger from '../utils/logger';
 import CleanupEmptyProcessesModal from './CleanupEmptyProcessesModal';
 
 const ITEMS_PER_PAGE = 10;

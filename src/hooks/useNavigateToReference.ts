@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { usePDFViewer } from '../contexts/PDFViewerContext';
 import { useTableViewer } from '../contexts/TableViewerContext';
+import { useToast } from '../contexts/ToastContext';
 import { LancamentoReferenceItem } from './useLancamentosForReference';
 import ProcessDocumentService from '../services/processDocument.service';
 
@@ -18,6 +19,8 @@ export function useNavigateToReference(processId: string) {
     openTableViewer,
     toggleMinimize,
   } = useTableViewer();
+
+  const toast = useToast();
 
   const navigate = useCallback(async (item: LancamentoReferenceItem) => {
     if (item.type === 'tabela') {
@@ -89,6 +92,7 @@ export function useNavigateToReference(processId: string) {
       openViewer(docs);
     } catch {
       setPendingNavigation(null);
+      toast.error('Não foi possível abrir o documento vinculado.');
     }
   }, [
     processId,
@@ -100,6 +104,7 @@ export function useNavigateToReference(processId: string) {
     setPendingNavigation,
     openTableViewer,
     toggleMinimize,
+    toast,
   ]);
 
   return navigate;

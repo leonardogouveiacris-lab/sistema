@@ -16,6 +16,7 @@ import { LancamentoRefRenderer } from './ui';
 import { useLancamentosForReference } from '../hooks/useLancamentosForReference';
 import { useNavigateToReference } from '../hooks/useNavigateToReference';
 import { useProcessTable } from '../hooks/useProcessTable';
+import { useToast } from '../contexts/ToastContext';
 
 /**
  * Props do componente VerbaList
@@ -28,7 +29,6 @@ interface VerbaListProps {
   onUpdateVerba?: (verbaId: string, lancamentoId: string, updatedData: Partial<NewVerbaLancamento>) => Promise<void> | void;
   onRemoveVerba?: (verbaId: string, lancamentoId: string) => Promise<void> | void;
   onVerbasUpdated?: () => void;               // Callback quando verbas são atualizadas
-  refreshTrigger?: number;                    // Trigger para forçar refresh
   refreshVerbas?: () => Promise<void>;        // Callback para recarregar verbas do banco
   onForceRefreshVerbas?: () => Promise<void>; // Callback para forçar refresh após rename
 }
@@ -41,10 +41,9 @@ const VerbaList: React.FC<VerbaListProps> = ({
   verbas,
   decisions,
   onSelectVerba, 
-  onUpdateVerba, 
+  onUpdateVerba,
   onRemoveVerba,
   onVerbasUpdated,
-  refreshTrigger = 0,
   refreshVerbas,
   onForceRefreshVerbas
 }) => {
@@ -72,6 +71,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
   const { table: processTable } = useProcessTable(processId);
   const referenceItems = useLancamentosForReference(processId, processTable);
   const navigateToReference = useNavigateToReference(processId);
+  const toast = useToast();
 
   // Estado do filtro de pesquisa para busca dinâmica
   const [filter, setFilter] = useState<VerbaFilter>({ searchTerm: '' });
@@ -199,7 +199,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
   const handleCloseModal = useCallback(() => {
     setIsModalOpen(false);
     setEditingLancamento(null);
-  }, [editingLancamento]);
+  }, []);
 
   /**
    * Processa o salvamento das alterações do lançamento
@@ -233,15 +233,6 @@ const VerbaList: React.FC<VerbaListProps> = ({
     }
   }, [editingLancamento, onUpdateVerba, handleCloseModal]);
 
-  /**
-   * Effect para detectar mudanças nos dados das verbas
-   * Força re-render quando refreshTrigger muda
-   */
-  useEffect(() => {
-    if (refreshTrigger > 0) {
-      // Refresh triggered
-    }
-  }, [refreshTrigger, processId]);
 
   /**
    * Effect para escutar eventos de atualização de verbas
@@ -312,6 +303,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
         error as Error,
         'VerbaList - handleToggleCalculista'
       );
+      toast.error('Não foi possível atualizar o check do calculista.');
     } finally {
       setCheckLoading(prev => ({ ...prev, [`calc-${lancamentoId}`]: false }));
     }
@@ -342,6 +334,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
         error as Error,
         'VerbaList - handleToggleRevisor'
       );
+      toast.error('Não foi possível atualizar o check do revisor.');
     } finally {
       setCheckLoading(prev => ({ ...prev, [`rev-${lancamentoId}`]: false }));
     }
