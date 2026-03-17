@@ -285,17 +285,9 @@ const PDFBookmarkPanel: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-900">
             Índice do Documento
           </h3>
-          <div className="flex items-center gap-2">
-            {state.isLoadingBookmarks && (
-              <span className="inline-flex items-center gap-1 text-xs text-amber-600">
-                <span className="animate-spin inline-block w-3 h-3 border border-amber-600 border-t-transparent rounded-full" />
-                atualizando índice...
-              </span>
-            )}
-            <span className="text-xs text-gray-500">
-              {totalBookmarks} {totalBookmarks === 1 ? 'item' : 'itens'}
-            </span>
-          </div>
+          <span className="text-xs text-gray-500">
+            {totalBookmarks} {totalBookmarks === 1 ? 'item' : 'itens'}
+          </span>
         </div>
 
         <div className="relative">
