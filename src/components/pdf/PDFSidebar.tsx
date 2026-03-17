@@ -102,6 +102,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
 
   const {
     verbas,
+    isLoading: verbasLoading,
     addVerbaComLancamento,
     updateVerbaLancamento,
     removeVerbaLancamento,
@@ -214,6 +215,15 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   useEffect(() => {
     localStorage.setItem('pdf-sidebar-collapsed-groups', JSON.stringify(Array.from(collapsedGroups)));
   }, [collapsedGroups]);
+
+  useEffect(() => {
+    if (state.sidebarTab === 'verbas' && !verbasLoading && allLancamentos.length === 0 && processId) {
+      const processHasVerbas = verbas.some(v => v.processId === processId);
+      if (!processHasVerbas) {
+        refreshVerbas();
+      }
+    }
+  }, [state.sidebarTab, processId]);
 
   useEffect(() => {
     if (state.formMode === 'edit-verba' || state.formMode === 'create-verba' ||
