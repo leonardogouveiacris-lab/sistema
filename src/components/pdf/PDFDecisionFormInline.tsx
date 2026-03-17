@@ -191,7 +191,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
                   {isEditMode && editingDecision?.idDecisao ? editingDecision.idDecisao : (isEditMode ? 'Editar Decisão' : 'Nova Decisão')}
                 </span>
                 {currentSituacao && (
-                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border flex-shrink-0 ${getSituacaoBadgeClass(currentSituacao)}`}>
+                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded border flex-shrink-0 ${getSituacaoBadgeClass(currentSituacao)}`}>
                     {currentSituacao}
                   </span>
                 )}

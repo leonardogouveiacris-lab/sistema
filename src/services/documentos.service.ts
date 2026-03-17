@@ -27,6 +27,10 @@ interface DocumentoRecord {
   comentarios: string | null;
   pagina_vinculada: number | null;
   highlight_ids: string[] | null;
+  check_calculista: boolean;
+  check_calculista_at: string | null;
+  check_revisor: boolean;
+  check_revisor_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -79,6 +83,10 @@ export class DocumentosService {
       comentarios: record.comentarios || '',
       paginaVinculada: record.pagina_vinculada ?? undefined,
       highlightIds: record.highlight_ids || [],
+      checkCalculista: record.check_calculista ?? false,
+      checkCalculistaAt: record.check_calculista_at ? new Date(record.check_calculista_at) : undefined,
+      checkRevisor: record.check_revisor ?? false,
+      checkRevisorAt: record.check_revisor_at ? new Date(record.check_revisor_at) : undefined,
       dataCriacao: new Date(record.created_at),
       dataAtualizacao: new Date(record.updated_at)
     };
@@ -451,6 +459,37 @@ export class DocumentosService {
         error as Error,
         'DocumentosService.search',
         { searchTerm, processId }
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Alterna o check de calculista ou revisor de um documento
+   */
+  static async toggleCheck(documentoId: string, field: 'calculista' | 'revisor', value: boolean): Promise<Documento> {
+    try {
+      const columnField = field === 'calculista' ? 'check_calculista' : 'check_revisor';
+      const columnAt = field === 'calculista' ? 'check_calculista_at' : 'check_revisor_at';
+      const updateData: Record<string, boolean | string | null> = {
+        [columnField]: value,
+        [columnAt]: value ? new Date().toISOString() : null
+      };
+
+      const { data, error } = await supabase
+        .from('lancamentos_documentos')
+        .update(updateData)
+        .eq('id', documentoId)
+        .select()
+        .single();
+
+      if (error) throw new Error(`Erro ao atualizar check: ${error.message}`);
+      return this.recordToDocumento(data);
+    } catch (error) {
+      logger.errorWithException(
+        `Falha ao alternar check ${field} do documento: ${documentoId}`,
+        error as Error,
+        'DocumentosService.toggleCheck'
       );
       throw error;
     }

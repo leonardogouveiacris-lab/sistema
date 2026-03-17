@@ -43,6 +43,10 @@ export interface Documento extends BaseEntity {
   paginaVinculada?: number;     // Página do PDF onde o documento está vinculado (opcional)
   processDocumentId?: string;   // ID do documento PDF específico onde o documento foi registrado (opcional)
   highlightIds?: string[];      // Array de IDs de highlights PDF vinculados (múltiplas seleções)
+  checkCalculista: boolean;     // Indica se o cálculo/verificação foi concluído
+  checkCalculistaAt?: Date;     // Data/hora em que o check do calculista foi marcado
+  checkRevisor: boolean;        // Indica se a revisão foi aprovada
+  checkRevisorAt?: Date;        // Data/hora em que o check do revisor foi marcado
 }
 
 /**

@@ -606,13 +606,19 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
 
       <div className="px-3 py-2.5 border-t border-gray-100 flex items-center justify-between gap-2">
         {isEditMode && onDelete ? (
-          <button
-            onClick={() => setShowDeleteConfirm(v => !v)}
-            disabled={isSaving || isDeleting}
-            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${showDeleteConfirm ? 'bg-red-50 border-red-200 text-red-700' : 'text-red-500 border-red-200 hover:bg-red-50'}`}
-          >
-            <Trash2 size={12} /> Excluir
-          </button>
+          checkRevisor ? (
+            <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-300 border border-gray-200 rounded-md cursor-not-allowed" title="Lançamento concluído não pode ser excluído">
+              <Trash2 size={12} /> Excluir
+            </span>
+          ) : (
+            <button
+              onClick={() => setShowDeleteConfirm(v => !v)}
+              disabled={isSaving || isDeleting}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${showDeleteConfirm ? 'bg-red-50 border-red-200 text-red-700' : 'text-red-500 border-red-200 hover:bg-red-50'}`}
+            >
+              <Trash2 size={12} /> Excluir
+            </button>
+          )
         ) : (
           <div />
         )}

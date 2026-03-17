@@ -150,9 +150,15 @@ const VerbaLancamentoCard: React.FC<VerbaLancamentoCardProps> = ({
             <button onClick={() => onEdit(lancamento.id)} className="p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50 rounded transition-colors" title="Editar">
               <Edit2 size={13} />
             </button>
-            <button onClick={() => onDelete(verba.id, lancamento.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Excluir">
-              <Trash2 size={13} />
-            </button>
+            {currentStatus === 'concluido' ? (
+              <span className="p-1.5 text-gray-300 cursor-not-allowed" title="Lançamento concluído não pode ser excluído">
+                <Trash2 size={13} />
+              </span>
+            ) : (
+              <button onClick={() => onDelete(verba.id, lancamento.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Excluir">
+                <Trash2 size={13} />
+              </button>
+            )}
           </div>
         </div>
 

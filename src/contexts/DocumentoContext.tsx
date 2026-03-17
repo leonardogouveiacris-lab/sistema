@@ -18,6 +18,7 @@ interface DocumentoContextValue {
   updateDocumento: (id: string, updatedData: Partial<NewDocumento>, skipGlobalError?: boolean) => Promise<OperationResult>;
   removeDocumento: (id: string, skipGlobalError?: boolean) => Promise<OperationResult>;
   renameTipoDocumento: (oldTipo: string, newTipo: string, skipGlobalError?: boolean) => Promise<OperationResult>;
+  toggleDocumentoCheck: (documentoId: string, field: 'calculista' | 'revisor', value: boolean) => Promise<void>;
   getDocumentoById: (id: string) => Documento | undefined;
   getDocumentosByProcess: (processId: string) => Documento[];
   refreshDocumentos: () => Promise<void>;
@@ -172,6 +173,15 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, []);
 
+  const toggleDocumentoCheck = useCallback(async (documentoId: string, field: 'calculista' | 'revisor', value: boolean): Promise<void> => {
+    try {
+      const updatedDocumento = await DocumentosService.toggleCheck(documentoId, field, value);
+      setDocumentos(prev => prev.map(d => d.id === documentoId ? updatedDocumento : d));
+    } catch (err) {
+      logger.errorWithException(`Falha ao alternar check ${field} do documento`, err as Error, 'DocumentoContext.toggleDocumentoCheck');
+    }
+  }, []);
+
   const getDocumentoById = useCallback((id: string): Documento | undefined => {
     return documentos.find(d => d.id === id);
   }, [documentos]);
@@ -188,6 +198,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
     updateDocumento,
     removeDocumento,
     renameTipoDocumento,
+    toggleDocumentoCheck,
     getDocumentoById,
     getDocumentosByProcess,
     refreshDocumentos
@@ -199,6 +210,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
     updateDocumento,
     removeDocumento,
     renameTipoDocumento,
+    toggleDocumentoCheck,
     getDocumentoById,
     getDocumentosByProcess,
     refreshDocumentos
