@@ -2,22 +2,26 @@
  * PDFDecisionFormInline - Compact inline form for decisions in PDF sidebar
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { NewDecision, Decision } from '../../types/Decision';
 import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
+import { DropdownItemAction } from '../ui/CustomDropdown';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useDynamicEnums } from '../../hooks/useDynamicEnums';
+import { useDecisionContext } from '../../contexts/DecisionContext';
+import { useToast } from '../../contexts/ToastContext';
 import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
 import { useNavigateToReference } from '../../hooks/useNavigateToReference';
 import { useProcessTable } from '../../hooks/useProcessTable';
-import { Save, X, Scale, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock } from 'lucide-react';
+import { Save, X, Scale, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock, Check, CreditCard as Edit2 } from 'lucide-react';
 
 interface PDFDecisionFormInlineProps {
   processId: string;
   onSave: (decision: NewDecision) => Promise<boolean>;
   onCancel: () => void;
   onDelete?: (id: string) => Promise<boolean>;
+  onRenameTipo?: (oldTipo: string, newTipo: string) => Promise<boolean>;
   editingDecision?: Decision | null;
 }
 
@@ -44,10 +48,13 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
   onSave,
   onCancel,
   onDelete,
+  onRenameTipo,
   editingDecision = null
 }) => {
   const { state } = usePDFViewer();
-  const { refreshEnumValues } = useDynamicEnums();
+  const { refreshEnumValues, renameCustomValue, deleteCustomValue, getPredefinedValues } = useDynamicEnums();
+  const { getDecisionsByProcess } = useDecisionContext();
+  const toast = useToast();
   const isEditMode = !!editingDecision;
   const { table: processTable } = useProcessTable(processId);
   const referenceItems = useLancamentosForReference(processId, processTable);
@@ -77,6 +84,17 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const [isRenamingTipo, setIsRenamingTipo] = useState(false);
+  const [renameTipoValue, setRenameTipoValue] = useState('');
+  const [deletingTipo, setDeletingTipo] = useState<string | null>(null);
+
+  const [isRenamingSituacao, setIsRenamingSituacao] = useState(false);
+  const [renameSituacaoValue, setRenameSituacaoValue] = useState('');
+  const [deletingSituacao, setDeletingSituacao] = useState<string | null>(null);
+
+  const [predefinedTipos, setPredefinedTipos] = useState<string[]>([]);
+  const [predefinedSituacoes, setPredefinedSituacoes] = useState<string[]>([]);
+
   const [expandedTextModal, setExpandedTextModal] = useState({
     isOpen: false,
     title: '',
@@ -84,15 +102,43 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
   });
 
   useEffect(() => {
+    getPredefinedValues(DynamicEnumType.TIPO_DECISAO).then(setPredefinedTipos);
+    getPredefinedValues(DynamicEnumType.SITUACAO_DECISAO).then(setPredefinedSituacoes);
+  }, [getPredefinedValues]);
+
+  useEffect(() => {
+    if (isEditMode && editingDecision) {
+      setFormData({
+        tipoDecisao: editingDecision.tipoDecisao || '',
+        idDecisao: editingDecision.idDecisao || '',
+        situacao: editingDecision.situacao || '',
+        observacoes: editingDecision.observacoes || '',
+        processId,
+        paginaVinculada: editingDecision.paginaVinculada
+      });
+    }
+    setIsRenamingTipo(false);
+    setIsRenamingSituacao(false);
+  }, [isEditMode, editingDecision?.id, processId]);
+
+  useEffect(() => {
     if (!isEditMode) {
       setFormData(prev => ({ ...prev, paginaVinculada: state.currentPage }));
     }
   }, [state.currentPage, isEditMode]);
 
+  const isSystemTipo = useCallback((tipo: string): boolean => {
+    return predefinedTipos.includes(tipo);
+  }, [predefinedTipos]);
+
+  const isSystemSituacao = useCallback((situacao: string): boolean => {
+    return predefinedSituacoes.includes(situacao);
+  }, [predefinedSituacoes]);
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.tipoDecisao.trim()) {
+    if (!isEditMode && (!formData.tipoDecisao || !formData.tipoDecisao.trim())) {
       newErrors.tipoDecisao = 'Tipo de decisão é obrigatório';
     }
 
@@ -100,7 +146,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
       newErrors.idDecisao = 'ID da decisão é obrigatório';
     }
 
-    if (!formData.situacao.trim()) {
+    if (!isEditMode && (!formData.situacao || !formData.situacao.trim())) {
       newErrors.situacao = 'Situação é obrigatória';
     }
 
@@ -124,11 +170,122 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
     });
   }, []);
 
+  const handleConfirmRenameTipo = useCallback(() => {
+    if (renameTipoValue.trim()) {
+      setFormData(prev => ({ ...prev, tipoDecisao: renameTipoValue.trim() }));
+    }
+    setIsRenamingTipo(false);
+  }, [renameTipoValue]);
+
+  const handleCancelRenameTipo = useCallback(() => {
+    setRenameTipoValue(formData.tipoDecisao);
+    setIsRenamingTipo(false);
+  }, [formData.tipoDecisao]);
+
+  const handleEditarTipo = useCallback((tipo: string) => {
+    setIsRenamingTipo(true);
+    setRenameTipoValue(tipo);
+    setFormData(prev => ({ ...prev, tipoDecisao: tipo }));
+  }, []);
+
+  const handleExcluirTipo = useCallback(async (tipo: string) => {
+    const decisoesDoProcesso = getDecisionsByProcess(processId);
+    const emUso = decisoesDoProcesso.some(d => d.tipoDecisao === tipo);
+    if (emUso) {
+      toast.error(`"${tipo}" está em uso por uma ou mais decisões e não pode ser excluído`);
+      return;
+    }
+    setDeletingTipo(tipo);
+    try {
+      const result = await deleteCustomValue(DynamicEnumType.TIPO_DECISAO, tipo, processId);
+      if (result.success) {
+        toast.success(result.message);
+        if (formData.tipoDecisao === tipo) {
+          setFormData(prev => ({ ...prev, tipoDecisao: '' }));
+        }
+        await refreshEnumValues(DynamicEnumType.TIPO_DECISAO, processId);
+      } else {
+        toast.error(result.message);
+      }
+    } finally {
+      setDeletingTipo(null);
+    }
+  }, [deleteCustomValue, processId, toast, formData.tipoDecisao, refreshEnumValues, getDecisionsByProcess]);
+
+  const handleConfirmRenameSituacao = useCallback(() => {
+    if (renameSituacaoValue.trim()) {
+      setFormData(prev => ({ ...prev, situacao: renameSituacaoValue.trim() }));
+    }
+    setIsRenamingSituacao(false);
+  }, [renameSituacaoValue]);
+
+  const handleCancelRenameSituacao = useCallback(() => {
+    setRenameSituacaoValue(formData.situacao);
+    setIsRenamingSituacao(false);
+  }, [formData.situacao]);
+
+  const handleEditarSituacao = useCallback((situacao: string) => {
+    setIsRenamingSituacao(true);
+    setRenameSituacaoValue(situacao);
+    setFormData(prev => ({ ...prev, situacao }));
+  }, []);
+
+  const handleExcluirSituacao = useCallback(async (situacao: string) => {
+    const decisoesDoProcesso = getDecisionsByProcess(processId);
+    const emUso = decisoesDoProcesso.some(d => d.situacao === situacao);
+    if (emUso) {
+      toast.error(`"${situacao}" está em uso por uma ou mais decisões e não pode ser excluído`);
+      return;
+    }
+    setDeletingSituacao(situacao);
+    try {
+      const result = await deleteCustomValue(DynamicEnumType.SITUACAO_DECISAO, situacao, processId);
+      if (result.success) {
+        toast.success(result.message);
+        if (formData.situacao === situacao) {
+          setFormData(prev => ({ ...prev, situacao: '' }));
+        }
+        await refreshEnumValues(DynamicEnumType.SITUACAO_DECISAO, processId);
+      } else {
+        toast.error(result.message);
+      }
+    } finally {
+      setDeletingSituacao(null);
+    }
+  }, [deleteCustomValue, processId, toast, formData.situacao, refreshEnumValues, getDecisionsByProcess]);
+
+  const tipoItemActions: DropdownItemAction = useMemo(() => ({
+    onEdit: (tipo: string) => { if (!isSystemTipo(tipo)) handleEditarTipo(tipo); },
+    onDelete: (tipo: string) => { if (!isSystemTipo(tipo)) handleExcluirTipo(tipo); },
+    isDeleting: (tipo: string) => deletingTipo === tipo,
+  }), [handleEditarTipo, handleExcluirTipo, deletingTipo, isSystemTipo]);
+
+  const situacaoItemActions: DropdownItemAction = useMemo(() => ({
+    onEdit: (situacao: string) => { if (!isSystemSituacao(situacao)) handleEditarSituacao(situacao); },
+    onDelete: (situacao: string) => { if (!isSystemSituacao(situacao)) handleExcluirSituacao(situacao); },
+    isDeleting: (situacao: string) => deletingSituacao === situacao,
+  }), [handleEditarSituacao, handleExcluirSituacao, deletingSituacao, isSystemSituacao]);
+
   const handleSave = useCallback(async () => {
     if (!validateForm()) return;
 
     setIsSaving(true);
     try {
+      const savedTipo = formData.tipoDecisao.trim();
+
+      if (isEditMode && editingDecision && savedTipo !== editingDecision.tipoDecisao && !isSystemTipo(editingDecision.tipoDecisao)) {
+        const renameResult = await renameCustomValue(DynamicEnumType.TIPO_DECISAO, editingDecision.tipoDecisao, savedTipo, processId);
+        if (!renameResult.success) {
+          toast.error(renameResult.message || 'Falha ao renomear tipo de decisão.');
+          setIsSaving(false);
+          return;
+        }
+        if (onRenameTipo) {
+          await onRenameTipo(editingDecision.tipoDecisao, savedTipo);
+        }
+        await refreshEnumValues(DynamicEnumType.TIPO_DECISAO, processId);
+      }
+
       const success = await onSave(formData);
       if (success) {
         if (!isEditMode) {
@@ -146,7 +303,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [onSave, formData, isEditMode, processId, state.currentPage]);
+  }, [onSave, formData, isEditMode, processId, state.currentPage, editingDecision, isSystemTipo, renameCustomValue, refreshEnumValues, onRenameTipo, toast]);
 
   const handleDelete = useCallback(async () => {
     if (!editingDecision?.id || !onDelete) return;
@@ -158,14 +315,6 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
     }
   }, [editingDecision?.id, onDelete]);
 
-  const handleExpandText = useCallback(() => {
-    setExpandedTextModal({
-      isOpen: true,
-      title: 'Observações da Decisão',
-      content: formData.observacoes || ''
-    });
-  }, [formData.observacoes]);
-
   const handleCloseExpandedModal = useCallback(() => {
     setExpandedTextModal({ isOpen: false, title: '', content: '' });
   }, []);
@@ -175,7 +324,10 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
     handleCloseExpandedModal();
   }, [handleInputChange, handleCloseExpandedModal]);
 
+  const currentTipo = formData.tipoDecisao;
   const currentSituacao = formData.situacao;
+  const canRenameTipo = isEditMode && currentTipo && !isSystemTipo(currentTipo);
+  const canRenameSituacao = isEditMode && currentSituacao && !isSystemSituacao(currentSituacao);
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden">
@@ -192,23 +344,85 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
               <Scale size={12} className="text-blue-600" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-sm font-bold text-gray-900 truncate">
-                  {isEditMode && editingDecision?.idDecisao ? editingDecision.idDecisao : (isEditMode ? 'Editar Decisão' : 'Nova Decisão')}
-                </span>
-                {currentSituacao && (
-                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded border flex-shrink-0 ${getSituacaoBadgeClass(currentSituacao)}`}>
-                    {currentSituacao}
-                  </span>
+              <div className="flex items-center gap-1 mb-0.5">
+                {isEditMode && isRenamingTipo ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      value={renameTipoValue}
+                      onChange={e => setRenameTipoValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleConfirmRenameTipo(); if (e.key === 'Escape') handleCancelRenameTipo(); }}
+                      className="text-xs font-bold text-gray-900 border-b border-blue-500 bg-transparent focus:outline-none"
+                      style={{ width: `${Math.max(renameTipoValue.length + 2, 12)}ch` }}
+                      autoFocus
+                    />
+                    <button onClick={handleConfirmRenameTipo} className="p-0.5 text-green-600 hover:text-green-700">
+                      <Check size={11} />
+                    </button>
+                    <button onClick={handleCancelRenameTipo} className="p-0.5 text-gray-400 hover:text-gray-600">
+                      <X size={11} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-bold text-gray-900 truncate">
+                      {isEditMode && editingDecision?.idDecisao
+                        ? editingDecision.idDecisao
+                        : (isEditMode ? 'Editar Decisão' : 'Nova Decisão')}
+                    </span>
+                    {currentSituacao && !isRenamingSituacao && (
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded border flex-shrink-0 ${getSituacaoBadgeClass(currentSituacao)}`}>
+                        {currentSituacao}
+                      </span>
+                    )}
+                    {isEditMode && isRenamingSituacao && (
+                      <div className="flex items-center gap-1">
+                        <input
+                          value={renameSituacaoValue}
+                          onChange={e => setRenameSituacaoValue(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleConfirmRenameSituacao(); if (e.key === 'Escape') handleCancelRenameSituacao(); }}
+                          className="text-xs font-medium border-b border-blue-500 bg-transparent focus:outline-none"
+                          style={{ width: `${Math.max(renameSituacaoValue.length + 2, 10)}ch` }}
+                          autoFocus
+                        />
+                        <button onClick={handleConfirmRenameSituacao} className="p-0.5 text-green-600 hover:text-green-700">
+                          <Check size={11} />
+                        </button>
+                        <button onClick={handleCancelRenameSituacao} className="p-0.5 text-gray-400 hover:text-gray-600">
+                          <X size={11} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-              {(formData.tipoDecisao || formData.paginaVinculada) && (
-                <p className="text-xs text-gray-400 truncate">
-                  {formData.tipoDecisao && <span>{formData.tipoDecisao}</span>}
-                  {formData.tipoDecisao && formData.paginaVinculada ? ' · ' : ''}
-                  {formData.paginaVinculada ? `p. ${formData.paginaVinculada}` : ''}
-                </p>
-              )}
+              <div className="flex items-center gap-1">
+                {currentTipo && !isRenamingTipo && (
+                  <p className="text-xs text-gray-400 truncate">
+                    {currentTipo}{formData.paginaVinculada ? ` · p. ${formData.paginaVinculada}` : ''}
+                  </p>
+                )}
+                {!currentTipo && formData.paginaVinculada && (
+                  <p className="text-xs text-gray-400">p. {formData.paginaVinculada}</p>
+                )}
+                {canRenameTipo && !isRenamingTipo && !isRenamingSituacao && (
+                  <button
+                    onClick={() => { setRenameTipoValue(currentTipo); setIsRenamingTipo(true); }}
+                    className="p-0.5 text-gray-400 hover:text-blue-600 flex-shrink-0"
+                    title="Renomear tipo de decisão"
+                  >
+                    <Edit2 size={10} />
+                  </button>
+                )}
+                {canRenameSituacao && !isRenamingSituacao && !isRenamingTipo && (
+                  <button
+                    onClick={() => { setRenameSituacaoValue(currentSituacao); setIsRenamingSituacao(true); }}
+                    className="p-0.5 text-gray-400 hover:text-blue-600 flex-shrink-0"
+                    title="Renomear situação"
+                  >
+                    <Edit2 size={10} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -221,37 +435,54 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
       </div>
 
       <div className="p-3 space-y-2.5">
+        {isEditMode && isRenamingTipo && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-2 text-xs text-blue-700">
+            Renomear atualizará <strong>todas as decisões</strong> com este tipo.
+          </div>
+        )}
+        {isEditMode && isRenamingSituacao && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-2 text-xs text-blue-700">
+            Renomear atualizará <strong>todas as decisões</strong> com esta situação.
+          </div>
+        )}
+
         {errors.form && (
           <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-xs text-red-700">{errors.form}</p>
           </div>
         )}
 
-        <CustomDropdown
-          label="Tipo de Decisão"
-          placeholder="Selecione ou crie novo..."
-          value={formData.tipoDecisao}
-          required={true}
-          error={errors.tipoDecisao}
-          enumType={DynamicEnumType.TIPO_DECISAO}
-          processId={processId}
-          onChange={(value) => handleInputChange('tipoDecisao', value)}
-          allowCustomValues={true}
-          onValueCreated={handleTipoDecisaoCreated}
-        />
+        {!isEditMode && (
+          <CustomDropdown
+            label="Tipo de Decisão"
+            placeholder="Selecione ou crie novo..."
+            value={formData.tipoDecisao}
+            required={true}
+            error={errors.tipoDecisao}
+            enumType={DynamicEnumType.TIPO_DECISAO}
+            processId={processId}
+            onChange={(value) => handleInputChange('tipoDecisao', value)}
+            allowCustomValues={true}
+            onValueCreated={handleTipoDecisaoCreated}
+            itemActions={tipoItemActions}
+          />
+        )}
 
-        <CustomDropdown
-          label="Situação"
-          placeholder="Selecione ou crie novo..."
-          value={formData.situacao}
-          required={true}
-          error={errors.situacao}
-          enumType={DynamicEnumType.SITUACAO_DECISAO}
-          processId={processId}
-          onChange={(value) => handleInputChange('situacao', value)}
-          allowCustomValues={true}
-          onValueCreated={handleSituacaoDecisaoCreated}
-        />
+        {!isEditMode && (
+          <CustomDropdown
+            label="Situação"
+            placeholder="Selecione ou crie novo..."
+            value={formData.situacao}
+            required={true}
+            error={errors.situacao}
+            enumType={DynamicEnumType.SITUACAO_DECISAO}
+            processId={processId}
+            onChange={(value) => handleInputChange('situacao', value)}
+            allowCustomValues={true}
+            onValueCreated={handleSituacaoDecisaoCreated}
+            itemActions={situacaoItemActions}
+          />
+        )}
 
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">
