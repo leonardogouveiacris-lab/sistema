@@ -344,14 +344,14 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
               <Scale size={12} className="text-blue-600" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1 mb-0.5">
+              <div className="flex items-center gap-1.5 mb-0.5">
                 {isEditMode && isRenamingTipo ? (
                   <div className="flex items-center gap-1">
                     <input
                       value={renameTipoValue}
                       onChange={e => setRenameTipoValue(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') handleConfirmRenameTipo(); if (e.key === 'Escape') handleCancelRenameTipo(); }}
-                      className="text-xs font-bold text-gray-900 border-b border-blue-500 bg-transparent focus:outline-none"
+                      className="text-sm font-semibold text-gray-900 border-b border-blue-500 bg-transparent focus:outline-none"
                       style={{ width: `${Math.max(renameTipoValue.length + 2, 12)}ch` }}
                       autoFocus
                     />
@@ -363,65 +363,67 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1">
-                    <span className="text-sm font-bold text-gray-900 truncate">
-                      {isEditMode && editingDecision?.idDecisao
-                        ? editingDecision.idDecisao
-                        : (isEditMode ? 'Editar Decisão' : 'Nova Decisão')}
+                  <>
+                    <span className="text-sm font-semibold text-gray-900 truncate">
+                      {isEditMode ? (currentTipo || 'Editar Decisão') : 'Nova Decisão'}
                     </span>
-                    {currentSituacao && !isRenamingSituacao && (
-                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded border flex-shrink-0 ${getSituacaoBadgeClass(currentSituacao)}`}>
-                        {currentSituacao}
-                      </span>
+                    {canRenameTipo && !isRenamingTipo && !isRenamingSituacao && (
+                      <button
+                        onClick={() => { setRenameTipoValue(currentTipo); setIsRenamingTipo(true); }}
+                        className="p-0.5 text-gray-300 hover:text-blue-600 flex-shrink-0"
+                        title="Renomear tipo de decisão"
+                      >
+                        <Edit2 size={10} />
+                      </button>
                     )}
-                    {isEditMode && isRenamingSituacao && (
-                      <div className="flex items-center gap-1">
-                        <input
-                          value={renameSituacaoValue}
-                          onChange={e => setRenameSituacaoValue(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') handleConfirmRenameSituacao(); if (e.key === 'Escape') handleCancelRenameSituacao(); }}
-                          className="text-xs font-medium border-b border-blue-500 bg-transparent focus:outline-none"
-                          style={{ width: `${Math.max(renameSituacaoValue.length + 2, 10)}ch` }}
-                          autoFocus
-                        />
-                        <button onClick={handleConfirmRenameSituacao} className="p-0.5 text-green-600 hover:text-green-700">
-                          <Check size={11} />
-                        </button>
-                        <button onClick={handleCancelRenameSituacao} className="p-0.5 text-gray-400 hover:text-gray-600">
-                          <X size={11} />
-                        </button>
-                      </div>
+                  </>
+                )}
+                {currentSituacao && !isRenamingSituacao && (
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded border ${getSituacaoBadgeClass(currentSituacao)}`}>
+                      {currentSituacao}
+                    </span>
+                    {canRenameSituacao && !isRenamingTipo && (
+                      <button
+                        onClick={() => { setRenameSituacaoValue(currentSituacao); setIsRenamingSituacao(true); }}
+                        className="p-0.5 text-gray-300 hover:text-blue-600"
+                        title="Renomear situação"
+                      >
+                        <Edit2 size={10} />
+                      </button>
                     )}
+                  </div>
+                )}
+                {isEditMode && isRenamingSituacao && (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <input
+                      value={renameSituacaoValue}
+                      onChange={e => setRenameSituacaoValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleConfirmRenameSituacao(); if (e.key === 'Escape') handleCancelRenameSituacao(); }}
+                      className="text-xs font-medium border-b border-blue-500 bg-transparent focus:outline-none"
+                      style={{ width: `${Math.max(renameSituacaoValue.length + 2, 10)}ch` }}
+                      autoFocus
+                    />
+                    <button onClick={handleConfirmRenameSituacao} className="p-0.5 text-green-600 hover:text-green-700">
+                      <Check size={11} />
+                    </button>
+                    <button onClick={handleCancelRenameSituacao} className="p-0.5 text-gray-400 hover:text-gray-600">
+                      <X size={11} />
+                    </button>
                   </div>
                 )}
               </div>
               <div className="flex items-center gap-1">
-                {currentTipo && !isRenamingTipo && (
-                  <p className="text-xs text-gray-400 truncate">
-                    {currentTipo}{formData.paginaVinculada ? ` · p. ${formData.paginaVinculada}` : ''}
-                  </p>
+                {isEditMode && editingDecision?.idDecisao && (
+                  <span className="text-xs font-medium text-gray-500 truncate">
+                    {editingDecision.idDecisao}
+                  </span>
                 )}
-                {!currentTipo && formData.paginaVinculada && (
-                  <p className="text-xs text-gray-400">p. {formData.paginaVinculada}</p>
-                )}
-                {canRenameTipo && !isRenamingTipo && !isRenamingSituacao && (
-                  <button
-                    onClick={() => { setRenameTipoValue(currentTipo); setIsRenamingTipo(true); }}
-                    className="p-0.5 text-gray-400 hover:text-blue-600 flex-shrink-0"
-                    title="Renomear tipo de decisão"
-                  >
-                    <Edit2 size={10} />
-                  </button>
-                )}
-                {canRenameSituacao && !isRenamingSituacao && !isRenamingTipo && (
-                  <button
-                    onClick={() => { setRenameSituacaoValue(currentSituacao); setIsRenamingSituacao(true); }}
-                    className="p-0.5 text-gray-400 hover:text-blue-600 flex-shrink-0"
-                    title="Renomear situação"
-                  >
-                    <Edit2 size={10} />
-                  </button>
-                )}
+                {formData.paginaVinculada ? (
+                  <span className="text-xs text-gray-400">
+                    {isEditMode && editingDecision?.idDecisao ? '· ' : ''}p. {formData.paginaVinculada}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
