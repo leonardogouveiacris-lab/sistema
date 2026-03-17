@@ -87,7 +87,7 @@ const CommentDetailModal: React.FC<CommentDetailModalProps> = ({ comment, onClos
           <div className="min-h-[80px] max-h-80 overflow-y-auto">
             {hasContent(comment.content) ? (
               <div
-                className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
+                className="prose prose-sm max-w-none text-gray-700 leading-relaxed text-justify"
                 dangerouslySetInnerHTML={{ __html: comment.content }}
               />
             ) : (

@@ -90,7 +90,7 @@ const DocumentoLancamentoCard: React.FC<DocumentoLancamentoCardProps> = ({
         <div className="text-sm mt-2">
           <span className="font-medium text-gray-700">Comentários:</span>
           <div
-            className="text-gray-600 mt-1 leading-relaxed prose prose-sm max-w-none"
+            className="text-gray-600 mt-1 leading-relaxed prose prose-sm max-w-none text-justify"
             dangerouslySetInnerHTML={{ __html: documento.comentarios }}
           />
         </div>

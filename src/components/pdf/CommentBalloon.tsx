@@ -339,7 +339,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
             ) : content && content !== '<p><br></p>' ? (
               <div
                 onClick={handleReadonlyChipClick}
-                className="min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg transition-colors leading-relaxed cursor-text text-gray-700 bg-gray-50 hover:bg-gray-100 ql-editor-readonly"
+                className="min-h-[60px] max-h-32 overflow-y-auto p-2 text-sm rounded-lg transition-colors leading-relaxed cursor-text text-gray-700 bg-gray-50 hover:bg-gray-100 ql-editor-readonly text-justify"
                 style={{ wordBreak: 'break-word' }}
                 dangerouslySetInnerHTML={{ __html: content }}
               />

@@ -42,7 +42,7 @@ const LancamentoRefRenderer: React.FC<LancamentoRefRendererProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`prose prose-sm max-w-none ${className}`}
+      className={`prose prose-sm max-w-none text-justify ${className}`}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

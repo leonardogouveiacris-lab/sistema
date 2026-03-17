@@ -651,11 +651,13 @@ const HTML_BASE_TEMPLATE = `<!DOCTYPE html>
         .formatted-content {
           display: block;
           margin-top: 0.25rem;
+          text-align: justify;
         }
 
         .formatted-content p {
           margin: 0.5rem 0;
           line-height: 1.625;
+          text-align: justify;
         }
 
         .formatted-content p:first-child {
@@ -674,6 +676,7 @@ const HTML_BASE_TEMPLATE = `<!DOCTYPE html>
 
         .formatted-content li {
           margin: 0.25rem 0;
+          text-align: justify;
         }
 
         .formatted-content strong {
