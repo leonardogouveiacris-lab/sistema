@@ -13,7 +13,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
 import { useNavigateToReference } from '../../hooks/useNavigateToReference';
 import { useProcessTable } from '../../hooks/useProcessTable';
-import { Save, X, FileText, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock, Check, CreditCard as Edit2, Lock } from 'lucide-react';
+import { Save, X, FileText, ArrowLeft, Trash2, AlertTriangle, Calendar, Clock, Check, CreditCard as Edit2 } from 'lucide-react';
 
 interface PDFDocumentoFormInlineProps {
   processId: string;
@@ -21,7 +21,6 @@ interface PDFDocumentoFormInlineProps {
   onCancel: () => void;
   onDelete?: (id: string) => Promise<boolean>;
   onRenameTipo?: (oldTipo: string, newTipo: string) => Promise<boolean>;
-  onToggleCheck?: (documentoId: string, field: 'calculista' | 'revisor', value: boolean) => void;
   editingDocumento?: Documento | null;
 }
 
@@ -52,7 +51,6 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   onCancel,
   onDelete,
   onRenameTipo,
-  onToggleCheck,
   editingDocumento = null
 }) => {
   const { state, clearHighlightIdsToLink, getCurrentDocument } = usePDFViewer();
@@ -296,12 +294,6 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   const currentTipo = formData.tipoDocumento;
   const canRenameTipo = isEditMode && currentTipo && !isSystemTipo(currentTipo);
 
-  const checkCalculista = editingDocumento?.checkCalculista ?? false;
-  const checkRevisor = editingDocumento?.checkRevisor ?? false;
-  const checkCalculistaAt = editingDocumento?.checkCalculistaAt;
-  const checkRevisorAt = editingDocumento?.checkRevisorAt;
-  const isConcluido = checkCalculista && checkRevisor;
-
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden">
       <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-2">
@@ -461,49 +453,6 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           onReferenceClick={handleReferenceClick}
         />
 
-        {isEditMode && onToggleCheck && editingDocumento && (
-          <div className="border border-gray-200 rounded-lg p-2.5 bg-gray-50">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Checklist de Aprovação</p>
-            <div className="space-y-1.5">
-              <div
-                className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${checkCalculista ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:border-gray-300'}`}
-                onClick={() => onToggleCheck(editingDocumento.id, 'calculista', !checkCalculista)}
-              >
-                <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${checkCalculista ? 'bg-blue-600' : 'border-2 border-gray-300'}`}>
-                  {checkCalculista && <Check size={9} className="text-white" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-xs font-medium ${checkCalculista ? 'text-blue-800' : 'text-gray-700'}`}>Calculista</p>
-                  <p className="text-xs text-gray-400">
-                    {checkCalculista
-                      ? (checkCalculistaAt ? `Verificado em ${formatDate(checkCalculistaAt)}` : 'Verificado')
-                      : 'Aguardando'
-                    }
-                  </p>
-                </div>
-              </div>
-
-              <div
-                className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${checkCalculista ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'} ${checkRevisor ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}
-                onClick={() => checkCalculista && onToggleCheck(editingDocumento.id, 'revisor', !checkRevisor)}
-              >
-                <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${checkRevisor ? 'bg-green-600' : 'border-2 border-gray-300'}`}>
-                  {checkRevisor && <Check size={9} className="text-white" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-xs font-medium ${checkRevisor ? 'text-green-800' : 'text-gray-700'}`}>Revisor</p>
-                  <p className="text-xs text-gray-400">
-                    {checkRevisor
-                      ? (checkRevisorAt ? `Verificado em ${formatDate(checkRevisorAt)}` : 'Verificado')
-                      : checkCalculista ? 'Aguardando revisão' : 'Requer calculista'
-                    }
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {isEditMode && (editingDocumento?.createdAt || editingDocumento?.updatedAt) && (
           <div className="pt-2 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-400">
             {editingDocumento.createdAt && (
@@ -556,19 +505,13 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
 
       <div className="px-3 py-2.5 border-t border-gray-100 flex items-center justify-between gap-2">
         {isEditMode && onDelete ? (
-          isConcluido ? (
-            <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-300 border border-gray-200 rounded-md cursor-not-allowed" title="Documento concluído não pode ser excluído">
-              <Lock size={12} /> Concluído
-            </span>
-          ) : (
-            <button
-              onClick={() => setShowDeleteConfirm(v => !v)}
-              disabled={isSaving || isDeleting}
-              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${showDeleteConfirm ? 'bg-red-50 border-red-200 text-red-700' : 'text-red-500 border-red-200 hover:bg-red-50'}`}
-            >
-              <Trash2 size={12} /> Excluir
-            </button>
-          )
+          <button
+            onClick={() => setShowDeleteConfirm(v => !v)}
+            disabled={isSaving || isDeleting}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${showDeleteConfirm ? 'bg-red-50 border-red-200 text-red-700' : 'text-red-500 border-red-200 hover:bg-red-50'}`}
+          >
+            <Trash2 size={12} /> Excluir
+          </button>
         ) : (
           <div />
         )}

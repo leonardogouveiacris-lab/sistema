@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Documento } from '../../types/Documento';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
-import { FileText, Eye, CreditCard as Edit2, Trash2, Link2, Calendar, Clock, CheckCircle2 } from 'lucide-react';
+import { FileText, Eye, CreditCard as Edit2, Trash2, Link2, Calendar, Clock } from 'lucide-react';
 import { Tooltip } from '../ui';
 
 function formatDateTime(date: Date | string | undefined): string {
@@ -17,7 +17,6 @@ interface DocumentoCardProps {
   onDelete: (documentoId: string) => void;
   onViewDetails?: (documentoId: string) => void;
   isHighlighted?: boolean;
-  onToggleCheck?: (documentoId: string, field: 'calculista' | 'revisor', value: boolean) => void;
 }
 
 const TIPO_BADGE_COLORS: Record<string, string> = {
@@ -52,11 +51,9 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
   onEdit,
   onDelete,
   onViewDetails,
-  isHighlighted = false,
-  onToggleCheck
+  isHighlighted = false
 }) => {
   const { navigateToPageWithHighlight, scrollToMultipleHighlights, state } = usePDFViewer();
-  const isConcluido = documento.checkCalculista && documento.checkRevisor;
 
   const highlightIds = useMemo(() => {
     const stored = documento.highlightIds || [];
@@ -108,13 +105,6 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
           </div>
 
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-            {isConcluido && (
-              <Tooltip content="Concluído - não pode ser excluído">
-                <span className="p-1.5 text-green-400 flex-shrink-0">
-                  <CheckCircle2 size={13} />
-                </span>
-              </Tooltip>
-            )}
             {onViewDetails && (
               <button onClick={() => onViewDetails(documento.id)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors" title="Ver detalhes">
                 <Eye size={13} />
@@ -123,15 +113,9 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
             <button onClick={() => onEdit(documento.id)} className="p-1.5 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded transition-colors" title="Editar">
               <Edit2 size={13} />
             </button>
-            {isConcluido ? (
-              <span className="p-1.5 text-gray-300 cursor-not-allowed" title="Documento concluído não pode ser excluído">
-                <Trash2 size={13} />
-              </span>
-            ) : (
-              <button onClick={() => onDelete(documento.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Excluir">
-                <Trash2 size={13} />
-              </button>
-            )}
+            <button onClick={() => onDelete(documento.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Excluir">
+              <Trash2 size={13} />
+            </button>
           </div>
         </div>
 
@@ -148,27 +132,6 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
             <Link2 size={9} />
             {highlightIds.length}
           </span>
-        )}
-        {onToggleCheck && (
-          <div className="flex items-center gap-1 mr-1">
-            <Tooltip content={documento.checkCalculista ? 'Calculista verificado - clique para desmarcar' : 'Marcar calculista'}>
-              <button
-                onClick={e => { e.stopPropagation(); onToggleCheck(documento.id, 'calculista', !documento.checkCalculista); }}
-                className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-colors ${documento.checkCalculista ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300 hover:border-blue-400'}`}
-              >
-                {documento.checkCalculista && <span className="text-white text-[8px] font-bold leading-none">✓</span>}
-              </button>
-            </Tooltip>
-            <Tooltip content={documento.checkRevisor ? 'Revisor aprovado - clique para desmarcar' : documento.checkCalculista ? 'Marcar revisor' : 'Requer calculista primeiro'}>
-              <button
-                onClick={e => { e.stopPropagation(); if (documento.checkCalculista) onToggleCheck(documento.id, 'revisor', !documento.checkRevisor); }}
-                disabled={!documento.checkCalculista}
-                className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-colors ${documento.checkRevisor ? 'bg-green-500 border-green-500 text-white' : documento.checkCalculista ? 'border-gray-300 hover:border-green-400' : 'border-gray-200 opacity-40 cursor-not-allowed'}`}
-              >
-                {documento.checkRevisor && <span className="text-white text-[8px] font-bold leading-none">✓</span>}
-              </button>
-            </Tooltip>
-          </div>
         )}
         <Tooltip content={`Criado em: ${formatDateTime(documento.dataCriacao)}`}>
           <span className="cursor-default flex items-center gap-1">
@@ -191,8 +154,6 @@ export default React.memo(DocumentoCard, (prev, next) => {
   return (
     prev.documento.id === next.documento.id &&
     prev.documento.tipoDocumento === next.documento.tipoDocumento &&
-    prev.documento.checkCalculista === next.documento.checkCalculista &&
-    prev.documento.checkRevisor === next.documento.checkRevisor &&
     new Date(prev.documento.dataAtualizacao).getTime() === new Date(next.documento.dataAtualizacao).getTime() &&
     prev.isHighlighted === next.isHighlighted
   );

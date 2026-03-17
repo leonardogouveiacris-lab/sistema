@@ -113,8 +113,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     addDocumento,
     updateDocumento,
     removeDocumento,
-    renameTipoDocumento,
-    toggleDocumentoCheck
+    renameTipoDocumento
   } = useDocumentos();
 
   const onSaveDecision = useCallback(async (decision: NewDecision, skipGlobalError?: boolean): Promise<OperationResult> => {
@@ -623,14 +622,6 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   const handleEditDocumento = (documentoId: string) => {
     startEditDocumento(documentoId);
   };
-
-  const handleToggleDocumentoCheck = useCallback(async (documentoId: string, field: 'calculista' | 'revisor', value: boolean) => {
-    try {
-      await toggleDocumentoCheck(documentoId, field, value);
-    } catch {
-      toast.error('Erro ao atualizar status do documento.');
-    }
-  }, [toggleDocumentoCheck, toast]);
 
   const handleDeleteDocumento = async (documentoId: string): Promise<boolean> => {
     const result = await onDeleteDocumento(documentoId, true);
@@ -1288,7 +1279,6 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                 onCancel={cancelForm}
                 onDelete={state.formMode === 'edit-documento' ? async (id) => { const ok = await handleDeleteDocumento(id); if (ok) cancelForm(); return ok; } : undefined}
                 onRenameTipo={handleRenameTipoDocumento}
-                onToggleCheck={state.formMode === 'edit-documento' ? handleToggleDocumentoCheck : undefined}
                 editingDocumento={editingDocumento}
               />
             )}
@@ -1308,7 +1298,6 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                       onDelete={handleDeleteDocumento}
                       onViewDetails={handleViewDocumentoDetails}
                       isHighlighted={state.highlightedPage === documento.paginaVinculada}
-                      onToggleCheck={handleToggleDocumentoCheck}
                     />
                   ))}
                 </div>
@@ -1329,7 +1318,6 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                       onEdit={handleEditDocumento}
                       onDelete={handleDeleteDocumento}
                       onViewDetails={handleViewDocumentoDetails}
-                      onToggleCheck={handleToggleDocumentoCheck}
                     />
                   ))}
                 </div>
