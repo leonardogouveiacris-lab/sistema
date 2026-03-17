@@ -125,7 +125,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
       newErrors.processId = 'ID do processo é obrigatório';
     }
 
-    if (!formData.tipoDocumento || !formData.tipoDocumento.trim()) {
+    if (!isEditMode && (!formData.tipoDocumento || !formData.tipoDocumento.trim())) {
       newErrors.tipoDocumento = 'Tipo de documento é obrigatório';
     }
 
@@ -397,19 +397,21 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           </div>
         )}
 
-        <CustomDropdown
-          label="Tipo de Documento"
-          placeholder="Selecione ou digite..."
-          value={formData.tipoDocumento}
-          required={true}
-          error={errors.tipoDocumento}
-          onChange={(value) => handleInputChange('tipoDocumento', value)}
-          allowCustomValues={true}
-          enumType={DynamicEnumType.TIPO_DOCUMENTO}
-          processId={processId}
-          onValueCreated={handleTipoDocumentoCreated}
-          itemActions={tipoItemActions}
-        />
+        {!isEditMode && (
+          <CustomDropdown
+            label="Tipo de Documento"
+            placeholder="Selecione ou digite..."
+            value={formData.tipoDocumento}
+            required={true}
+            error={errors.tipoDocumento}
+            onChange={(value) => handleInputChange('tipoDocumento', value)}
+            allowCustomValues={true}
+            enumType={DynamicEnumType.TIPO_DOCUMENTO}
+            processId={processId}
+            onValueCreated={handleTipoDocumentoCreated}
+            itemActions={tipoItemActions}
+          />
+        )}
 
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Página Vinculada</label>
