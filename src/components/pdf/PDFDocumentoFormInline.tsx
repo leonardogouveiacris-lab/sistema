@@ -10,6 +10,7 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
 import { useDynamicEnums } from '../../hooks/useDynamicEnums';
 import { useToast } from '../../contexts/ToastContext';
+import { useDocumentoContext } from '../../contexts/DocumentoContext';
 import { useLancamentosForReference } from '../../hooks/useLancamentosForReference';
 import { useNavigateToReference } from '../../hooks/useNavigateToReference';
 import { useProcessTable } from '../../hooks/useProcessTable';
@@ -55,6 +56,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
 }) => {
   const { state, clearHighlightIdsToLink, getCurrentDocument } = usePDFViewer();
   const { refreshEnumValues, renameCustomValue, deleteCustomValue, getPredefinedValues } = useDynamicEnums();
+  const { getDocumentosByProcess } = useDocumentoContext();
   const toast = useToast();
   const isEditMode = !!editingDocumento;
   const { table: processTable } = useProcessTable(processId);
@@ -173,6 +175,13 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   }, []);
 
   const handleExcluirTipo = useCallback(async (tipo: string) => {
+    const documentosDoProcesso = getDocumentosByProcess(processId);
+    const emUso = documentosDoProcesso.some(d => d.tipoDocumento === tipo);
+    if (emUso) {
+      toast.error(`"${tipo}" está em uso por um ou mais documentos e não pode ser excluído`);
+      return;
+    }
+
     setDeletingTipo(tipo);
     try {
       const result = await deleteCustomValue(DynamicEnumType.TIPO_DOCUMENTO, tipo, processId);
@@ -188,7 +197,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
     } finally {
       setDeletingTipo(null);
     }
-  }, [deleteCustomValue, processId, toast, formData.tipoDocumento, refreshEnumValues]);
+  }, [deleteCustomValue, processId, toast, formData.tipoDocumento, refreshEnumValues, getDocumentosByProcess]);
 
   const tipoItemActions: DropdownItemAction = useMemo(() => ({
     onEdit: (tipo: string) => {
