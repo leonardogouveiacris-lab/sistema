@@ -87,7 +87,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
       } catch {
         logRealtimeEvent('Realtime refresh failed', 'DocumentoContext', 'refresh_failed', { table: 'documentos' }, 'error');
       }
-    }, 100);
+    }, 400);
   }, []);
 
   useRealtimeSubscription({

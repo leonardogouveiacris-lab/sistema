@@ -390,6 +390,21 @@ export class DynamicEnumService {
         return { success: false, message: 'Novo valor não pode ser vazio' };
       }
 
+      if (normalizedNew.toLowerCase() === oldValue.trim().toLowerCase()) {
+        return { success: true, message: `Nenhuma alteração necessária` };
+      }
+
+      const { data: existing } = await supabase
+        .from('custom_enum_values')
+        .select('id')
+        .eq('enum_name', enumName)
+        .eq('enum_value', normalizedNew)
+        .maybeSingle();
+
+      if (existing) {
+        return { success: false, message: `O valor "${normalizedNew}" já existe` };
+      }
+
       const { error } = await supabase
         .from('custom_enum_values')
         .update({ enum_value: normalizedNew })

@@ -17,6 +17,9 @@ interface UseRealtimeSubscriptionOptions<T> {
   enabled?: boolean;
 }
 
+const MAX_RETRY_ATTEMPTS = 6;
+const BASE_RETRY_DELAY_MS = 1000;
+
 export const useRealtimeSubscription = <T extends { id: string }>({
   table,
   schema = 'public',
@@ -30,12 +33,17 @@ export const useRealtimeSubscription = <T extends { id: string }>({
 }: UseRealtimeSubscriptionOptions<T>) => {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const callbacksRef = useRef({ onInsert, onUpdate, onDelete, onAnyChange });
+  const retryCountRef = useRef(0);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     callbacksRef.current = { onInsert, onUpdate, onDelete, onAnyChange };
   }, [onInsert, onUpdate, onDelete, onAnyChange]);
 
   const handleChange = useCallback((payload: RealtimePostgresChangesPayload<T>) => {
+    if (!payload || !payload.eventType) return;
+
     const { onInsert, onUpdate, onDelete, onAnyChange } = callbacksRef.current;
 
     logRealtimeEvent(
@@ -68,34 +76,26 @@ export const useRealtimeSubscription = <T extends { id: string }>({
     }
   }, [table]);
 
-  useEffect(() => {
-    if (!enabled) {
-      if (channelRef.current) {
-        if (supabase) {
-          supabase.removeChannel(channelRef.current);
-        }
-        channelRef.current = null;
-      }
-      return;
-    }
+  const subscribeRef = useRef<(() => void) | null>(null);
 
-    if (!supabase) {
+  const subscribe = useCallback(() => {
+    if (!supabase || !mountedRef.current) return;
+
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
       channelRef.current = null;
-      return;
     }
 
-    const channelName = `realtime-${table}-${schema}-${filter ?? 'nofilter'}`;
+    const channelName = filter
+      ? `rt-${table}-${schema}-${filter}-${Date.now()}`
+      : `rt-${table}-${schema}-${Date.now()}`;
 
     const channelConfig: {
       event: PostgresChangeEvent;
       schema: string;
       table: string;
       filter?: string;
-    } = {
-      event,
-      schema,
-      table
-    };
+    } = { event, schema, table };
 
     if (filter) {
       channelConfig.filter = filter;
@@ -103,13 +103,12 @@ export const useRealtimeSubscription = <T extends { id: string }>({
 
     const channel = supabase
       .channel(channelName)
-      .on(
-        'postgres_changes',
-        channelConfig,
-        handleChange
-      )
+      .on('postgres_changes', channelConfig, handleChange)
       .subscribe((status) => {
+        if (!mountedRef.current) return;
+
         if (status === 'SUBSCRIBED') {
+          retryCountRef.current = 0;
           logRealtimeEvent(
             'Realtime subscription active',
             'useRealtimeSubscription',
@@ -117,34 +116,73 @@ export const useRealtimeSubscription = <T extends { id: string }>({
             { table, schema, event, filter },
             'info'
           );
-        } else if (status === 'CHANNEL_ERROR') {
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           logRealtimeEvent(
             'Realtime subscription error',
             'useRealtimeSubscription',
             'subscription_error',
-            { table, schema, event, filter },
+            { table, schema, event, filter, status, attempt: retryCountRef.current },
             'error'
           );
+
+          if (retryCountRef.current < MAX_RETRY_ATTEMPTS) {
+            const delay = Math.min(BASE_RETRY_DELAY_MS * Math.pow(2, retryCountRef.current), 30000);
+            retryCountRef.current += 1;
+
+            if (retryTimeoutRef.current) {
+              clearTimeout(retryTimeoutRef.current);
+            }
+
+            retryTimeoutRef.current = setTimeout(() => {
+              if (mountedRef.current) {
+                subscribeRef.current?.();
+              }
+            }, delay);
+          }
         }
       });
 
     channelRef.current = channel;
+  }, [table, schema, event, filter, handleChange]);
+
+  subscribeRef.current = subscribe;
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    if (!enabled) {
+      if (channelRef.current && supabase) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      return;
+    }
+
+    if (!supabase) return;
+
+    retryCountRef.current = 0;
+    subscribe();
 
     return () => {
-      if (channelRef.current) {
-        if (supabase) {
-          supabase.removeChannel(channelRef.current);
-        }
+      mountedRef.current = false;
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+      if (channelRef.current && supabase) {
+        supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
-  }, [table, schema, event, filter, enabled, handleChange]);
+  }, [table, schema, event, filter, enabled, subscribe]);
 
   const unsubscribe = useCallback(() => {
-    if (channelRef.current) {
-      if (supabase) {
-        supabase.removeChannel(channelRef.current);
-      }
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    if (channelRef.current && supabase) {
+      supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
   }, []);

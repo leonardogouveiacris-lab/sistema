@@ -90,7 +90,7 @@ export const VerbaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       } catch {
         logRealtimeEvent('Realtime refresh failed', 'VerbaContext', 'refresh_failed', { table: 'verbas' }, 'error');
       }
-    }, 100);
+    }, 400);
   }, []);
 
   useRealtimeSubscription({

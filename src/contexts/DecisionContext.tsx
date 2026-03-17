@@ -88,7 +88,7 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
       } catch {
         logRealtimeEvent('Realtime refresh failed', 'DecisionContext', 'refresh_failed', { table: 'decisions' }, 'error');
       }
-    }, 100);
+    }, 400);
   }, []);
 
   useRealtimeSubscription({
