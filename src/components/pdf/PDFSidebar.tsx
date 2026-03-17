@@ -217,15 +217,6 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   }, [collapsedGroups]);
 
   useEffect(() => {
-    if (state.sidebarTab === 'verbas' && !verbasLoading && allLancamentos.length === 0 && processId) {
-      const processHasVerbas = verbas.some(v => v.processId === processId);
-      if (!processHasVerbas) {
-        refreshVerbas();
-      }
-    }
-  }, [state.sidebarTab, processId, verbasLoading, allLancamentos.length, verbas, refreshVerbas]);
-
-  useEffect(() => {
     if (state.formMode === 'edit-verba' || state.formMode === 'create-verba' ||
         state.formMode === 'edit-decision' || state.formMode === 'create-decision' ||
         state.formMode === 'edit-documento' || state.formMode === 'create-documento') {
@@ -270,6 +261,15 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       return new Date(b.lancamento.createdAt).getTime() - new Date(a.lancamento.createdAt).getTime();
     });
   }, [processVerbas]);
+
+  useEffect(() => {
+    if (state.sidebarTab === 'verbas' && !verbasLoading && allLancamentos.length === 0 && processId) {
+      const processHasVerbas = verbas.some(v => v.processId === processId);
+      if (!processHasVerbas) {
+        refreshVerbas();
+      }
+    }
+  }, [state.sidebarTab, processId, verbasLoading, allLancamentos.length, verbas, refreshVerbas]);
 
   // Group by page
   const decisionsWithPage = useMemo(() =>
