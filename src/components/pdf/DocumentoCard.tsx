@@ -153,6 +153,7 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
 export default React.memo(DocumentoCard, (prev, next) => {
   return (
     prev.documento.id === next.documento.id &&
+    prev.documento.tipoDocumento === next.documento.tipoDocumento &&
     new Date(prev.documento.dataAtualizacao).getTime() === new Date(next.documento.dataAtualizacao).getTime() &&
     prev.isHighlighted === next.isHighlighted
   );

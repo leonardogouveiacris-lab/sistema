@@ -623,11 +623,14 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     startEditDocumento(documentoId);
   };
 
-  const handleDeleteDocumento = async (documentoId: string) => {
+  const handleDeleteDocumento = async (documentoId: string): Promise<boolean> => {
     const result = await onDeleteDocumento(documentoId, true);
-    if (!result.success) {
+    if (result.success) {
+      toast.success('Documento excluído com sucesso.');
+    } else {
       toast.error(result.error || 'Falha ao excluir documento.');
     }
+    return result.success;
   };
 
   const handleSaveDecisionForm = async (decision: NewDecision): Promise<boolean> => {
@@ -716,7 +719,9 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
 
   const handleRenameTipoDocumento = useCallback(async (oldTipo: string, newTipo: string): Promise<boolean> => {
     const result = await renameTipoDocumento(oldTipo, newTipo, true);
-    if (!result.success) {
+    if (result.success) {
+      toast.success(`Tipo "${oldTipo}" renomeado para "${newTipo}".`);
+    } else {
       toast.error(result.error || 'Falha ao renomear tipo de documento.');
     }
     return result.success;
@@ -728,6 +733,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     if (isEdit && state.editingRecordId) {
       const result = await onUpdateDocumento(state.editingRecordId, documento, true);
       if (result.success) {
+        toast.success('Documento atualizado com sucesso.');
         cancelForm();
       } else {
         toast.error(result.error || 'Falha ao atualizar documento.');
@@ -736,6 +742,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     } else {
       const result = await onSaveDocumento(documento, true);
       if (result.success) {
+        toast.success('Documento salvo com sucesso.');
         cancelForm();
       } else {
         toast.error(result.error || 'Falha ao salvar documento.');
@@ -1270,7 +1277,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                 processId={processId}
                 onSave={handleSaveDocumentoForm}
                 onCancel={cancelForm}
-                onDelete={state.formMode === 'edit-documento' ? async (id) => { await handleDeleteDocumento(id); cancelForm(); return true; } : undefined}
+                onDelete={state.formMode === 'edit-documento' ? async (id) => { const ok = await handleDeleteDocumento(id); if (ok) cancelForm(); return ok; } : undefined}
                 onRenameTipo={handleRenameTipoDocumento}
                 editingDocumento={editingDocumento}
               />

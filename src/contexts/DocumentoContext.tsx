@@ -91,7 +91,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, []);
 
   useRealtimeSubscription({
-    table: 'documentos',
+    table: 'lancamentos_documentos',
     onAnyChange: debouncedRefresh,
     enabled: true
   });
