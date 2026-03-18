@@ -359,17 +359,16 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
           z-index: 0;
         }
         .lancamento-ref-chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 3px;
-          padding: 1px 6px;
+          display: inline;
+          padding: 1px 4px;
           border-radius: 4px;
           font-size: inherit;
           font-weight: inherit;
           cursor: pointer;
           text-decoration: none;
           user-select: none;
-          white-space: nowrap;
+          white-space: normal;
+          word-break: break-word;
           background: transparent;
           color: inherit;
           border: none;

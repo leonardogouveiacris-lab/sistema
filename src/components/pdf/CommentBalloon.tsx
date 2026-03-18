@@ -23,10 +23,6 @@ function legacyToHtml(raw: string): string {
   });
 }
 
-function isLegacyFormat(content: string): boolean {
-  return LEGACY_REF_PATTERN.test(content) || (!content.startsWith('<') && !content.includes('<p'));
-}
-
 function normalizeContent(raw: string): string {
   if (!raw) return '';
   if (raw.includes('[=')) return legacyToHtml(raw);
@@ -43,6 +39,8 @@ interface CommentBalloonProps {
 }
 
 const COLOR_OPTIONS: CommentColor[] = ['yellow', 'green', 'blue', 'pink', 'orange', 'red'];
+
+const POPUP_WIDTH = 320;
 
 const CommentBalloon: React.FC<CommentBalloonProps> = ({
   comment,
@@ -90,6 +88,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const balloonRef = useRef<HTMLDivElement>(null);
   const connectorDropdownRef = useRef<HTMLDivElement>(null);
   const colorDropdownRef = useRef<HTMLDivElement>(null);
+  const iconRef = useRef<HTMLDivElement>(null);
 
   const isSelected = state.selectedCommentId === comment.id;
 
@@ -205,6 +204,42 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     setShowConnectorDropdown(false);
   };
 
+  const [popupCoords, setPopupCoords] = useState({ top: 0, left: 0 });
+
+  const recalcPopupCoords = useCallback(() => {
+    if (!iconRef.current) return;
+    const rect = iconRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    const idealLeft = rect.left + rect.width / 2 - POPUP_WIDTH / 2;
+    const clampedLeft = Math.max(8, Math.min(idealLeft, viewportWidth - POPUP_WIDTH - 8));
+
+    let top = rect.bottom + 6;
+    if (top + 280 > viewportHeight) {
+      top = Math.max(8, rect.top - 280 - 6);
+    }
+
+    setPopupCoords({ top, left: clampedLeft });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (isExpanded) {
+      recalcPopupCoords();
+    }
+  }, [isExpanded, recalcPopupCoords]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    const onScroll = () => recalcPopupCoords();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [isExpanded, recalcPopupCoords]);
+
   const handleDragStart = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, [contenteditable], input, .ql-toolbar, .ql-editor')) return;
 
@@ -226,19 +261,23 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const handleDrag = useCallback((e: MouseEvent) => {
     if (!balloonRef.current) return;
 
-    const parent = balloonRef.current.parentElement;
-    if (!parent) return;
+    const pageContainer = balloonRef.current.parentElement?.parentElement;
+    if (!pageContainer) return;
 
-    const parentRect = parent.getBoundingClientRect();
+    const parentRect = pageContainer.getBoundingClientRect();
     const newX = (e.clientX - parentRect.left - dragOffset.x) / scale;
     const newY = (e.clientY - parentRect.top - dragOffset.y) / scale;
 
-    const clampedX = Math.max(0, Math.min(newX, pageWidth - 24));
-    const clampedY = Math.max(0, Math.min(newY, pageHeight - 24));
+    const clampedX = Math.max(0, Math.min(newX, pageWidth));
+    const clampedY = Math.max(0, Math.min(newY, pageHeight));
 
     latestPositionRef.current = { x: clampedX, y: clampedY };
     updateComment(comment.id, { positionX: clampedX, positionY: clampedY });
-  }, [dragOffset, scale, pageWidth, pageHeight, comment.id, updateComment]);
+
+    if (isExpanded) {
+      requestAnimationFrame(() => recalcPopupCoords());
+    }
+  }, [dragOffset, scale, pageWidth, pageHeight, comment.id, updateComment, isExpanded, recalcPopupCoords]);
 
   const handleDragEnd = useCallback(async () => {
     setIsDragging(false);
@@ -268,16 +307,6 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
       };
     }
   }, [isDragging, handleDrag, handleDragEnd]);
-
-  const iconRef = useRef<HTMLDivElement>(null);
-  const [popupCoords, setPopupCoords] = useState({ top: 0, left: 0 });
-
-  useLayoutEffect(() => {
-    if (isExpanded && iconRef.current) {
-      const rect = iconRef.current.getBoundingClientRect();
-      setPopupCoords({ top: rect.bottom + 4, left: rect.left });
-    }
-  }, [isExpanded]);
 
   const colorConfig = COMMENT_COLORS[comment.color];
   const formattedDate = new Date(comment.createdAt).toLocaleString('pt-BR', {
@@ -312,7 +341,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
       {isExpanded && createPortal(
         <div
           className={`fixed bg-white rounded-xl shadow-2xl border ${colorConfig.border} z-[9999] flex flex-col`}
-          style={{ top: popupCoords.top, left: popupCoords.left, width: 340 }}
+          style={{ top: popupCoords.top, left: popupCoords.left, width: POPUP_WIDTH }}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -332,21 +361,21 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
                 placeholder="Adicionar comentário..."
                 value={editContent}
                 onChange={setEditContent}
-                rows={5}
+                rows={3}
                 referenceItems={referenceItems}
                 onReferenceClick={handleReferenceClick}
               />
             ) : content && content !== '<p><br></p>' ? (
               <div
                 onClick={handleReadonlyChipClick}
-                className="min-h-[120px] max-h-64 overflow-y-auto p-2.5 text-sm rounded-lg transition-colors leading-relaxed cursor-text text-gray-700 bg-gray-50 hover:bg-gray-100 ql-editor-readonly text-justify w-full"
-                style={{ wordBreak: 'break-word' }}
+                className="min-h-[80px] max-h-48 overflow-y-auto p-2.5 text-sm rounded-lg transition-colors leading-relaxed cursor-text text-gray-700 bg-gray-50 hover:bg-gray-100 ql-editor-readonly text-justify w-full"
+                style={{ wordBreak: 'break-word', overflowX: 'hidden' }}
                 dangerouslySetInnerHTML={{ __html: content }}
               />
             ) : (
               <div
                 onClick={() => { setEditContent(content); setIsEditing(true); }}
-                className="min-h-[120px] p-2.5 text-sm rounded-lg bg-gray-50 hover:bg-gray-100 cursor-text flex items-start"
+                className="min-h-[80px] p-2.5 text-sm rounded-lg bg-gray-50 hover:bg-gray-100 cursor-text flex items-start"
               >
                 <span className="text-gray-400 italic">Clique para adicionar comentário...</span>
               </div>
