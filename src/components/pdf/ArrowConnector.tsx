@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { PDFCommentConnector } from '../../types/PDFComment';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import * as PDFCommentsService from '../../services/pdfComments.service';
@@ -28,25 +28,38 @@ const ArrowConnector: React.FC<ArrowConnectorProps> = ({
   const [isDraggingControl, setIsDraggingControl] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const startX = (commentX + 12) * scale;
-  const startY = (commentY + 12) * scale;
-  const endX = connector.endX * scale;
-  const endY = connector.endY * scale;
+  const coords = useMemo(() => {
+    const sx = (commentX + 12) * scale;
+    const sy = (commentY + 12) * scale;
+    const ex = connector.endX * scale;
+    const ey = connector.endY * scale;
 
-  const midX = (startX + endX) / 2;
-  const midY = (startY + endY) / 2;
+    const mx = (sx + ex) / 2;
+    const my = (sy + ey) / 2;
 
-  const controlX = connector.controlX !== undefined ? connector.controlX * scale : midX;
-  const controlY = connector.controlY !== undefined ? connector.controlY * scale : midY - 30;
+    const cx = connector.controlX !== undefined ? connector.controlX * scale : mx;
+    const cy = connector.controlY !== undefined ? connector.controlY * scale : my - 30;
 
-  const angle = Math.atan2(endY - controlY, endX - controlX);
-  const arrowLength = 12;
-  const arrowAngle = Math.PI / 6;
+    const ang = Math.atan2(ey - cy, ex - cx);
+    const arrowLength = 12;
+    const arrowAngle = Math.PI / 6;
 
-  const arrowPoint1X = endX - arrowLength * Math.cos(angle - arrowAngle);
-  const arrowPoint1Y = endY - arrowLength * Math.sin(angle - arrowAngle);
-  const arrowPoint2X = endX - arrowLength * Math.cos(angle + arrowAngle);
-  const arrowPoint2Y = endY - arrowLength * Math.sin(angle + arrowAngle);
+    return {
+      startX: sx,
+      startY: sy,
+      endX: ex,
+      endY: ey,
+      controlX: cx,
+      controlY: cy,
+      arrowPoint1X: ex - arrowLength * Math.cos(ang - arrowAngle),
+      arrowPoint1Y: ey - arrowLength * Math.sin(ang - arrowAngle),
+      arrowPoint2X: ex - arrowLength * Math.cos(ang + arrowAngle),
+      arrowPoint2Y: ey - arrowLength * Math.sin(ang + arrowAngle),
+      pathD: `M ${sx} ${sy} Q ${cx} ${cy} ${ex} ${ey}`,
+    };
+  }, [commentX, commentY, scale, connector.endX, connector.endY, connector.controlX, connector.controlY]);
+
+  const { startX, startY, endX, endY, controlX, controlY, arrowPoint1X, arrowPoint1Y, arrowPoint2X, arrowPoint2Y, pathD } = coords;
 
   const handleEndDragStart = (e: React.MouseEvent) => {
     if (!isEditing) return;
@@ -139,7 +152,6 @@ const ArrowConnector: React.FC<ArrowConnectorProps> = ({
     }
   };
 
-  const pathD = `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`;
 
   return (
     <g

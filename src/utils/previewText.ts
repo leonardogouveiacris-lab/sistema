@@ -53,3 +53,20 @@ export const PREVIEW_LENGTHS = {
   DETAILED: 200,
   LIST_VIEW: 150,
 } as const;
+
+/**
+ * Formats a date/datetime value to a short Brazilian locale string
+ * Used across card components in the PDF sidebar
+ */
+export function formatDateTime(date: Date | string | undefined): string {
+  if (!date) return '';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}

@@ -59,25 +59,9 @@ const DEFAULT_DURATIONS: Record<ToastType, number> = {
 
 const Toast: React.FC<ToastProps> = ({ toast, onDismiss }) => {
   const [isExiting, setIsExiting] = useState(false);
-  const [progress, setProgress] = useState(100);
   const config = TOAST_CONFIG[toast.type];
   const Icon = config.icon;
   const duration = toast.duration ?? DEFAULT_DURATIONS[toast.type];
-
-  useEffect(() => {
-    const startTime = Date.now();
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const remaining = Math.max(0, 100 - (elapsed / duration) * 100);
-      setProgress(remaining);
-
-      if (remaining <= 0) {
-        clearInterval(interval);
-      }
-    }, 50);
-
-    return () => clearInterval(interval);
-  }, [duration]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -102,7 +86,7 @@ const Toast: React.FC<ToastProps> = ({ toast, onDismiss }) => {
         ${isExiting ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'}
       `}
       style={{
-        animation: isExiting ? undefined : 'slideIn 0.3s ease-out',
+        animation: isExiting ? undefined : 'toastSlideIn 0.3s ease-out',
       }}
     >
       <div className="p-4 flex items-start gap-3">
@@ -119,8 +103,11 @@ const Toast: React.FC<ToastProps> = ({ toast, onDismiss }) => {
       </div>
       <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/5">
         <div
-          className={`h-full ${config.progressColor} transition-all duration-100 ease-linear`}
-          style={{ width: `${progress}%` }}
+          className={`h-full ${config.progressColor}`}
+          style={{
+            animation: `toastProgress ${duration}ms linear forwards`,
+            transformOrigin: 'left',
+          }}
         />
       </div>
     </div>
@@ -136,19 +123,17 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismis
   return (
     <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
       <style>{`
-        @keyframes slideIn {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
+        @keyframes toastSlideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes toastProgress {
+          from { width: 100%; }
+          to { width: 0%; }
         }
       `}</style>
-      {toasts.map((toast) => (
-        <Toast key={toast.id} toast={toast} onDismiss={onDismiss} />
+      {toasts.map((t) => (
+        <Toast key={t.id} toast={t} onDismiss={onDismiss} />
       ))}
     </div>
   );

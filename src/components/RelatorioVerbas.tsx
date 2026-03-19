@@ -27,6 +27,7 @@ import {
   sortByPagina,
   buildPaginaSortKey
 } from '../utils';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 const ITEMS_PER_SECTION = 10;
 
@@ -347,14 +348,14 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
         {lancamento.fundamentacao && (
           <div className="text-sm text-gray-600 mt-2 pl-6">
             <span className="font-medium text-gray-700">Fundamentacao: </span>
-            <div className="text-justify" dangerouslySetInnerHTML={{ __html: lancamento.fundamentacao }} />
+            <div className="text-justify" dangerouslySetInnerHTML={{ __html: sanitizeHtml(lancamento.fundamentacao) }} />
           </div>
         )}
 
         {lancamento.comentariosCalculistas && (
           <div className="text-sm text-gray-600 mt-2 pl-6">
             <span className="font-medium text-gray-700">Comentarios: </span>
-            <div className="text-justify" dangerouslySetInnerHTML={{ __html: lancamento.comentariosCalculistas }} />
+            <div className="text-justify" dangerouslySetInnerHTML={{ __html: sanitizeHtml(lancamento.comentariosCalculistas) }} />
           </div>
         )}
 
@@ -502,7 +503,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
               {decision.observacoes && (
                 <div className="text-sm text-gray-600 pl-6">
                   <span className="font-medium text-gray-700">Observacoes: </span>
-                  <div className="text-justify" dangerouslySetInnerHTML={{ __html: decision.observacoes }} />
+                  <div className="text-justify" dangerouslySetInnerHTML={{ __html: sanitizeHtml(decision.observacoes) }} />
                 </div>
               )}
 
@@ -566,7 +567,7 @@ const RelatorioVerbas: React.FC<RelatorioVerbasProps> = ({
               {documento.comentarios && (
                 <div className="text-sm text-gray-600 pl-6">
                   <span className="font-medium text-gray-700">Comentarios: </span>
-                  <div className="text-justify" dangerouslySetInnerHTML={{ __html: documento.comentarios }} />
+                  <div className="text-justify" dangerouslySetInnerHTML={{ __html: sanitizeHtml(documento.comentarios) }} />
                 </div>
               )}
 

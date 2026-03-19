@@ -38,6 +38,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
   const [cacheByProcess, setCacheByProcess] = useState<Map<string, Verba[]>>(new Map());
   const [loadedProcessIds, setLoadedProcessIds] = useState<Set<string>>(new Set());
   const [loadingProcessIds, setLoadingProcessIds] = useState<Set<string>>(new Set());
+  const loadingIdsRef = useRef<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const activeProcessIdRef = useRef<string | null | undefined>(activeProcessId);
@@ -47,8 +48,9 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
   }, [activeProcessId]);
 
   const loadVerbasByProcess = useCallback(async (processId: string) => {
-    if (loadingProcessIds.has(processId)) return;
+    if (loadingIdsRef.current.has(processId)) return;
 
+    loadingIdsRef.current.add(processId);
     setLoadingProcessIds(prev => new Set(prev).add(processId));
     try {
       setError(null);
@@ -64,19 +66,20 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
       setError(errorMessage);
       logger.errorWithException('Falha ao carregar verbas do processo', err as Error, 'VerbaContext', { processId });
     } finally {
+      loadingIdsRef.current.delete(processId);
       setLoadingProcessIds(prev => {
         const next = new Set(prev);
         next.delete(processId);
         return next;
       });
     }
-  }, [loadingProcessIds]);
+  }, []);
 
   useEffect(() => {
-    if (activeProcessId && !loadedProcessIds.has(activeProcessId) && !loadingProcessIds.has(activeProcessId)) {
+    if (activeProcessId && !loadedProcessIds.has(activeProcessId)) {
       loadVerbasByProcess(activeProcessId);
     }
-  }, [activeProcessId, loadedProcessIds, loadingProcessIds, loadVerbasByProcess]);
+  }, [activeProcessId, loadedProcessIds, loadVerbasByProcess]);
 
   const verbas = useMemo((): Verba[] => {
     if (!activeProcessId) return [];
@@ -339,7 +342,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
     }
   }, []);
 
-  const exportBackup = useMemo(() => (): string => {
+  const exportBackup = useCallback((): string => {
     return JSON.stringify({
       version: '1.0',
       source: 'supabase',

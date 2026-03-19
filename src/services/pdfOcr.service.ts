@@ -51,45 +51,40 @@ export async function saveOcrResults(
   documentId: string,
   results: OcrPageResult[]
 ): Promise<boolean> {
-  try {
-    for (const result of results) {
-      const { data: existing } = await supabase
-        .from('pdf_text_pages')
-        .select('id, ocr_status')
-        .eq('process_document_id', documentId)
-        .eq('page_number', result.pageNumber)
-        .maybeSingle();
+  if (results.length === 0) return true;
 
-      if (existing) {
-        await supabase
-          .from('pdf_text_pages')
-          .update({
-            text_content: result.text,
-            ocr_status: 'ocr',
-            word_boxes: result.wordBoxes,
-          })
-          .eq('id', existing.id);
-      } else {
-        await supabase
-          .from('pdf_text_pages')
-          .insert({
-            process_document_id: documentId,
-            page_number: result.pageNumber,
-            text_content: result.text,
-            ocr_status: 'ocr',
-            word_boxes: result.wordBoxes,
-          });
-      }
+  try {
+    const rows = results.map(result => ({
+      process_document_id: documentId,
+      page_number: result.pageNumber,
+      text_content: result.text,
+      ocr_status: 'ocr',
+      word_boxes: result.wordBoxes,
+    }));
+
+    const { error: upsertError } = await supabase
+      .from('pdf_text_pages')
+      .upsert(rows, {
+        onConflict: 'process_document_id,page_number',
+        ignoreDuplicates: false,
+      });
+
+    if (upsertError) {
+      throw upsertError;
     }
 
-    await supabase
+    const { error: updateError } = await supabase
       .from('process_documents')
       .update({ has_ocr_content: true })
       .eq('id', documentId);
 
+    if (updateError) {
+      throw updateError;
+    }
+
     return true;
   } catch (error) {
-    logger.error('Failed to save OCR results', 'pdfOcr.saveOcrResults', { documentId }, error);
+    logger.error('Failed to save OCR results', 'pdfOcr.saveOcrResults', { documentId, pageCount: results.length }, error);
     return false;
   }
 }

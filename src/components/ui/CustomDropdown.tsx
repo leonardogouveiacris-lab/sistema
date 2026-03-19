@@ -201,7 +201,7 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
       }
       setCombinedOptions(result.all);
     } catch (err) {
-      // Error handling
+      logger.error('Erro ao recarregar opções do dropdown', 'CustomDropdown.reloadCombinedValues', undefined, err);
     }
   }, [enumType, options, processId, getCombinedValues, getValuesFromDatabase]);
 
@@ -224,9 +224,9 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
 
         if (onValueCreated) {
           try {
-            await Promise.resolve(onValueCreated());
+            await onValueCreated();
           } catch (callbackError) {
-            logger.error(`Erro ao executar callback onValueCreated: ${callbackError}`, 'CustomDropdown.handleCreateCustomValue');
+            logger.error('Erro ao executar callback onValueCreated', 'CustomDropdown.handleCreateCustomValue', undefined, callbackError);
           }
         }
       }

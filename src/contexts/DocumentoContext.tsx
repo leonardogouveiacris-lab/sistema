@@ -31,6 +31,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(true);
 
   const refreshDocumentos = useCallback(async () => {
     try {
@@ -48,32 +49,45 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, []);
 
   useEffect(() => {
-    let completed = false;
-    const loadInitial = async () => {
-      const timeoutId = setTimeout(() => {
-        if (!completed) {
-          setIsLoading(false);
-          setError('Timeout ao carregar documentos.');
-        }
-      }, 15000);
+    isMountedRef.current = true;
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (!settled && isMountedRef.current) {
+        setIsLoading(false);
+        setError('Timeout ao carregar documentos.');
+      }
+    }, 15000);
 
+    const loadInitial = async () => {
       try {
         setIsLoading(true);
         setError(null);
         const data = await DocumentosService.getAll();
-        completed = true;
-        setDocumentos(data);
+        settled = true;
+        if (isMountedRef.current) {
+          setDocumentos(data);
+        }
       } catch (err) {
-        completed = true;
-        const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
-        setError(errorMessage);
-        setDocumentos([]);
+        settled = true;
+        if (isMountedRef.current) {
+          const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
+          setError(errorMessage);
+          setDocumentos([]);
+        }
       } finally {
         clearTimeout(timeoutId);
-        setIsLoading(false);
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
       }
     };
+
     loadInitial();
+
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   const debouncedRefresh = useCallback(() => {

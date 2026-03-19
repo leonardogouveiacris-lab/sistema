@@ -4,13 +4,7 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useToast } from '../../contexts/ToastContext';
 import { Link2, FileText, Eye, CreditCard as Edit2, Trash2, Circle, Clock, CheckCircle2, Check, Calendar } from 'lucide-react';
 import { Tooltip } from '../ui';
-
-function formatDateTime(date: Date | string | undefined): string {
-  if (!date) return '';
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
+import { formatDateTime, getPreviewText } from '../../utils/previewText';
 
 type StatusState = 'pendente' | 'calculado' | 'concluido';
 
@@ -41,18 +35,6 @@ const SITUACAO_COLORS: Record<string, string> = {
 
 function getSituacaoColor(s: string): string {
   return SITUACAO_COLORS[s] || 'bg-gray-100 text-gray-700 border-gray-300';
-}
-
-function stripHtml(html: string): string {
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  return div.textContent || div.innerText || '';
-}
-
-function previewText(html: string | undefined, max = 90): string {
-  if (!html) return '';
-  const t = stripHtml(html);
-  return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
 const VerbaLancamentoCard: React.FC<VerbaLancamentoCardProps> = ({
@@ -105,7 +87,7 @@ const VerbaLancamentoCard: React.FC<VerbaLancamentoCardProps> = ({
     finally { setIsUpdating(false); }
   }, [onToggleCheck, isUpdating, currentStatus, verba.id, lancamento.id, toast]);
 
-  const preview = previewText(lancamento.fundamentacao || lancamento.comentariosCalculistas);
+  const preview = getPreviewText(lancamento.fundamentacao || lancamento.comentariosCalculistas, 90);
 
   return (
     <div

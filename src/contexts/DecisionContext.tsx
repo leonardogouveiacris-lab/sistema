@@ -31,6 +31,7 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(true);
 
   const refreshDecisions = useCallback(async () => {
     try {
@@ -48,32 +49,45 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, []);
 
   useEffect(() => {
-    let completed = false;
-    const loadInitial = async () => {
-      const timeoutId = setTimeout(() => {
-        if (!completed) {
-          setIsLoading(false);
-          setError('Timeout ao carregar decisões.');
-        }
-      }, 15000);
+    isMountedRef.current = true;
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (!settled && isMountedRef.current) {
+        setIsLoading(false);
+        setError('Timeout ao carregar decisões.');
+      }
+    }, 15000);
 
+    const loadInitial = async () => {
       try {
         setIsLoading(true);
         setError(null);
         const data = await DecisionsService.getAll();
-        completed = true;
-        setDecisions(data);
+        settled = true;
+        if (isMountedRef.current) {
+          setDecisions(data);
+        }
       } catch (err) {
-        completed = true;
-        const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
-        setError(errorMessage);
-        setDecisions([]);
+        settled = true;
+        if (isMountedRef.current) {
+          const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
+          setError(errorMessage);
+          setDecisions([]);
+        }
       } finally {
         clearTimeout(timeoutId);
-        setIsLoading(false);
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
       }
     };
+
     loadInitial();
+
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   const debouncedRefresh = useCallback(() => {
@@ -197,7 +211,7 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   }, []);
 
-  const exportBackup = useMemo(() => (): string => {
+  const exportBackup = useCallback((): string => {
     return JSON.stringify({
       version: '1.0',
       source: 'supabase',

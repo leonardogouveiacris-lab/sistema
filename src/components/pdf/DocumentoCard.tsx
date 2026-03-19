@@ -3,13 +3,7 @@ import { Documento } from '../../types/Documento';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { FileText, Eye, CreditCard as Edit2, Trash2, Link2, Calendar, Clock } from 'lucide-react';
 import { Tooltip } from '../ui';
-
-function formatDateTime(date: Date | string | undefined): string {
-  if (!date) return '';
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
+import { formatDateTime, getPreviewText } from '../../utils/previewText';
 
 interface DocumentoCardProps {
   documento: Documento;
@@ -32,18 +26,6 @@ const TIPO_BADGE_COLORS: Record<string, string> = {
 
 function getTipoBadge(tipo: string): string {
   return TIPO_BADGE_COLORS[tipo] || 'bg-gray-100 text-gray-700 border-gray-300';
-}
-
-function stripHtml(html: string): string {
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  return div.textContent || div.innerText || '';
-}
-
-function previewText(html: string | undefined, max = 90): string {
-  if (!html) return '';
-  const t = stripHtml(html);
-  return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
 const DocumentoCard: React.FC<DocumentoCardProps> = ({
@@ -71,7 +53,7 @@ const DocumentoCard: React.FC<DocumentoCardProps> = ({
     }
   };
 
-  const preview = previewText(documento.comentarios);
+  const preview = getPreviewText(documento.comentarios, 90);
 
   return (
     <div

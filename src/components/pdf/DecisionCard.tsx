@@ -3,13 +3,7 @@ import { Decision } from '../../types/Decision';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { FileText, Eye, CreditCard as Edit2, Trash2, Calendar, Clock } from 'lucide-react';
 import { Tooltip } from '../ui';
-
-function formatDateTime(date: Date | string | undefined): string {
-  if (!date) return '';
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
+import { formatDateTime, getPreviewText } from '../../utils/previewText';
 
 interface DecisionCardProps {
   decision: Decision;
@@ -31,18 +25,6 @@ function getSituacaoColor(s: string): string {
   return SITUACAO_COLORS[s] || 'bg-gray-100 text-gray-700 border-gray-300';
 }
 
-function stripHtml(html: string): string {
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  return div.textContent || div.innerText || '';
-}
-
-function previewText(html: string | undefined, max = 90): string {
-  if (!html) return '';
-  const t = stripHtml(html);
-  return t.length > max ? `${t.slice(0, max)}…` : t;
-}
-
 const DecisionCard: React.FC<DecisionCardProps> = ({
   decision,
   onEdit,
@@ -58,7 +40,7 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
     }
   };
 
-  const preview = previewText(decision.resumo || decision.observacoes);
+  const preview = getPreviewText(decision.resumo || decision.observacoes, 90);
 
   return (
     <div

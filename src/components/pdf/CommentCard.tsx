@@ -3,13 +3,7 @@ import { PDFComment, COMMENT_COLORS, CommentColor } from '../../types/PDFComment
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { FileText, Calendar, Trash2 } from 'lucide-react';
 import { Tooltip } from '../ui';
-
-function formatDateTime(date: Date | string | undefined): string {
-  if (!date) return '';
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
+import { formatDateTime } from '../../utils/previewText';
 
 function previewText(text: string | undefined, max = 90): string {
   if (!text) return '';
