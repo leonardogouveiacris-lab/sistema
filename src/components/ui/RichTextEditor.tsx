@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useEffect, useImperativeHandle, forwardRef, use
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { EditorRef, InsertionField, usePDFViewer } from '../../contexts/PDFViewerContext';
-import { Maximize2 } from 'lucide-react';
+import { Bold, Italic, Underline, List, ListOrdered, Link, RemoveFormatting, Maximize2 } from 'lucide-react';
 import LancamentoReferencePicker from './LancamentoReferencePicker';
 import { LancamentoReferenceItem } from '../../hooks/useLancamentosForReference';
 import { registerLancamentoRefBlot } from './lancamentoRefBlot';
@@ -24,6 +24,48 @@ interface RichTextEditorProps {
   onReferenceClick?: (item: LancamentoReferenceItem) => void;
 }
 
+interface ActiveFormats {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  list?: string;
+  link?: string;
+}
+
+const ToolbarButton = ({
+  onClick,
+  active,
+  title,
+  children,
+  className: extraClass = '',
+}: {
+  onClick: () => void;
+  active?: boolean;
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <button
+    type="button"
+    onMouseDown={(e) => {
+      e.preventDefault();
+      onClick();
+    }}
+    title={title}
+    className={`
+      inline-flex items-center justify-center w-7 h-7 rounded text-gray-500
+      transition-all duration-150 select-none
+      ${active
+        ? 'bg-gray-200 text-gray-900 shadow-inner'
+        : 'hover:bg-gray-100 hover:text-gray-800'
+      }
+      ${extraClass}
+    `}
+  >
+    {children}
+  </button>
+);
+
 const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
   label,
   placeholder,
@@ -40,11 +82,14 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
 }, ref) => {
   const quillRef = useRef<ReactQuill>(null);
   const { registerEditor, unregisterEditor } = usePDFViewer();
+  const toolbarId = useRef(`rte-tb-${Math.random().toString(36).substr(2, 9)}`);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const triggerIndexRef = useRef<number | null>(null);
+  const [activeFormats, setActiveFormats] = useState<ActiveFormats>({});
+  const [isFocused, setIsFocused] = useState(false);
 
   const pickerOpenRef = useRef(false);
   useEffect(() => {
@@ -62,11 +107,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
   }, [onReferenceClick]);
 
   const modules = useMemo(() => ({
-    toolbar: [
-      ['bold', 'italic', 'underline'],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      ['link', 'clean']
-    ],
+    toolbar: `#${toolbarId.current}`,
   }), []);
 
   const formats = useMemo(() => [
@@ -75,6 +116,67 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     'link',
     'lancamentoRef',
   ], []);
+
+  const refreshFormats = useCallback(() => {
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+    const selection = editor.getSelection();
+    if (selection) {
+      const fmt = editor.getFormat(selection) as ActiveFormats;
+      setActiveFormats(fmt);
+    }
+  }, []);
+
+  useEffect(() => {
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+    const onSelChange = () => refreshFormats();
+    const onTextChange = () => refreshFormats();
+    editor.on('selection-change', onSelChange);
+    editor.on('text-change', onTextChange);
+    return () => {
+      editor.off('selection-change', onSelChange);
+      editor.off('text-change', onTextChange);
+    };
+  }, [refreshFormats]);
+
+  const toggleFormat = useCallback((format: string, value?: string) => {
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+    const selection = editor.getSelection(true);
+    if (!selection) return;
+    const current = editor.getFormat(selection) as Record<string, unknown>;
+    if (value) {
+      editor.format(format, current[format] === value ? false : value, 'user');
+    } else {
+      editor.format(format, !current[format], 'user');
+    }
+    refreshFormats();
+  }, [refreshFormats]);
+
+  const triggerLink = useCallback(() => {
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+    const selection = editor.getSelection(true);
+    if (!selection) return;
+    const current = editor.getFormat(selection) as Record<string, unknown>;
+    if (current.link) {
+      editor.format('link', false, 'user');
+    } else {
+      const url = prompt('URL do link:');
+      if (url) editor.format('link', url, 'user');
+    }
+    refreshFormats();
+  }, [refreshFormats]);
+
+  const triggerClean = useCallback(() => {
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+    const selection = editor.getSelection(true);
+    if (!selection) return;
+    editor.removeFormat(selection.index, selection.length, 'user');
+    refreshFormats();
+  }, [refreshFormats]);
 
   useImperativeHandle(ref, () => ({
     insertText: (text: string) => {
@@ -276,46 +378,114 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     handleReferenceSelectRef.current = handleReferenceSelect;
   }, [handleReferenceSelect]);
 
-  const containerClasses = useMemo(() => {
-    const baseClasses = 'border rounded-md transition-all duration-200';
-    const errorClasses = error ? 'border-red-500' : 'border-gray-300';
-    return `${baseClasses} ${errorClasses} ${className}`.trim();
-  }, [error, className]);
+  const borderColor = error ? 'border-red-400' : isFocused ? 'border-blue-400 ring-2 ring-blue-100' : 'border-gray-200';
 
   return (
-    <div>
+    <div className={className}>
       {label && (
-        <div className="flex items-center justify-between mb-1">
-          <label className="block text-sm font-medium text-gray-700">
-            {label}
-            {required && <span className="text-red-500 ml-1">*</span>}
-          </label>
-          {onExpand && (
-            <button
-              type="button"
-              onClick={onExpand}
-              className="inline-flex items-center space-x-1 px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 hover:text-blue-700 transition-colors duration-200"
-              title="Expandir editor para tela cheia"
-            >
-              <Maximize2 size={12} />
-              <span>Expandir</span>
-            </button>
-          )}
-        </div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          {label}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </label>
       )}
 
-      <div className={containerClasses}>
-        <ReactQuill
-          ref={quillRef}
-          theme="snow"
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-          modules={modules}
-          formats={formats}
-          preserveWhitespace={true}
-          style={{ backgroundColor: 'white' }}
-        />
+      <div className={`rte-modern rounded-lg border bg-white transition-all duration-200 overflow-hidden ${borderColor}`}>
+        <div
+          id={toolbarId.current}
+          className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-gray-100"
+        >
+          <div className="flex items-center gap-0.5">
+            <ToolbarButton
+              onClick={() => toggleFormat('bold')}
+              active={!!activeFormats.bold}
+              title="Negrito (Ctrl+B)"
+            >
+              <Bold size={13} strokeWidth={2.5} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => toggleFormat('italic')}
+              active={!!activeFormats.italic}
+              title="Itálico (Ctrl+I)"
+            >
+              <Italic size={13} strokeWidth={2.5} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => toggleFormat('underline')}
+              active={!!activeFormats.underline}
+              title="Sublinhado (Ctrl+U)"
+            >
+              <Underline size={13} strokeWidth={2.5} />
+            </ToolbarButton>
+          </div>
+
+          <div className="w-px h-4 bg-gray-200 mx-1 flex-shrink-0" />
+
+          <div className="flex items-center gap-0.5">
+            <ToolbarButton
+              onClick={() => toggleFormat('list', 'ordered')}
+              active={activeFormats.list === 'ordered'}
+              title="Lista numerada"
+            >
+              <ListOrdered size={13} strokeWidth={2.5} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => toggleFormat('list', 'bullet')}
+              active={activeFormats.list === 'bullet'}
+              title="Lista com marcadores"
+            >
+              <List size={13} strokeWidth={2.5} />
+            </ToolbarButton>
+          </div>
+
+          <div className="w-px h-4 bg-gray-200 mx-1 flex-shrink-0" />
+
+          <div className="flex items-center gap-0.5">
+            <ToolbarButton
+              onClick={triggerLink}
+              active={!!activeFormats.link}
+              title="Inserir link"
+            >
+              <Link size={13} strokeWidth={2.5} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={triggerClean}
+              title="Remover formatação"
+            >
+              <RemoveFormatting size={13} strokeWidth={2.5} />
+            </ToolbarButton>
+          </div>
+
+          {onExpand && (
+            <>
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={onExpand}
+                title="Expandir para tela cheia"
+                className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-gray-500 rounded hover:bg-gray-200 hover:text-gray-700 transition-colors duration-150"
+              >
+                <Maximize2 size={11} />
+                <span>Expandir</span>
+              </button>
+            </>
+          )}
+        </div>
+
+        <div
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+        >
+          <ReactQuill
+            ref={quillRef}
+            theme="snow"
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            modules={modules}
+            formats={formats}
+            preserveWhitespace={true}
+          />
+        </div>
       </div>
 
       {error && (
@@ -335,28 +505,44 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       )}
 
       <style>{`
-        .ql-container {
+        .rte-modern .ql-toolbar.ql-snow {
+          display: none !important;
+        }
+        .rte-modern .ql-container.ql-snow {
+          border: none !important;
+          font-family: inherit;
+          font-size: 0.875rem;
+          position: relative;
+          z-index: 0;
           min-height: ${rows * 1.5 * 1.75}em;
           max-height: ${rows * 3 * 1.75}em;
           overflow-y: auto;
         }
-        .ql-editor {
+        .rte-modern .ql-editor {
           min-height: ${rows * 1.2 * 1.75}em;
-          padding: 12px 15px;
+          padding: 10px 14px;
+          text-align: justify;
+          line-height: 1.6;
+          color: #111827;
+          font-size: 0.875rem;
+        }
+        .rte-modern .ql-editor.ql-blank::before {
+          color: #9ca3af;
+          font-style: normal;
+          left: 14px;
+          right: 14px;
+        }
+        .rte-modern .ql-editor p,
+        .rte-modern .ql-editor li {
           text-align: justify;
         }
-        .ql-editor p,
-        .ql-editor li {
-          text-align: justify;
+        .rte-modern .ql-editor a {
+          color: #2563eb;
+          text-decoration: underline;
         }
-        .ql-toolbar {
-          border-bottom: 1px solid #ccc;
-          position: relative;
-          z-index: 1;
-        }
-        .ql-container {
-          position: relative;
-          z-index: 0;
+        .rte-modern .ql-editor ol,
+        .rte-modern .ql-editor ul {
+          padding-left: 1.5em;
         }
         .lancamento-ref-chip {
           display: inline;
