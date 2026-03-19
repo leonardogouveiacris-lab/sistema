@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useImperativeHandle, forwardRef, useState, useCallback } from "react";
+import React, { useMemo, useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, useState, useCallback } from "react";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { EditorRef, InsertionField, usePDFViewer } from '../../contexts/PDFViewerContext';
@@ -106,7 +106,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
   }, [onReferenceClick]);
 
   const onChangeRef = useRef(onChange);
-  useEffect(() => {
+  useLayoutEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
@@ -186,7 +186,8 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     insertText: (text: string) => {
       const editor = quillRef.current?.getEditor();
       if (!editor) return;
-      const selection = editor.getSelection(true);
+      quillRef.current?.focus();
+      const selection = editor.getSelection();
       const index = selection ? selection.index : Math.max(0, editor.getLength() - 1);
       editor.insertText(index, text, 'user');
       editor.setSelection(index + text.length, 0);
@@ -204,7 +205,8 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       insertText: (text: string) => {
         const editor = quillRef.current?.getEditor();
         if (!editor) return;
-        const selection = editor.getSelection(true);
+        quillRef.current?.focus();
+        const selection = editor.getSelection();
         const index = selection ? selection.index : Math.max(0, editor.getLength() - 1);
         editor.insertText(index, text, 'user');
         editor.setSelection(index + text.length, 0);
