@@ -177,6 +177,16 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
     });
   }, [formData.lancamento]);
 
+  const handleFundamentacaoChange = useCallback(
+    (value: string) => handleInputChange('fundamentacao', value),
+    [handleInputChange]
+  );
+
+  const handleComentariosCalculistasChange = useCallback(
+    (value: string) => handleInputChange('comentariosCalculistas', value),
+    [handleInputChange]
+  );
+
   /**
    * Handler para fechar modal de texto expandido
    */
@@ -302,7 +312,7 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
               label="Fundamentação"
               placeholder="Fundamentação jurídica da decisão..."
               value={formData.lancamento.fundamentacao || ''}
-              onChange={(value) => handleInputChange('fundamentacao', value)}
+              onChange={handleFundamentacaoChange}
               rows={4}
               fieldType="fundamentacao"
             />
@@ -312,7 +322,7 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
               label="Comentários"
               placeholder="Observações e comentários técnicos..."
               value={formData.lancamento.comentariosCalculistas || ''}
-              onChange={(value) => handleInputChange('comentariosCalculistas', value)}
+              onChange={handleComentariosCalculistasChange}
               rows={4}
               fieldType="comentariosCalculistas"
             />

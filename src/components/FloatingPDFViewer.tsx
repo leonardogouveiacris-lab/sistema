@@ -5130,67 +5130,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    // Se for fundamentação, criar highlight azul automaticamente
-    if (field === 'fundamentacao' && state.selectionPosition && processId) {
-      const flowId = generateFlowId();
-      const targetPageNumber = state.selectionPosition.pageNumber || state.currentPage;
-      const targetDoc = getDocumentByGlobalPage(targetPageNumber);
-      if (targetDoc) {
+    const selectedText = state.selectedText;
+    const selectionPosition = state.selectionPosition;
+    const currentPage = state.currentPage;
 
-        logger.info(
-          'Criando highlight azul automaticamente para fundamentação',
-          'FloatingPDFViewer.handleInsertInField',
-          {
-            metadata: createFlowContext({
-              flowId,
-              entityType: 'highlight',
-              entityId: targetDoc.id,
-              action: 'create-auto',
-              source: 'FloatingPDFViewer.handleInsertInField'
-            }),
-            targetPageNumber,
-            extractedPage: state.selectionPosition.pageNumber,
-            currentPage: state.currentPage
-          }
-        );
-
-        const highlight = await HighlightsService.createHighlight({
-          processId,
-          processDocumentId: targetDoc.id,
-          pageNumber: targetPageNumber,
-          selectedText: state.selectedText,
-          positionData: {
-            x: state.selectionPosition.x,
-            y: state.selectionPosition.y,
-            width: state.selectionPosition.width,
-            height: state.selectionPosition.height,
-            pageNumber: targetPageNumber,
-            rects: state.selectionPosition.rects
-          },
-          color: 'blue'
-        }, undefined, { flowId });
-
-        if (highlight) {
-          // Adiciona o highlight ao estado
-          addHighlight(highlight);
-
-          addHighlightIdToLink(highlight.id);
-
-          logger.success(
-            'Highlight azul criado automaticamente',
-            'FloatingPDFViewer.handleInsertInField',
-            { highlightId: highlight.id }
-          );
-        } else {
-          logger.warn(
-            'Falha ao criar highlight automático, continuando sem vínculo',
-            'FloatingPDFViewer.handleInsertInField'
-          );
-        }
-      }
-    }
-
-    const formattedText = formatPDFText(state.selectedText);
+    const formattedText = formatPDFText(selectedText);
     const quotedText = `[...] "${formattedText}"`;
     const success = insertTextInField(field, quotedText);
 
@@ -5206,11 +5150,68 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       logger.success(
         `Texto formatado e inserido em ${fieldName}`,
         'FloatingPDFViewer.handleInsertInField',
-        { field, originalLength: state.selectedText.length, formattedLength: quotedText.length }
+        { field, originalLength: selectedText.length, formattedLength: quotedText.length }
       );
       clearSelection();
     } else {
       toast.error('O campo de destino nao esta disponivel. Certifique-se de que esta na aba correta.');
+      return;
+    }
+
+    if (field === 'fundamentacao' && selectionPosition && processId) {
+      const flowId = generateFlowId();
+      const targetPageNumber = selectionPosition.pageNumber || currentPage;
+      const targetDoc = getDocumentByGlobalPage(targetPageNumber);
+      if (targetDoc) {
+
+        logger.info(
+          'Criando highlight azul automaticamente para fundamentação',
+          'FloatingPDFViewer.handleInsertInField',
+          {
+            metadata: createFlowContext({
+              flowId,
+              entityType: 'highlight',
+              entityId: targetDoc.id,
+              action: 'create-auto',
+              source: 'FloatingPDFViewer.handleInsertInField'
+            }),
+            targetPageNumber,
+            extractedPage: selectionPosition.pageNumber,
+            currentPage
+          }
+        );
+
+        const highlight = await HighlightsService.createHighlight({
+          processId,
+          processDocumentId: targetDoc.id,
+          pageNumber: targetPageNumber,
+          selectedText,
+          positionData: {
+            x: selectionPosition.x,
+            y: selectionPosition.y,
+            width: selectionPosition.width,
+            height: selectionPosition.height,
+            pageNumber: targetPageNumber,
+            rects: selectionPosition.rects
+          },
+          color: 'blue'
+        }, undefined, { flowId });
+
+        if (highlight) {
+          addHighlight(highlight);
+          addHighlightIdToLink(highlight.id);
+          logger.success(
+            'Highlight azul criado automaticamente',
+            'FloatingPDFViewer.handleInsertInField',
+            { highlightId: highlight.id }
+          );
+        } else {
+          logger.warn(
+            'Falha ao criar highlight automático, continuando sem vínculo',
+            'FloatingPDFViewer.handleInsertInField'
+          );
+        }
+      }
     }
   }, [
     state.selectedText,

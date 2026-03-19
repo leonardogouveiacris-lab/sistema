@@ -122,6 +122,16 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
     }
   }, [errors]);
 
+  const handleFundamentacaoChange = useCallback(
+    (value: string) => handleInputChange('fundamentacao', value),
+    [handleInputChange]
+  );
+
+  const handleComentariosCalculistasChange = useCallback(
+    (value: string) => handleInputChange('comentariosCalculistas', value),
+    [handleInputChange]
+  );
+
   const handleStartRenameTipo = useCallback(() => {
     setIsRenamingTipo(true);
     setNewTipoName(verba.tipoVerba);
@@ -364,7 +374,7 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
               label="Fundamentação"
               placeholder="Fundamentação jurídica da decisão..."
               value={formData.fundamentacao || ''}
-              onChange={(value) => handleInputChange('fundamentacao', value)}
+              onChange={handleFundamentacaoChange}
               rows={4}
               fieldType="fundamentacao"
               referenceItems={referenceItems}
@@ -374,7 +384,7 @@ const VerbaEditModal: React.FC<VerbaEditModalProps> = ({
               label="Comentários"
               placeholder="Observações e comentários técnicos..."
               value={formData.comentariosCalculistas || ''}
-              onChange={(value) => handleInputChange('comentariosCalculistas', value)}
+              onChange={handleComentariosCalculistasChange}
               rows={4}
               fieldType="comentariosCalculistas"
               referenceItems={referenceItems}
