@@ -231,10 +231,15 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
     const idealLeft = rect.left + rect.width / 2 - POPUP_WIDTH / 2;
     const left = Math.max(8, Math.min(idealLeft, viewportWidth - POPUP_WIDTH - 8));
+    const POPUP_HEIGHT = 280;
+    const frameBoundaryBottom = Math.min(viewportHeight, containerRect.bottom);
+    const frameBoundaryTop = Math.max(0, containerRect.top);
     let top = rect.bottom + 6;
-    if (top + 280 > viewportHeight) top = Math.max(8, rect.top - 280 - 6);
+    if (top + POPUP_HEIGHT > frameBoundaryBottom) top = rect.top - POPUP_HEIGHT - 6;
 
-    popupCoordsRef.current = { top, left, visible: iconVisible };
+    const visible = iconVisible && top >= frameBoundaryTop && top + POPUP_HEIGHT <= frameBoundaryBottom;
+
+    popupCoordsRef.current = { top, left, visible };
 
     if (direct && popupRef.current) {
       popupRef.current.style.top = `${top}px`;
