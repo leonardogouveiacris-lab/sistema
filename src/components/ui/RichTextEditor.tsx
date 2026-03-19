@@ -186,8 +186,8 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     insertText: (text: string) => {
       const editor = quillRef.current?.getEditor();
       if (!editor) return;
-      const selection = editor.getSelection();
-      const index = selection ? selection.index : editor.getLength();
+      const selection = editor.getSelection(true);
+      const index = selection ? selection.index : Math.max(0, editor.getLength() - 1);
       editor.insertText(index, text, 'user');
       editor.setSelection(index + text.length, 0);
       onChangeRef.current(editor.root.innerHTML);
@@ -204,8 +204,8 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       insertText: (text: string) => {
         const editor = quillRef.current?.getEditor();
         if (!editor) return;
-        const selection = editor.getSelection();
-        const index = selection ? selection.index : editor.getLength();
+        const selection = editor.getSelection(true);
+        const index = selection ? selection.index : Math.max(0, editor.getLength() - 1);
         editor.insertText(index, text, 'user');
         editor.setSelection(index + text.length, 0);
         onChangeRef.current(editor.root.innerHTML);
