@@ -1125,7 +1125,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setState(prev => ({
       ...prev,
       formMode: 'view',
-      editingRecordId: null
+      editingRecordId: null,
+      highlightIdsToLink: []
     }));
   }, []);
 
