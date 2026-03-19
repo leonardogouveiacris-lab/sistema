@@ -1482,8 +1482,10 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const getPageHeight = useCallback(
     (pageNumber: number): number => {
       const dimensions = state.pageDimensions.get(pageNumber);
-      const rotation = state.pageRotations[pageNumber] || 0;
-      const isRotated90or270 = rotation === 90 || rotation === 270;
+      const userRotation = state.pageRotations[pageNumber] || 0;
+      const internalRotation = dimensions?.internalRotation || 0;
+      const totalRotation = ((internalRotation + userRotation) % 360 + 360) % 360;
+      const isRotated90or270 = totalRotation === 90 || totalRotation === 270;
 
       if (dimensions) {
         const effectiveHeight = isRotated90or270 ? dimensions.width : dimensions.height;
@@ -1498,8 +1500,10 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const getPageWidth = useCallback(
     (pageNumber: number): number => {
       const dimensions = state.pageDimensions.get(pageNumber);
-      const rotation = state.pageRotations[pageNumber] || 0;
-      const isRotated90or270 = rotation === 90 || rotation === 270;
+      const userRotation = state.pageRotations[pageNumber] || 0;
+      const internalRotation = dimensions?.internalRotation || 0;
+      const totalRotation = ((internalRotation + userRotation) % 360 + 360) % 360;
+      const isRotated90or270 = totalRotation === 90 || totalRotation === 270;
 
       if (dimensions) {
         const effectiveWidth = isRotated90or270 ? dimensions.height : dimensions.width;
