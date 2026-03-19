@@ -105,6 +105,11 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     onReferenceClickRef.current = onReferenceClick;
   }, [onReferenceClick]);
 
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
   const modules = useMemo(() => ({
     toolbar: false,
   }), []);
@@ -185,13 +190,12 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       const index = selection ? selection.index : editor.getLength();
       editor.insertText(index, text, 'user');
       editor.setSelection(index + text.length, 0);
-      const newContent = editor.root.innerHTML;
-      onChange(newContent);
+      onChangeRef.current(editor.root.innerHTML);
     },
     focus: () => {
       quillRef.current?.focus();
     }
-  }), [onChange]);
+  }), []);
 
   useEffect(() => {
     if (!fieldType) return;
@@ -204,8 +208,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
         const index = selection ? selection.index : editor.getLength();
         editor.insertText(index, text, 'user');
         editor.setSelection(index + text.length, 0);
-        const newContent = editor.root.innerHTML;
-        onChange(newContent);
+        onChangeRef.current(editor.root.innerHTML);
       },
       focus: () => {
         quillRef.current?.focus();
@@ -214,7 +217,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
 
     registerEditor(fieldType, editorRef);
     return () => { unregisterEditor(fieldType); };
-  }, [fieldType, registerEditor, unregisterEditor, onChange]);
+  }, [fieldType, registerEditor, unregisterEditor]);
 
   const getCaretRect = useCallback((): DOMRect | null => {
     const editor = quillRef.current?.getEditor();
