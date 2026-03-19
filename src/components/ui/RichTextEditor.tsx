@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, useState, useCallback } from "react";
+import React, { useMemo, useRef, useEffect, useImperativeHandle, forwardRef, useState, useCallback } from "react";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { EditorRef, InsertionField, usePDFViewer } from '../../contexts/PDFViewerContext';
@@ -105,11 +105,6 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     onReferenceClickRef.current = onReferenceClick;
   }, [onReferenceClick]);
 
-  const onChangeRef = useRef(onChange);
-  useLayoutEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
-
   const modules = useMemo(() => ({
     toolbar: false,
   }), []);
@@ -186,17 +181,17 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
     insertText: (text: string) => {
       const editor = quillRef.current?.getEditor();
       if (!editor) return;
-      quillRef.current?.focus();
       const selection = editor.getSelection();
-      const index = selection ? selection.index : Math.max(0, editor.getLength() - 1);
+      const index = selection ? selection.index : editor.getLength();
       editor.insertText(index, text, 'user');
       editor.setSelection(index + text.length, 0);
-      onChangeRef.current(editor.root.innerHTML);
+      const newContent = editor.root.innerHTML;
+      onChange(newContent);
     },
     focus: () => {
       quillRef.current?.focus();
     }
-  }), []);
+  }), [onChange]);
 
   useEffect(() => {
     if (!fieldType) return;
@@ -205,12 +200,12 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       insertText: (text: string) => {
         const editor = quillRef.current?.getEditor();
         if (!editor) return;
-        quillRef.current?.focus();
         const selection = editor.getSelection();
-        const index = selection ? selection.index : Math.max(0, editor.getLength() - 1);
+        const index = selection ? selection.index : editor.getLength();
         editor.insertText(index, text, 'user');
         editor.setSelection(index + text.length, 0);
-        onChangeRef.current(editor.root.innerHTML);
+        const newContent = editor.root.innerHTML;
+        onChange(newContent);
       },
       focus: () => {
         quillRef.current?.focus();
@@ -219,7 +214,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
 
     registerEditor(fieldType, editorRef);
     return () => { unregisterEditor(fieldType); };
-  }, [fieldType, registerEditor, unregisterEditor]);
+  }, [fieldType, registerEditor, unregisterEditor, onChange]);
 
   const getCaretRect = useCallback((): DOMRect | null => {
     const editor = quillRef.current?.getEditor();

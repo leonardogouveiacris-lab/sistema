@@ -35,7 +35,7 @@ import { useResponsivePanel } from '../hooks';
 import { usePdfNavigationState } from '../hooks/usePdfNavigationState';
 import { usePdfRenderBudget } from '../hooks/usePdfRenderBudget';
 import { usePdfBookmarks } from '../hooks/usePdfBookmarks';
-import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_CONFIG, PDFHighlight } from '../types/Highlight';
+import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_CONFIG } from '../types/Highlight';
 import { PDFBookmarkPanel, PDFSearchPopup, RotationControls, MemoizedPDFPage, PDFViewerMinimizedButton, PDFViewerHeader, PDFViewerSidebarArea, PDFSelectionCommentLayers, PDFViewerPageNavigation, PDFViewerOverlays } from './pdf';
 import { COMMENT_COLORS, CommentColor, PDFComment } from '../types/PDFComment';
 import * as PDFCommentsService from '../services/pdfComments.service';
@@ -5130,8 +5130,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    let pendingHighlight: PDFHighlight | null = null;
-
     // Se for fundamentação, criar highlight azul automaticamente
     if (field === 'fundamentacao' && state.selectionPosition && processId) {
       const flowId = generateFlowId();
@@ -5173,7 +5171,11 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         }, undefined, { flowId });
 
         if (highlight) {
-          pendingHighlight = highlight;
+          // Adiciona o highlight ao estado
+          addHighlight(highlight);
+
+          addHighlightIdToLink(highlight.id);
+
           logger.success(
             'Highlight azul criado automaticamente',
             'FloatingPDFViewer.handleInsertInField',
@@ -5193,10 +5195,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const success = insertTextInField(field, quotedText);
 
     if (success) {
-      if (pendingHighlight) {
-        addHighlight(pendingHighlight);
-        addHighlightIdToLink(pendingHighlight.id);
-      }
       const fieldNames: Record<InsertionField, string> = {
         'fundamentacao': 'Fundamentacao',
         'comentariosCalculistas': 'Comentarios Calculistas',
