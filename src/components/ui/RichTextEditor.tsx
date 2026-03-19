@@ -82,7 +82,6 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
 }, ref) => {
   const quillRef = useRef<ReactQuill>(null);
   const { registerEditor, unregisterEditor } = usePDFViewer();
-  const toolbarId = useRef(`rte-tb-${Math.random().toString(36).substr(2, 9)}`);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
@@ -107,7 +106,7 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
   }, [onReferenceClick]);
 
   const modules = useMemo(() => ({
-    toolbar: `#${toolbarId.current}`,
+    toolbar: false,
   }), []);
 
   const formats = useMemo(() => [
@@ -391,7 +390,6 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
 
       <div className={`rte-modern rounded-lg border bg-white transition-all duration-200 overflow-hidden ${borderColor}`}>
         <div
-          id={toolbarId.current}
           className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-gray-100"
         >
           <div className="flex items-center gap-0.5">
@@ -505,9 +503,6 @@ const RichTextEditor = forwardRef<EditorRef, RichTextEditorProps>(({
       )}
 
       <style>{`
-        .rte-modern .ql-toolbar.ql-snow {
-          display: none !important;
-        }
         .rte-modern .ql-container.ql-snow {
           border: none !important;
           font-family: inherit;
