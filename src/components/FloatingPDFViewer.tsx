@@ -459,6 +459,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const interDocumentHeaderRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastOpenDocumentSetSignatureRef = useRef<string | null>(null);
   const commentsBatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const commentsAbortControllerRef = useRef<AbortController | null>(null);
   const pageDimensionsUpdateQueueRef = useRef<Map<number, { width: number; height: number; internalRotation?: number }>>(new Map());
   const pageDimensionsBatchFrameRef = useRef<number | null>(null);
   const heavyTaskQueueRef = useRef<HeavyDocumentTask[]>([]);
@@ -3198,6 +3199,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     lastOpenDocumentSetSignatureRef.current = documentSetSignature;
 
+    commentsAbortControllerRef.current?.abort();
+    commentsAbortControllerRef.current = null;
     commentsLoadStartedRef.current = false;
     commentsLoadedDocsRef.current.clear();
     commentsLoadInFlightRef.current.clear();
@@ -3292,22 +3295,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
+    commentsAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    commentsAbortControllerRef.current = controller;
 
-    queue.forEach((documentId, index) => {
-      enqueueHeavyTask({
-        id: `comments:${documentId}`,
-        type: 'comments',
-        documentId,
-        priority: 1000 - index,
-        run: async (signal) => {
-          await loadCommentsForDocument(documentId, signal);
-          if (!signal.aborted) {
-            await new Promise(resolve => setTimeout(resolve, COMMENTS_BATCH_DELAY_MS));
-          }
-        }
-      });
+    queue.forEach((documentId) => {
+      loadCommentsForDocument(documentId, controller.signal);
     });
-  }, [enqueueHeavyTask, loadCommentsForDocument]);
+  }, [loadCommentsForDocument]);
 
 
   useTextSelectionGuard({
@@ -3686,6 +3681,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   useEffect(() => {
     if (!state.isOpen) {
+      commentsAbortControllerRef.current?.abort();
+      commentsAbortControllerRef.current = null;
       commentsLoadStartedRef.current = false;
       commentsLoadedDocsRef.current.clear();
       commentsLoadInFlightRef.current.clear();
@@ -3694,42 +3691,24 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    if (!firstPaintRecordedRef.current || commentsLoadStartedRef.current || state.documents.length === 0) {
+    if (commentsLoadStartedRef.current || state.documents.length === 0) {
       return;
     }
 
     commentsLoadStartedRef.current = true;
-    startPhaseTimer('tertiary-comments-after-first-paint');
 
-    const runAfterPaint = () => {
-      const activeDocument = getCurrentDocument();
-      const visibleDocumentIds = Array.from(scrollBasedVisiblePages)
-        .map(page => getDocumentByGlobalPage(page)?.id)
-        .filter((id): id is string => Boolean(id));
-      const prioritizedDocumentIds = [
-        activeDocument?.id,
-        ...visibleDocumentIds,
-        ...state.documents.map(doc => doc.id)
-      ].filter((id, index, arr): id is string => Boolean(id) && arr.indexOf(id) === index);
+    const activeDocument = getCurrentDocument();
+    const visibleDocumentIds = Array.from(scrollBasedVisiblePages)
+      .map(page => getDocumentByGlobalPage(page)?.id)
+      .filter((id): id is string => Boolean(id));
+    const prioritizedDocumentIds = [
+      activeDocument?.id,
+      ...visibleDocumentIds,
+      ...state.documents.map(doc => doc.id)
+    ].filter((id, index, arr): id is string => Boolean(id) && arr.indexOf(id) === index);
 
-      enqueueCommentsLoad(prioritizedDocumentIds);
-      finishPhaseTimer('tertiary-comments-after-first-paint', 'FloatingPDFViewer.commentsPostPaint', {
-        prioritizedDocuments: prioritizedDocumentIds.length
-      });
-    };
-
-    const frameId = window.requestAnimationFrame(() => {
-      commentsBatchTimeoutRef.current = setTimeout(runAfterPaint, 0);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      if (commentsBatchTimeoutRef.current) {
-        clearTimeout(commentsBatchTimeoutRef.current);
-        commentsBatchTimeoutRef.current = null;
-      }
-    };
-  }, [state.isOpen, state.documents, scrollBasedVisiblePages, getCurrentDocument, getDocumentByGlobalPage, enqueueCommentsLoad, setComments, startPhaseTimer, finishPhaseTimer]);
+    enqueueCommentsLoad(prioritizedDocumentIds);
+  }, [state.isOpen, state.documents, scrollBasedVisiblePages, getCurrentDocument, getDocumentByGlobalPage, enqueueCommentsLoad, setComments]);
 
   /**
    * Calcula o offset de página global para cada documento
