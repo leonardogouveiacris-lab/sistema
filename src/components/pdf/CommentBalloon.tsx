@@ -208,7 +208,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     setShowConnectorDropdown(false);
   };
 
-  const popupCoordsRef = useRef({ top: 0, left: 0 });
+  const popupCoordsRef = useRef({ top: 0, left: 0, visible: false });
   const [, forcePopupRender] = useState(0);
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -218,16 +218,28 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
+    let scrollEl: Element | null = iconRef.current.parentElement;
+    while (scrollEl && scrollEl !== document.documentElement) {
+      const style = window.getComputedStyle(scrollEl);
+      const oy = style.overflowY;
+      if (oy === 'auto' || oy === 'scroll') break;
+      scrollEl = scrollEl.parentElement;
+    }
+    const containerRect = scrollEl ? scrollEl.getBoundingClientRect() : { top: 0, bottom: viewportHeight, left: 0, right: viewportWidth };
+    const iconVisible = rect.bottom > containerRect.top && rect.top < containerRect.bottom &&
+                        rect.right > containerRect.left && rect.left < containerRect.right;
+
     const idealLeft = rect.left + rect.width / 2 - POPUP_WIDTH / 2;
     const left = Math.max(8, Math.min(idealLeft, viewportWidth - POPUP_WIDTH - 8));
     let top = rect.bottom + 6;
     if (top + 280 > viewportHeight) top = Math.max(8, rect.top - 280 - 6);
 
-    popupCoordsRef.current = { top, left };
+    popupCoordsRef.current = { top, left, visible: iconVisible };
 
     if (direct && popupRef.current) {
       popupRef.current.style.top = `${top}px`;
       popupRef.current.style.left = `${left}px`;
+      popupRef.current.style.visibility = iconVisible ? 'visible' : 'hidden';
     } else {
       forcePopupRender(n => n + 1);
     }
@@ -348,7 +360,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
         <div
           ref={popupRef}
           className={`fixed bg-white rounded-xl shadow-2xl border ${colorConfig.border} z-[9999] flex flex-col`}
-          style={{ top: popupCoordsRef.current.top, left: popupCoordsRef.current.left, width: POPUP_WIDTH }}
+          style={{ top: popupCoordsRef.current.top, left: popupCoordsRef.current.left, width: POPUP_WIDTH, visibility: popupCoordsRef.current.visible ? 'visible' : 'hidden' }}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
