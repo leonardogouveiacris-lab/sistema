@@ -208,7 +208,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     setShowConnectorDropdown(false);
   };
 
-  const popupCoordsRef = useRef({ top: 0, left: 0, visible: false });
+  const popupCoordsRef = useRef<{ top?: number; bottom?: number; left: number; visible: boolean }>({ left: 0, visible: false });
   const [, forcePopupRender] = useState(0);
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -220,31 +220,37 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
     let scrollEl: Element | null = iconRef.current.parentElement;
     while (scrollEl && scrollEl !== document.documentElement) {
-      const style = window.getComputedStyle(scrollEl);
-      const oy = style.overflowY;
+      const st = window.getComputedStyle(scrollEl);
+      const oy = st.overflowY;
       if (oy === 'auto' || oy === 'scroll') break;
       scrollEl = scrollEl.parentElement;
     }
-    const containerRect = scrollEl ? scrollEl.getBoundingClientRect() : { top: 0, bottom: viewportHeight, left: 0, right: viewportWidth };
+    const containerRect = scrollEl
+      ? scrollEl.getBoundingClientRect()
+      : { top: 0, bottom: viewportHeight, left: 0, right: viewportWidth };
     const iconVisible = rect.bottom > containerRect.top && rect.top < containerRect.bottom &&
                         rect.right > containerRect.left && rect.left < containerRect.right;
 
     const idealLeft = rect.left + rect.width / 2 - POPUP_WIDTH / 2;
     const left = Math.max(8, Math.min(idealLeft, viewportWidth - POPUP_WIDTH - 8));
-    const POPUP_HEIGHT = 280;
     const frameBoundaryBottom = Math.min(viewportHeight, containerRect.bottom);
     const frameBoundaryTop = Math.max(0, containerRect.top);
-    let top = rect.bottom + 6;
-    if (top + POPUP_HEIGHT > frameBoundaryBottom) top = rect.top - POPUP_HEIGHT - 6;
 
-    const visible = iconVisible && top >= frameBoundaryTop && top + POPUP_HEIGHT <= frameBoundaryBottom;
+    const spaceBelow = frameBoundaryBottom - rect.bottom - 6;
+    const spaceAbove = rect.top - frameBoundaryTop - 6;
+    const flipped = spaceBelow < 60 && spaceAbove > spaceBelow;
+    const visible = iconVisible && (flipped ? spaceAbove > 0 : spaceBelow > 0);
 
-    popupCoordsRef.current = { top, left, visible };
+    const newTop = flipped ? undefined : rect.bottom + 6;
+    const newBottom = flipped ? viewportHeight - rect.top + 6 : undefined;
+
+    popupCoordsRef.current = { top: newTop, bottom: newBottom, left, visible };
 
     if (direct && popupRef.current) {
-      popupRef.current.style.top = `${top}px`;
+      popupRef.current.style.top = newTop !== undefined ? `${newTop}px` : '';
+      popupRef.current.style.bottom = newBottom !== undefined ? `${newBottom}px` : '';
       popupRef.current.style.left = `${left}px`;
-      popupRef.current.style.visibility = iconVisible ? 'visible' : 'hidden';
+      popupRef.current.style.visibility = visible ? 'visible' : 'hidden';
     } else {
       forcePopupRender(n => n + 1);
     }
@@ -293,8 +299,10 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     const newX = (e.clientX - parentRect.left - dragOffset.x) / scale;
     const newY = (e.clientY - parentRect.top - dragOffset.y) / scale;
 
-    const clampedX = Math.max(0, Math.min(newX, pageWidth));
-    const clampedY = Math.max(0, Math.min(newY, pageHeight));
+    const maxX = parentRect.width / scale;
+    const maxY = parentRect.height / scale;
+    const clampedX = Math.max(0, Math.min(newX, maxX));
+    const clampedY = Math.max(0, Math.min(newY, maxY));
 
     latestPositionRef.current = { x: clampedX, y: clampedY };
     updateComment(comment.id, { positionX: clampedX, positionY: clampedY });
@@ -365,7 +373,14 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
         <div
           ref={popupRef}
           className={`fixed bg-white rounded-xl shadow-2xl border ${colorConfig.border} z-[9999] flex flex-col`}
-          style={{ top: popupCoordsRef.current.top, left: popupCoordsRef.current.left, width: POPUP_WIDTH, visibility: popupCoordsRef.current.visible ? 'visible' : 'hidden' }}
+          style={{
+            top: popupCoordsRef.current.top,
+            bottom: popupCoordsRef.current.bottom,
+            left: popupCoordsRef.current.left,
+            width: POPUP_WIDTH,
+            visibility: popupCoordsRef.current.visible ? 'visible' : 'hidden',
+            transition: 'none',
+          }}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
