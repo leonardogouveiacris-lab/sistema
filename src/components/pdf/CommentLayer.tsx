@@ -137,8 +137,12 @@ const CommentLayer: React.FC<CommentLayerProps> = ({
 
   return (
     <div
-      className="absolute inset-0"
+      className="absolute"
       style={{
+        top: 0,
+        left: 0,
+        width: pageWidth * scale,
+        height: pageHeight * scale,
         pointerEvents: state.isCommentModeActive ? 'auto' : 'none',
         cursor: state.isCommentModeActive && !state.isDrawingConnector ? 'crosshair' : 'default'
       }}

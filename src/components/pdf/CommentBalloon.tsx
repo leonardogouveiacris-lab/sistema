@@ -95,6 +95,10 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const posX = comment.positionX * scale;
   const posY = comment.positionY * scale;
 
+  useLayoutEffect(() => {
+    if (isExpanded) applyPopupCoords(true);
+  }, [posX, posY]);
+
   useEffect(() => {
     if (isSelected && !isExpanded) {
       setIsExpanded(true);
@@ -204,41 +208,45 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     setShowConnectorDropdown(false);
   };
 
-  const [popupCoords, setPopupCoords] = useState({ top: 0, left: 0 });
+  const popupCoordsRef = useRef({ top: 0, left: 0 });
+  const [, forcePopupRender] = useState(0);
+  const popupRef = useRef<HTMLDivElement>(null);
 
-  const recalcPopupCoords = useCallback(() => {
+  const applyPopupCoords = useCallback((direct: boolean) => {
     if (!iconRef.current) return;
     const rect = iconRef.current.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
     const idealLeft = rect.left + rect.width / 2 - POPUP_WIDTH / 2;
-    const clampedLeft = Math.max(8, Math.min(idealLeft, viewportWidth - POPUP_WIDTH - 8));
-
+    const left = Math.max(8, Math.min(idealLeft, viewportWidth - POPUP_WIDTH - 8));
     let top = rect.bottom + 6;
-    if (top + 280 > viewportHeight) {
-      top = Math.max(8, rect.top - 280 - 6);
-    }
+    if (top + 280 > viewportHeight) top = Math.max(8, rect.top - 280 - 6);
 
-    setPopupCoords({ top, left: clampedLeft });
+    popupCoordsRef.current = { top, left };
+
+    if (direct && popupRef.current) {
+      popupRef.current.style.top = `${top}px`;
+      popupRef.current.style.left = `${left}px`;
+    } else {
+      forcePopupRender(n => n + 1);
+    }
   }, []);
 
   useLayoutEffect(() => {
-    if (isExpanded) {
-      recalcPopupCoords();
-    }
-  }, [isExpanded, recalcPopupCoords]);
+    if (isExpanded) applyPopupCoords(false);
+  }, [isExpanded, applyPopupCoords]);
 
   useEffect(() => {
     if (!isExpanded) return;
-    const onScroll = () => recalcPopupCoords();
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onScroll);
+    const onUpdate = () => applyPopupCoords(true);
+    window.addEventListener('scroll', onUpdate, true);
+    window.addEventListener('resize', onUpdate);
     return () => {
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onScroll);
+      window.removeEventListener('scroll', onUpdate, true);
+      window.removeEventListener('resize', onUpdate);
     };
-  }, [isExpanded, recalcPopupCoords]);
+  }, [isExpanded, applyPopupCoords]);
 
   const handleDragStart = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, [contenteditable], input, .ql-toolbar, .ql-editor')) return;
@@ -274,10 +282,8 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     latestPositionRef.current = { x: clampedX, y: clampedY };
     updateComment(comment.id, { positionX: clampedX, positionY: clampedY });
 
-    if (isExpanded) {
-      requestAnimationFrame(() => recalcPopupCoords());
-    }
-  }, [dragOffset, scale, pageWidth, pageHeight, comment.id, updateComment, isExpanded, recalcPopupCoords]);
+    if (isExpanded) applyPopupCoords(true);
+  }, [dragOffset, scale, pageWidth, pageHeight, comment.id, updateComment, isExpanded, applyPopupCoords]);
 
   const handleDragEnd = useCallback(async () => {
     setIsDragging(false);
@@ -340,8 +346,9 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
       {isExpanded && createPortal(
         <div
+          ref={popupRef}
           className={`fixed bg-white rounded-xl shadow-2xl border ${colorConfig.border} z-[9999] flex flex-col`}
-          style={{ top: popupCoords.top, left: popupCoords.left, width: POPUP_WIDTH }}
+          style={{ top: popupCoordsRef.current.top, left: popupCoordsRef.current.left, width: POPUP_WIDTH }}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
