@@ -6676,9 +6676,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                 documentId={doc.id}
                                 localPageNumber={localPageNum}
                                 scale={state.displayZoom}
-                                pageWidth={getPageWidth(state.currentPage) / state.zoom}
-                                pageHeight={getPageHeight(state.currentPage) / state.zoom}
-                                rotation={getPageRotation(state.currentPage)}
+                                naturalPageWidth={state.pageDimensions.get(state.currentPage)?.width ?? 595}
+                                naturalPageHeight={state.pageDimensions.get(state.currentPage)?.height ?? 842}
+                                userRotation={getPageRotation(state.currentPage)}
+                                internalRotation={state.pageDimensions.get(state.currentPage)?.internalRotation ?? 0}
                               />
                               </MemoizedPDFPage>
                             </div>
@@ -6805,9 +6806,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                           documentId={doc.id}
                                           localPageNumber={localPageNum}
                                           scale={state.displayZoom}
-                                          pageWidth={pageWidth / state.zoom}
-                                          pageHeight={pageHeight / state.zoom}
-                                          rotation={getPageRotation(globalPageNum)}
+                                          naturalPageWidth={state.pageDimensions.get(globalPageNum)?.width ?? 595}
+                                          naturalPageHeight={state.pageDimensions.get(globalPageNum)?.height ?? 842}
+                                          userRotation={getPageRotation(globalPageNum)}
+                                          internalRotation={state.pageDimensions.get(globalPageNum)?.internalRotation ?? 0}
                                         />
                                           </MemoizedPDFPage>
                                       </>

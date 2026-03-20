@@ -7,9 +7,10 @@ interface OcrTextOverlayProps {
   documentId: string;
   localPageNumber: number;
   scale: number;
-  pageWidth: number;
-  pageHeight: number;
-  rotation?: number;
+  naturalPageWidth: number;
+  naturalPageHeight: number;
+  userRotation?: number;
+  internalRotation?: number;
 }
 
 interface OcrPageData {
@@ -55,24 +56,35 @@ async function fetchOcrData(documentId: string, pageNumber: number, bust = false
   return result;
 }
 
-function buildRotationTransform(rotation: number, pageWidth: number, pageHeight: number): React.CSSProperties {
-  const r = ((rotation % 360) + 360) % 360;
+function normalizeRotation(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
+
+function isSwapped(rotation: number): boolean {
+  const r = normalizeRotation(rotation);
+  return r === 90 || r === 270;
+}
+
+function buildUserRotationTransform(userRot: number, ocrW: number, ocrH: number): React.CSSProperties {
+  const r = normalizeRotation(userRot);
   if (r === 0) return {};
   if (r === 90) return {
     transform: `rotate(90deg) translateX(0%) translateY(-100%)`,
     transformOrigin: 'top left',
-    width: pageHeight,
-    height: pageWidth,
+    width: ocrW,
+    height: ocrH,
   };
   if (r === 180) return {
     transform: `rotate(180deg)`,
     transformOrigin: 'center center',
+    width: ocrW,
+    height: ocrH,
   };
   if (r === 270) return {
     transform: `rotate(270deg) translateY(100%) translateX(-100%)`,
     transformOrigin: 'top left',
-    width: pageHeight,
-    height: pageWidth,
+    width: ocrW,
+    height: ocrH,
   };
   return {};
 }
@@ -81,9 +93,10 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
   documentId,
   localPageNumber,
   scale,
-  pageWidth,
-  pageHeight,
-  rotation = 0,
+  naturalPageWidth,
+  naturalPageHeight,
+  userRotation = 0,
+  internalRotation = 0,
 }) => {
   const [data, setData] = useState<OcrPageData | null>(null);
   const mountedRef = useRef(true);
@@ -114,22 +127,27 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
 
   if (!data || data.wordBoxes.length === 0) return null;
 
-  const displayWidth = pageWidth * scale;
-  const displayHeight = pageHeight * scale;
+  const internalSwap = isSwapped(internalRotation);
+  const ocrNaturalW = internalSwap ? naturalPageHeight : naturalPageWidth;
+  const ocrNaturalH = internalSwap ? naturalPageWidth : naturalPageHeight;
 
-  const r = ((rotation % 360) + 360) % 360;
+  const ocrW = ocrNaturalW * scale;
+  const ocrH = ocrNaturalH * scale;
 
-  const scaleX = scale;
-  const scaleY = scale;
+  const totalRotation = normalizeRotation(internalRotation + userRotation);
+  const totalSwap = isSwapped(totalRotation);
+  const displayW = totalSwap ? naturalPageHeight * scale : naturalPageWidth * scale;
+  const displayH = totalSwap ? naturalPageWidth * scale : naturalPageHeight * scale;
 
-  const rotationStyle = buildRotationTransform(r, displayWidth, displayHeight);
+  const userRot = normalizeRotation(userRotation);
+  const rotationStyle = buildUserRotationTransform(userRot, ocrW, ocrH);
 
   return (
     <div
       className="absolute inset-0 overflow-hidden pointer-events-none select-text ocr-text-overlay"
       style={{
-        width: displayWidth,
-        height: displayHeight,
+        width: displayW,
+        height: displayH,
         zIndex: 2,
       }}
     >
@@ -138,8 +156,8 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
           position: 'absolute',
           top: 0,
           left: 0,
-          width: displayWidth,
-          height: displayHeight,
+          width: ocrW,
+          height: ocrH,
           ...rotationStyle,
         }}
       >
@@ -148,10 +166,10 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
             key={idx}
             style={{
               position: 'absolute',
-              left: word.x * scaleX,
-              top: word.y * scaleY,
-              width: word.w * scaleX,
-              height: word.h * scaleY,
+              left: word.x * scale,
+              top: word.y * scale,
+              width: word.w * scale,
+              height: word.h * scale,
               color: 'transparent',
               backgroundColor: 'transparent',
               userSelect: 'text',
@@ -160,7 +178,7 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
               pointerEvents: 'auto',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
-              fontSize: `${Math.max(1, word.h * scaleY * 0.85)}px`,
+              fontSize: `${Math.max(1, word.h * scale * 0.85)}px`,
               lineHeight: 1,
               display: 'inline-block',
             }}
