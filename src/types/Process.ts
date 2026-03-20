@@ -41,5 +41,4 @@ export interface ProcessFilter extends BaseFilter {
  */
 export const PROCESS_CONSTANTS = {
   MIN_NUMERO_LENGTH: 5,
-  MAX_OBSERVACOES_LENGTH: 1000
 } as const;

@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { NewDecision, Decision, DECISION_CONSTANTS } from '../../types/Decision';
+import { NewDecision, Decision } from '../../types/Decision';
 import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
 import { DropdownItemAction } from '../ui/CustomDropdown';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
@@ -156,10 +156,6 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
       } else if (formData.paginaVinculada > state.totalPages) {
         newErrors.paginaVinculada = `Máx. ${state.totalPages}`;
       }
-    }
-
-    if (formData.observacoes && formData.observacoes.length > DECISION_CONSTANTS.MAX_OBSERVACOES_LENGTH) {
-      newErrors.observacoes = `Observações devem ter no máximo ${DECISION_CONSTANTS.MAX_OBSERVACOES_LENGTH} caracteres`;
     }
 
     setErrors(newErrors);
@@ -632,7 +628,6 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
         title={expandedTextModal.title}
         initialContent={expandedTextModal.content}
         placeholder="Observações..."
-        maxLength={DECISION_CONSTANTS.MAX_OBSERVACOES_LENGTH}
       />
     </div>
   );

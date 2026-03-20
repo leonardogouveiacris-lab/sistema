@@ -111,6 +111,4 @@ export interface ChecklistStats {
 export const VERBA_CONSTANTS = {
   MIN_TIPO_LENGTH: 2,
   MAX_TIPO_LENGTH: 100,
-  MAX_FUNDAMENTACAO_LENGTH: 5000,
-  MAX_COMENTARIOS_LENGTH: 5000,
 } as const;

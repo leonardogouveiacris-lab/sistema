@@ -86,11 +86,6 @@ class ValidationUtils {
       errors.reclamada = reclamadaError;
     }
 
-    // Validação das observações (opcional, mas com limite)
-    if (data.observacoesGerais && data.observacoesGerais.length > PROCESS_CONSTANTS.MAX_OBSERVACOES_LENGTH) {
-      errors.observacoesGerais = `Observações devem ter no máximo ${PROCESS_CONSTANTS.MAX_OBSERVACOES_LENGTH} caracteres`;
-    }
-
     return {
       isValid: Object.keys(errors).length === 0,
       errors
@@ -127,11 +122,6 @@ class ValidationUtils {
     const processIdError = this.isRequired(data.processId, 'Processo vinculado');
     if (processIdError) {
       errors.processId = processIdError;
-    }
-
-    // Validação das observações (opcional, mas com limite)
-    if (data.observacoes && data.observacoes.length > DECISION_CONSTANTS.MAX_OBSERVACOES_LENGTH) {
-      errors.observacoes = `Observações devem ter no máximo ${DECISION_CONSTANTS.MAX_OBSERVACOES_LENGTH} caracteres`;
     }
 
     return {
@@ -173,16 +163,6 @@ class ValidationUtils {
     const processIdError = this.isRequired(data.processId, 'Processo vinculado');
     if (processIdError) {
       errors.processId = processIdError;
-    }
-
-    // Validação da fundamentação (opcional, mas com limite)
-    if (data.lancamento.fundamentacao && data.lancamento.fundamentacao.length > VERBA_CONSTANTS.MAX_FUNDAMENTACAO_LENGTH) {
-      errors.fundamentacao = `Fundamentação deve ter no máximo ${VERBA_CONSTANTS.MAX_FUNDAMENTACAO_LENGTH} caracteres`;
-    }
-
-    // Validação dos comentários (opcional, mas com limite)
-    if (data.lancamento.comentariosCalculistas && data.lancamento.comentariosCalculistas.length > VERBA_CONSTANTS.MAX_COMENTARIOS_LENGTH) {
-      errors.comentariosCalculistas = `Comentários devem ter no máximo ${VERBA_CONSTANTS.MAX_COMENTARIOS_LENGTH} caracteres`;
     }
 
     return {

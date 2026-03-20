@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, ReactNode } from 'react';
-import { Decision, NewDecision, DECISION_CONSTANTS } from '../types/Decision';
+import { Decision, NewDecision } from '../types/Decision';
 import { logger, ValidationUtils, translateSupabaseError } from '../utils';
 import { DecisionsService } from '../services';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
@@ -142,13 +142,6 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const updateDecision = useCallback(async (id: string, updatedData: Partial<NewDecision>, skipGlobalError = false): Promise<OperationResult> => {
     try {
-      if (updatedData.observacoes !== undefined && updatedData.observacoes !== null) {
-        if (updatedData.observacoes.length > DECISION_CONSTANTS.MAX_OBSERVACOES_LENGTH) {
-          const errorMsg = `Observações devem ter no máximo ${DECISION_CONSTANTS.MAX_OBSERVACOES_LENGTH} caracteres`;
-          if (!skipGlobalError) setError(errorMsg);
-          return { success: false, error: errorMsg };
-        }
-      }
       const updatedDecision = await DecisionsService.update(id, updatedData);
       setDecisions(prev => prev.map(d => d.id === id ? updatedDecision : d));
       setError(null);

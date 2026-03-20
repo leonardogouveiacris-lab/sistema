@@ -70,5 +70,4 @@ export interface DocumentoFilter extends BaseFilter {
  */
 export const DOCUMENTO_CONSTANTS = {
   MIN_TIPO_LENGTH: 3,
-  MAX_COMENTARIOS_LENGTH: 5000
 } as const;
