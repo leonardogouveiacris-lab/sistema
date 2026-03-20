@@ -72,7 +72,7 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
       );
     }
 
-    return filtered.sort((a, b) => sortByPagina(a, b, { getDataCriacao: item => item.createdAt }));
+    return filtered.sort((a, b) => sortByPagina(a, b, { getDataCriacao: item => item.dataCriacao }));
   }, [processDocumentos, selectedTipo, searchQuery]);
 
   const groupedDocumentos = useMemo(() => {
@@ -246,7 +246,7 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
                                 </span>
                               )}
                               <span className="text-xs text-gray-500">
-                                {new Date(doc.createdAt).toLocaleDateString('pt-BR')}
+                                {new Date(doc.dataCriacao).toLocaleDateString('pt-BR')}
                               </span>
                             </div>
                             {doc.comentarios && (
@@ -319,8 +319,8 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
                         </div>
                       )}
                       <div className="text-xs text-gray-500">
-                        Cadastrado em {new Date(doc.createdAt).toLocaleDateString('pt-BR')} às{' '}
-                        {new Date(doc.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        Cadastrado em {new Date(doc.dataCriacao).toLocaleDateString('pt-BR')} às{' '}
+                        {new Date(doc.dataCriacao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
                   </div>
