@@ -6679,7 +6679,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                 naturalPageWidth={state.pageDimensions.get(state.currentPage)?.width ?? 595}
                                 naturalPageHeight={state.pageDimensions.get(state.currentPage)?.height ?? 842}
                                 userRotation={getPageRotation(state.currentPage)}
-                                internalRotation={state.pageDimensions.get(state.currentPage)?.internalRotation ?? 0}
                               />
                               </MemoizedPDFPage>
                             </div>
@@ -6809,7 +6808,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                           naturalPageWidth={state.pageDimensions.get(globalPageNum)?.width ?? 595}
                                           naturalPageHeight={state.pageDimensions.get(globalPageNum)?.height ?? 842}
                                           userRotation={getPageRotation(globalPageNum)}
-                                          internalRotation={state.pageDimensions.get(globalPageNum)?.internalRotation ?? 0}
                                         />
                                           </MemoizedPDFPage>
                                       </>

@@ -10,7 +10,6 @@ interface OcrTextOverlayProps {
   naturalPageWidth: number;
   naturalPageHeight: number;
   userRotation?: number;
-  internalRotation?: number;
 }
 
 interface OcrPageData {
@@ -38,7 +37,7 @@ async function fetchOcrData(documentId: string, pageNumber: number, bust = false
     return ocrDataCache.get(cacheKey) ?? null;
   }
 
-  const { data } = await supabase
+  const { data } = await supabase!
     .from('pdf_text_pages')
     .select('word_boxes, ocr_status')
     .eq('process_document_id', documentId)
@@ -96,7 +95,6 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
   naturalPageWidth,
   naturalPageHeight,
   userRotation = 0,
-  internalRotation = 0,
 }) => {
   const [data, setData] = useState<OcrPageData | null>(null);
   const mountedRef = useRef(true);
@@ -127,19 +125,14 @@ const OcrTextOverlay: React.FC<OcrTextOverlayProps> = ({
 
   if (!data || data.wordBoxes.length === 0) return null;
 
-  const internalSwap = isSwapped(internalRotation);
-  const ocrNaturalW = internalSwap ? naturalPageHeight : naturalPageWidth;
-  const ocrNaturalH = internalSwap ? naturalPageWidth : naturalPageHeight;
-
-  const ocrW = ocrNaturalW * scale;
-  const ocrH = ocrNaturalH * scale;
-
-  const totalRotation = normalizeRotation(internalRotation + userRotation);
-  const totalSwap = isSwapped(totalRotation);
-  const displayW = totalSwap ? naturalPageHeight * scale : naturalPageWidth * scale;
-  const displayH = totalSwap ? naturalPageWidth * scale : naturalPageHeight * scale;
+  const ocrW = naturalPageWidth * scale;
+  const ocrH = naturalPageHeight * scale;
 
   const userRot = normalizeRotation(userRotation);
+  const userSwap = isSwapped(userRot);
+  const displayW = userSwap ? naturalPageHeight * scale : naturalPageWidth * scale;
+  const displayH = userSwap ? naturalPageWidth * scale : naturalPageHeight * scale;
+
   const rotationStyle = buildUserRotationTransform(userRot, ocrW, ocrH);
 
   return (

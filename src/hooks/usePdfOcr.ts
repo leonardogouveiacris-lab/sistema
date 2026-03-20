@@ -89,7 +89,8 @@ export function usePdfOcr(documentId: string | null) {
                 { documentId }
               );
             } catch (err) {
-              logger.error('Incremental save failed', 'usePdfOcr.runOcr', { documentId }, err);
+              logger.error('Incremental save failed, deferring to final batch', 'usePdfOcr.runOcr', { documentId }, err);
+              pendingBatch.unshift(...batch);
             }
           }
         }
