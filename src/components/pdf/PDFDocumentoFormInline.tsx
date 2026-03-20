@@ -520,7 +520,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
         {isEditMode && onDelete ? (
           <button
             onClick={() => setShowDeleteConfirm(v => !v)}
-            disabled={isSaving || isDeleting}
+            disabled={isSaving || isDeleting || isRenamingTipo}
             className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${showDeleteConfirm ? 'bg-red-50 border-red-200 text-red-700' : 'text-red-500 border-red-200 hover:bg-red-50'}`}
           >
             <Trash2 size={12} /> Excluir
@@ -538,7 +538,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           </button>
           <button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || isRenamingTipo}
             className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 rounded-md shadow-sm transition-colors"
           >
             {isSaving ? (
