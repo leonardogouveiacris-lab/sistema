@@ -319,7 +319,7 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
                         </div>
                       )}
                       <div className="text-xs text-gray-500">
-                        Cadastrado em {new Date(doc.dataCriacao).toLocaleDateString('pt-BR')} às{' '}
+                        {new Date(doc.dataCriacao).toLocaleDateString('pt-BR')} às{' '}
                         {new Date(doc.dataCriacao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
