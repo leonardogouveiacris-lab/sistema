@@ -381,6 +381,75 @@ export function ProcessTableViewer({
     [sortedColumns, rowByIndex]
   );
 
+  const copySelectedCells = useCallback(() => {
+    if (selectedRefs.size === 0) return;
+
+    const rowIndices = new Set<number>();
+    const colLetters = new Set<string>();
+
+    for (const ref of selectedRefs) {
+      const match = ref.match(/^([A-Z]+)(\d+)$/);
+      if (match) {
+        colLetters.add(match[1]);
+        rowIndices.add(parseInt(match[2], 10));
+      }
+    }
+
+    const sortedRowIndices = [...rowIndices].sort((a, b) => a - b);
+    const sortedColLetters = [...colLetters].sort((a, b) => {
+      const ai = sortedColumns.findIndex((c) => c.letter === a);
+      const bi = sortedColumns.findIndex((c) => c.letter === b);
+      return ai - bi;
+    });
+
+    const lines = sortedRowIndices.map((ri) => {
+      const row = rowByIndex.get(ri);
+      return sortedColLetters
+        .map((letter) => {
+          const col = sortedColumns.find((c) => c.letter === letter);
+          if (!row || !col || !selectedRefs.has(`${letter}${ri}`)) return '';
+          return getCellValue(row, col);
+        })
+        .join('\t');
+    });
+
+    navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
+  }, [selectedRefs, sortedColumns, rowByIndex, getCellValue]);
+
+  const pasteFromClipboard = useCallback(async () => {
+    if (!focusedCell) return;
+
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) return;
+
+      const lines = text
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .split('\n')
+        .map((l) => l.split('\t'));
+
+      const promises: Promise<void>[] = [];
+
+      for (let dr = 0; dr < lines.length; dr++) {
+        const rowObj = table.rows[focusedCell.rowIndex + dr];
+        if (!rowObj) continue;
+
+        for (let dc = 0; dc < lines[dr].length; dc++) {
+          const col = sortedColumns[focusedCell.colIndex + dc];
+          if (!col || col.type === 'formula') continue;
+
+          const value = lines[dr][dc];
+          promises.push(onEditCell(rowObj.id, col.id, value || null));
+        }
+      }
+
+      await Promise.all(promises);
+    } catch {
+      // Clipboard access may be unavailable
+    }
+  }, [focusedCell, table.rows, sortedColumns, onEditCell]);
+
   const handleCellClick = useCallback(
     (row: ProcessTableRow, column: ProcessTableColumn, rowIdx: number, colIdx: number, e: React.MouseEvent) => {
       if (editingCell) return;
@@ -469,7 +538,13 @@ export function ProcessTableViewer({
         scrollCellIntoView(newRow, newCol);
       };
 
-      if (e.key === 'ArrowDown') move(Math.min(rowIndex + 1, numRows - 1), colIndex);
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault();
+        copySelectedCells();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        pasteFromClipboard();
+      } else if (e.key === 'ArrowDown') move(Math.min(rowIndex + 1, numRows - 1), colIndex);
       else if (e.key === 'ArrowUp') move(Math.max(rowIndex - 1, 0), colIndex);
       else if (e.key === 'ArrowRight') move(rowIndex, Math.min(colIndex + 1, numCols - 1));
       else if (e.key === 'ArrowLeft') move(rowIndex, Math.max(colIndex - 1, 0));
@@ -503,6 +578,8 @@ export function ProcessTableViewer({
       selectionAnchorRef,
       buildRangeBetween,
       getCellRef,
+      copySelectedCells,
+      pasteFromClipboard,
     ]
   );
 
