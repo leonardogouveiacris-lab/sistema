@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ProcessDocument, DocumentUploadResult } from '../types/ProcessDocument';
 import ProcessDocumentService from '../services/processDocument.service';
+import { useRealtimeSubscription } from './useRealtimeSubscription';
 import logger from '../utils/logger';
 
 /**
@@ -41,6 +42,7 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const progressResetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -49,6 +51,9 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
 
       if (progressResetTimeoutRef.current) {
         clearTimeout(progressResetTimeoutRef.current);
+      }
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
       }
     };
   }, []);
@@ -91,6 +96,34 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
   const loadDocument = useCallback(async (processId: string) => {
     await loadDocuments(processId);
   }, [loadDocuments]);
+
+  const debouncedRefresh = useCallback(() => {
+    if (!initialProcessId) return;
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+    refreshTimeoutRef.current = setTimeout(async () => {
+      if (!isMountedRef.current) return;
+      try {
+        const docs = await ProcessDocumentService.getDocumentsByProcessId(initialProcessId);
+        if (isMountedRef.current) {
+          setDocuments(docs);
+          setDocument(docs.length > 0 ? docs[0] : null);
+        }
+      } catch {
+        // Silent fail for realtime refresh
+      }
+    }, 300);
+  }, [initialProcessId]);
+
+  const realtimeFilter = initialProcessId ? `process_id=eq.${initialProcessId}` : undefined;
+
+  useRealtimeSubscription({
+    table: 'process_documents',
+    filter: realtimeFilter,
+    onAnyChange: debouncedRefresh,
+    enabled: !!initialProcessId
+  });
 
   /**
    * Faz upload de documento

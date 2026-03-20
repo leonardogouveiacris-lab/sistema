@@ -53,7 +53,7 @@ export const useProcesses = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const isLocalUpdate = useRef(false);
+  const pendingLocalOpsRef = useRef(0);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // ===== FUNÇÕES DE CARREGAMENTO =====
@@ -133,14 +133,11 @@ export const useProcesses = () => {
   }, []);
 
   const debouncedRefresh = useCallback(() => {
-    if (isLocalUpdate.current) {
-      isLocalUpdate.current = false;
-      return;
-    }
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
     }
     refreshTimeoutRef.current = setTimeout(async () => {
+      if (pendingLocalOpsRef.current > 0) return;
       try {
         const data = await ProcessesService.getAll();
         setProcesses(data);
@@ -165,24 +162,25 @@ export const useProcesses = () => {
   }, []);
 
   const addProcess = useCallback(async (newProcess: NewProcess): Promise<boolean> => {
-    try {
-      const validation = ValidationUtils.validateNewProcess(newProcess);
-      if (!validation.isValid) {
-        setError(`Dados inválidos: ${Object.values(validation.errors).join(', ')}`);
-        return false;
-      }
+    const validation = ValidationUtils.validateNewProcess(newProcess);
+    if (!validation.isValid) {
+      setError(`Dados inválidos: ${Object.values(validation.errors).join(', ')}`);
+      return false;
+    }
 
-      isLocalUpdate.current = true;
+    pendingLocalOpsRef.current += 1;
+    try {
       await ProcessesService.create(newProcess);
       await loadProcesses();
       setError(null);
-
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro ao salvar processo no Supabase';
       setError(errorMessage);
       logger.error(errorMessage, 'useProcesses.addProcess');
       return false;
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
   }, [loadProcesses]);
 
@@ -203,31 +201,32 @@ export const useProcesses = () => {
     id: string,
     updatedData: Partial<NewProcess>
   ): Promise<boolean> => {
+    const existingProcess = processes.find(p => p.id === id);
+    if (!existingProcess) {
+      setError(`Processo com ID ${id} não encontrado no estado atual`);
+      return false;
+    }
+
+    const tempProcess = { ...existingProcess, ...updatedData };
+    const validation = ValidationUtils.validateNewProcess(tempProcess);
+    if (!validation.isValid) {
+      setError(`Dados inválidos: ${Object.values(validation.errors).join(', ')}`);
+      return false;
+    }
+
+    pendingLocalOpsRef.current += 1;
     try {
-      const existingProcess = processes.find(p => p.id === id);
-      if (!existingProcess) {
-        setError(`Processo com ID ${id} não encontrado no estado atual`);
-        return false;
-      }
-
-      const tempProcess = { ...existingProcess, ...updatedData };
-      const validation = ValidationUtils.validateNewProcess(tempProcess);
-      if (!validation.isValid) {
-        setError(`Dados inválidos: ${Object.values(validation.errors).join(', ')}`);
-        return false;
-      }
-
-      isLocalUpdate.current = true;
       await ProcessesService.update(id, updatedData);
       await loadProcesses();
       setError(null);
-
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro ao atualizar processo no Supabase';
       setError(errorMessage);
       logger.error(errorMessage, 'useProcesses.updateProcess');
       return false;
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
   }, [processes, loadProcesses]);
 
@@ -264,47 +263,50 @@ export const useProcesses = () => {
     let failed = 0;
     const CHUNK_SIZE = 10;
 
-    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
-      const chunk = ids.slice(i, i + CHUNK_SIZE);
-      const results = await Promise.allSettled(
-        chunk.map(id => {
-          isLocalUpdate.current = true;
-          return ProcessesService.delete(id);
-        })
-      );
-      results.forEach(result => {
-        if (result.status === 'fulfilled') {
-          removed++;
-        } else {
-          failed++;
-        }
-      });
-      onProgress?.(Math.min(i + CHUNK_SIZE, ids.length), ids.length);
+    pendingLocalOpsRef.current += 1;
+    try {
+      for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        const chunk = ids.slice(i, i + CHUNK_SIZE);
+        const results = await Promise.allSettled(
+          chunk.map(id => ProcessesService.delete(id))
+        );
+        results.forEach(result => {
+          if (result.status === 'fulfilled') {
+            removed++;
+          } else {
+            failed++;
+          }
+        });
+        onProgress?.(Math.min(i + CHUNK_SIZE, ids.length), ids.length);
+      }
+      await loadProcesses();
+      setError(null);
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-    await loadProcesses();
-    setError(null);
     return { removed, failed };
   }, [loadProcesses]);
 
   const removeProcess = useCallback(async (id: string): Promise<boolean> => {
-    try {
-      const processToRemove = processes.find(p => p.id === id);
-      if (!processToRemove) {
-        setError(`Processo com ID ${id} não encontrado no estado atual`);
-        return false;
-      }
+    const processToRemove = processes.find(p => p.id === id);
+    if (!processToRemove) {
+      setError(`Processo com ID ${id} não encontrado no estado atual`);
+      return false;
+    }
 
-      isLocalUpdate.current = true;
+    pendingLocalOpsRef.current += 1;
+    try {
       await ProcessesService.delete(id);
       await loadProcesses();
       setError(null);
-
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro ao remover processo do Supabase';
       setError(errorMessage);
       logger.error(errorMessage, 'useProcesses.removeProcess');
       return false;
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
   }, [processes, loadProcesses]);
 
@@ -361,17 +363,18 @@ export const useProcesses = () => {
    * @returns Promise<boolean> - true se importado com sucesso
    */
   const importBackup = useCallback(async (backupData: Process[]): Promise<boolean> => {
+    if (!Array.isArray(backupData)) {
+      setError('Formato de backup inválido - deve ser um array de processos');
+      return false;
+    }
+
+    if (backupData.length === 0) {
+      setError('Backup está vazio - nenhum processo para importar');
+      return false;
+    }
+
+    pendingLocalOpsRef.current += 1;
     try {
-      if (!Array.isArray(backupData)) {
-        setError('Formato de backup inválido - deve ser um array de processos');
-        return false;
-      }
-
-      if (backupData.length === 0) {
-        setError('Backup está vazio - nenhum processo para importar');
-        return false;
-      }
-
       for (let i = 0; i < backupData.length; i++) {
         const processData = backupData[i];
         const newProcessData: NewProcess = {
@@ -404,6 +407,8 @@ export const useProcesses = () => {
       setError(errorMessage);
       logger.error(errorMessage, 'useProcesses.importBackup');
       return false;
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
   }, [loadProcesses]);
 
