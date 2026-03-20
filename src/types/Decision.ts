@@ -74,5 +74,5 @@ export interface DecisionFilter extends BaseFilter {
  */
 export const DECISION_CONSTANTS = {
   MIN_ID_LENGTH: 3,
-  MAX_OBSERVACOES_LENGTH: 500
+  MAX_OBSERVACOES_LENGTH: 5000
 } as const;

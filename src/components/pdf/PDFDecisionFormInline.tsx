@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { NewDecision, Decision } from '../../types/Decision';
+import { NewDecision, Decision, DECISION_CONSTANTS } from '../../types/Decision';
 import { CustomDropdown, RichTextEditor, ExpandedTextModal } from '../ui';
 import { DropdownItemAction } from '../ui/CustomDropdown';
 import { DynamicEnumType } from '../../services/dynamicEnum.service';
@@ -156,6 +156,10 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
       } else if (formData.paginaVinculada > state.totalPages) {
         newErrors.paginaVinculada = `Máx. ${state.totalPages}`;
       }
+    }
+
+    if (formData.observacoes && formData.observacoes.length > DECISION_CONSTANTS.MAX_OBSERVACOES_LENGTH) {
+      newErrors.observacoes = `Observações devem ter no máximo ${DECISION_CONSTANTS.MAX_OBSERVACOES_LENGTH} caracteres`;
     }
 
     setErrors(newErrors);
@@ -522,16 +526,21 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           </div>
         </div>
 
-        <RichTextEditor
-          label="Observações"
-          placeholder="Observações..."
-          value={formData.observacoes}
-          onChange={(value) => handleInputChange('observacoes', value)}
-          rows={3}
-          fieldType="comentariosDecisao"
-          referenceItems={referenceItems}
-          onReferenceClick={handleReferenceClick}
-        />
+        <div>
+          <RichTextEditor
+            label="Observações"
+            placeholder="Observações..."
+            value={formData.observacoes}
+            onChange={(value) => handleInputChange('observacoes', value)}
+            rows={3}
+            fieldType="comentariosDecisao"
+            referenceItems={referenceItems}
+            onReferenceClick={handleReferenceClick}
+          />
+          {errors.observacoes && (
+            <p className="text-red-500 text-xs mt-1">{errors.observacoes}</p>
+          )}
+        </div>
 
         {isEditMode && (editingDecision?.createdAt || editingDecision?.updatedAt) && (
           <div className="pt-2 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-400">
@@ -623,6 +632,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
         title={expandedTextModal.title}
         initialContent={expandedTextModal.content}
         placeholder="Observações..."
+        maxLength={DECISION_CONSTANTS.MAX_OBSERVACOES_LENGTH}
       />
     </div>
   );

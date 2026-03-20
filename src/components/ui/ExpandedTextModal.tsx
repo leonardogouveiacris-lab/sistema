@@ -12,6 +12,7 @@ interface ExpandedTextModalProps {
   initialContent: string;
   dataField?: string;
   placeholder?: string;
+  maxLength?: number;
 }
 
 const ExpandedTextModal: React.FC<ExpandedTextModalProps> = ({
@@ -21,7 +22,8 @@ const ExpandedTextModal: React.FC<ExpandedTextModalProps> = ({
   title,
   initialContent,
   dataField,
-  placeholder = 'Digite o conteúdo...'
+  placeholder = 'Digite o conteúdo...',
+  maxLength
 }) => {
   const [content, setContent] = useState(initialContent);
   const [isSaving, setIsSaving] = useState(false);
@@ -76,7 +78,8 @@ const ExpandedTextModal: React.FC<ExpandedTextModalProps> = ({
 
   if (!isOpen) return null;
 
-  const charCount = content.replace(/<[^>]*>/g, '').length;
+  const charCount = content.length;
+  const isOverLimit = maxLength !== undefined && charCount > maxLength;
 
   return (
     <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center">
@@ -138,8 +141,9 @@ const ExpandedTextModal: React.FC<ExpandedTextModalProps> = ({
 
         <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex-shrink-0 rounded-b-xl">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400 tabular-nums">
-              {charCount} {charCount === 1 ? 'caractere' : 'caracteres'}
+            <span className={`text-xs tabular-nums ${isOverLimit ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+              {charCount}{maxLength !== undefined ? ` / ${maxLength}` : ''} {charCount === 1 ? 'caractere' : 'caracteres'}
+              {isOverLimit && <span className="ml-1.5">— limite excedido</span>}
             </span>
 
             <div className="flex items-center gap-2">
@@ -153,7 +157,7 @@ const ExpandedTextModal: React.FC<ExpandedTextModalProps> = ({
 
               <button
                 onClick={handleSave}
-                disabled={isSaving || !hasChanges()}
+                disabled={isSaving || !hasChanges() || isOverLimit}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {isSaving ? (
