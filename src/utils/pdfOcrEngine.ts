@@ -3,16 +3,19 @@ import logger from './logger';
 import type { OcrPageResult, OcrWordBox } from '../services/pdfOcr.service';
 
 export const OCR_RENDER_SCALE_DEFAULT = 3.0;
-export const OCR_LANGUAGE = 'por';
 
 export interface OcrParams {
   renderScale: number;
   pageSegMode: '1' | '3' | '4' | '6' | '11' | '12';
+  language: 'por' | 'por+eng';
+  confidenceThreshold: number;
 }
 
 export const OCR_PARAMS_DEFAULT: OcrParams = {
   renderScale: OCR_RENDER_SCALE_DEFAULT,
   pageSegMode: '3',
+  language: 'por+eng',
+  confidenceThreshold: 20,
 };
 
 export const PAGE_SEG_MODE_LABELS: Record<OcrParams['pageSegMode'], string> = {
@@ -30,28 +33,16 @@ export interface OcrEngineProgress {
   status: 'rendering' | 'preprocessing' | 'recognizing' | 'saving';
 }
 
-function applyAdaptiveBinarization(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return canvas;
+function releaseCanvas(canvas: HTMLCanvasElement): void {
+  canvas.width = 0;
+  canvas.height = 0;
+}
 
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-  const width = canvas.width;
-  const height = canvas.height;
-
-  const gray = new Uint8Array(width * height);
-  for (let i = 0; i < gray.length; i++) {
-    const r = data[i * 4];
-    const g = data[i * 4 + 1];
-    const b = data[i * 4 + 2];
-    gray[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-  }
-
-  const blockSize = Math.max(15, Math.round(Math.min(width, height) * 0.03));
+function applyAdaptiveBinarization(gray: Uint8Array, width: number, height: number): HTMLCanvasElement {
+  const blockSize = Math.max(15, Math.round(Math.min(width, height) * 0.025));
   const halfBlock = Math.floor(blockSize / 2);
   const C = 8;
 
-  // Build integral image (summed-area table) for O(1) block mean queries
   const integral = new Float64Array((width + 1) * (height + 1));
   for (let y = 1; y <= height; y++) {
     for (let x = 1; x <= width; x++) {
@@ -67,7 +58,7 @@ function applyAdaptiveBinarization(canvas: HTMLCanvasElement): HTMLCanvasElement
   output.width = width;
   output.height = height;
   const outCtx = output.getContext('2d');
-  if (!outCtx) return canvas;
+  if (!outCtx) throw new Error('Failed to get 2D context for binarization output');
 
   const outData = outCtx.createImageData(width, height);
   const out = outData.data;
@@ -100,37 +91,66 @@ function applyAdaptiveBinarization(canvas: HTMLCanvasElement): HTMLCanvasElement
   return output;
 }
 
-function enhanceContrast(canvas: HTMLCanvasElement): void {
+function removeNoise(canvas: HTMLCanvasElement): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { width, height } = canvas;
+  const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
 
-  let minVal = 255;
-  let maxVal = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    const v = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-    if (v < minVal) minVal = v;
-    if (v > maxVal) maxVal = v;
-  }
-
-  const range = maxVal - minVal;
-  if (range < 10) return;
-
-  const factor = 255 / range;
-  for (let i = 0; i < data.length; i += 4) {
-    data[i] = Math.min(255, Math.max(0, Math.round((data[i] - minVal) * factor)));
-    data[i + 1] = Math.min(255, Math.max(0, Math.round((data[i + 1] - minVal) * factor)));
-    data[i + 2] = Math.min(255, Math.max(0, Math.round((data[i + 2] - minVal) * factor)));
+  const copy = new Uint8ClampedArray(data);
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = (y * width + x) * 4;
+      if (copy[idx] === 0) {
+        let darkNeighbors = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nIdx = ((y + dy) * width + (x + dx)) * 4;
+            if (copy[nIdx] === 0) darkNeighbors++;
+          }
+        }
+        if (darkNeighbors <= 1) {
+          data[idx] = data[idx + 1] = data[idx + 2] = 255;
+        }
+      }
+    }
   }
 
   ctx.putImageData(imageData, 0, 0);
 }
 
 function preprocessCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  enhanceContrast(canvas);
-  return applyAdaptiveBinarization(canvas);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Failed to get 2D context for preprocessing');
+
+  const { width, height } = canvas;
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const src = imageData.data;
+
+  const gray = new Uint8Array(width * height);
+  let minLum = 255;
+  let maxLum = 0;
+
+  for (let i = 0; i < gray.length; i++) {
+    const lum = Math.round(0.299 * src[i * 4] + 0.587 * src[i * 4 + 1] + 0.114 * src[i * 4 + 2]);
+    gray[i] = lum;
+    if (lum < minLum) minLum = lum;
+    if (lum > maxLum) maxLum = lum;
+  }
+
+  const range = maxLum - minLum;
+  if (range >= 5) {
+    const factor = 255 / range;
+    for (let i = 0; i < gray.length; i++) {
+      gray[i] = Math.min(255, Math.round((gray[i] - minLum) * factor));
+    }
+  }
+
+  const binarized = applyAdaptiveBinarization(gray, width, height);
+  removeNoise(binarized);
+  return binarized;
 }
 
 async function renderPageToCanvas(
@@ -154,10 +174,7 @@ async function renderPageToCanvas(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const renderTask = page.render({
-    canvasContext: ctx,
-    viewport,
-  });
+  const renderTask = page.render({ canvasContext: ctx, viewport });
 
   if (abortSignal) {
     const onAbort = () => renderTask.cancel();
@@ -179,15 +196,25 @@ function postProcessText(text: string): string {
 
   result = result
     .replace(/\b([0-9]{2})\/([0-9]{2})\/([0-9]{2})([0-9]{2})\b/g, '$1/$2/$3$4')
+    .replace(/\b(\d{7})-(\d{2})\.(\d{4})\.(\d)\.(\d{2})\.(\d{4})\b/g, '$1-$2.$3.$4.$5.$6')
     .replace(/\b(\d{3})[.,](\d{3})[.,](\d{3})[\/\-](\d{4})[\/\-](\d{2})\b/g, '$1.$2.$3/$4-$5')
     .replace(/\b(\d{3})[.,](\d{3})[.,](\d{3})[.,\-](\d{2})\b/g, '$1.$2.$3-$4')
-    .replace(/\b(\d{3})[.,](\d{5})[.,](\d{2})[.,](\d)\b/g, '$1.$2.$3/$4');
+    .replace(/\b(\d{5})[.,\-](\d{3})\b/g, '$1-$2')
+    .replace(/\bR\s*\$\s*/g, 'R$ ')
+    .replace(/\b(\d{2})\s*[\.\-]\s*(\d{4,5})\s*[\.\-]\s*(\d{4})\b/g, '($1) $2-$3')
+    .replace(/\b\((\d{2})\)\s*(\d{4,5})\s*[\.\-]\s*(\d{4})\b/g, '($1) $2-$3');
 
   result = result
+    .replace(/\bfi(?=[a-z])/g, 'fi')
+    .replace(/\bfl(?=[a-z])/g, 'fl')
     .replace(/\brn\b/g, 'm')
     .replace(/([A-Z])\|([A-Z])/g, '$1I$2')
-    .replace(/\b0([A-Z])/g, 'O$1')
-    .replace(/\bl([0-9])/g, '1$1');
+    .replace(/\b0([A-Za-z])/g, 'O$1')
+    .replace(/\bl([0-9])/g, '1$1')
+    .replace(/\b([0-9])l\b/g, '$11')
+    .replace(/\bI([0-9])/g, '1$1')
+    .replace(/([a-z])1\b/g, '$1l')
+    .replace(/\bS([0-9])/g, '5$1');
 
   result = result
     .replace(/ {2,}/g, ' ')
@@ -197,27 +224,28 @@ function postProcessText(text: string): string {
   return result;
 }
 
-async function recognizeCanvasText(
+async function runTesseract(
   worker: import('tesseract.js').Worker,
-  canvas: HTMLCanvasElement
+  canvas: HTMLCanvasElement,
+  confidenceThreshold: number,
+  renderScale: number
 ): Promise<{ text: string; confidence: number; wordBoxes: OcrWordBox[] }> {
-  const processedCanvas = preprocessCanvas(canvas);
-
-  const result = await worker.recognize(processedCanvas);
+  const result = await worker.recognize(canvas);
   const rawText = result.data.text.trim();
   const text = postProcessText(rawText);
   const confidence = result.data.confidence;
 
   const wordBoxes: OcrWordBox[] = [];
+  const rs = renderScale;
   for (const word of result.data.words) {
     const wordText = word.text.trim();
-    if (!wordText) continue;
+    if (!wordText || word.confidence < confidenceThreshold) continue;
     wordBoxes.push({
       text: wordText,
-      x: word.bbox.x0,
-      y: word.bbox.y0,
-      w: word.bbox.x1 - word.bbox.x0,
-      h: word.bbox.y1 - word.bbox.y0,
+      x: word.bbox.x0 / rs,
+      y: word.bbox.y0 / rs,
+      w: (word.bbox.x1 - word.bbox.x0) / rs,
+      h: (word.bbox.y1 - word.bbox.y0) / rs,
     });
   }
 
@@ -229,63 +257,82 @@ export async function runOcrOnPages(
   pageNumbers: number[],
   params: OcrParams = OCR_PARAMS_DEFAULT,
   onProgress?: (progress: OcrEngineProgress) => void,
+  onPageComplete?: (result: OcrPageResult) => Promise<void> | void,
   abortSignal?: AbortSignal
 ): Promise<OcrPageResult[]> {
   const results: OcrPageResult[] = [];
   const total = pageNumbers.length;
+  if (total === 0) return results;
 
   const { createWorker } = await import('tesseract.js');
-  const worker = await createWorker(OCR_LANGUAGE, 1, {
+  const worker = await createWorker(params.language, 1, {
     workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
     langPath: 'https://tessdata.projectnaptha.com/4.0.0',
     corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
     logger: () => {},
   });
 
+  const estimatedDpi = Math.round(params.renderScale * 72);
+
   try {
     await worker.setParameters({
       tessedit_pageseg_mode: params.pageSegMode,
       preserve_interword_spaces: '1',
-    });
+      user_defined_dpi: String(estimatedDpi),
+    } as Record<string, string>);
+
+    let pendingRender: Promise<HTMLCanvasElement> | null = null;
+
+    pendingRender = renderPageToCanvas(pdfDocument, pageNumbers[0], params.renderScale, abortSignal);
 
     for (let i = 0; i < pageNumbers.length; i++) {
-      if (abortSignal?.aborted) {
-        break;
-      }
+      if (abortSignal?.aborted) break;
 
       const pageNumber = pageNumbers[i];
 
       try {
-        onProgress?.({
-          currentPage: i + 1,
-          totalPages: total,
-          status: 'rendering',
-        });
+        onProgress?.({ currentPage: i + 1, totalPages: total, status: 'rendering' });
 
-        const canvas = await renderPageToCanvas(pdfDocument, pageNumber, params.renderScale, abortSignal);
+        const renderedCanvas = await pendingRender!;
+
+        if (i + 1 < pageNumbers.length && !abortSignal?.aborted) {
+          pendingRender = renderPageToCanvas(pdfDocument, pageNumbers[i + 1], params.renderScale, abortSignal);
+        } else {
+          pendingRender = null;
+        }
 
         if (abortSignal?.aborted) {
+          releaseCanvas(renderedCanvas);
           break;
         }
 
-        onProgress?.({
-          currentPage: i + 1,
-          totalPages: total,
-          status: 'recognizing',
-        });
+        onProgress?.({ currentPage: i + 1, totalPages: total, status: 'preprocessing' });
 
-        const { text, confidence, wordBoxes: rawWordBoxes } = await recognizeCanvasText(worker, canvas);
+        let processedCanvas: HTMLCanvasElement;
+        try {
+          processedCanvas = preprocessCanvas(renderedCanvas);
+        } finally {
+          releaseCanvas(renderedCanvas);
+        }
 
-        const rs = params.renderScale;
-        const wordBoxes: OcrWordBox[] = rawWordBoxes.map(wb => ({
-          text: wb.text,
-          x: wb.x / rs,
-          y: wb.y / rs,
-          w: wb.w / rs,
-          h: wb.h / rs,
-        }));
+        onProgress?.({ currentPage: i + 1, totalPages: total, status: 'recognizing' });
 
-        results.push({ pageNumber, text, confidence, wordBoxes });
+        let text = '';
+        let confidence = 0;
+        let wordBoxes: OcrWordBox[] = [];
+        try {
+          const recognized = await runTesseract(worker, processedCanvas, params.confidenceThreshold, params.renderScale);
+          text = recognized.text;
+          confidence = recognized.confidence;
+          wordBoxes = recognized.wordBoxes;
+        } finally {
+          releaseCanvas(processedCanvas);
+        }
+
+        const pageResult: OcrPageResult = { pageNumber, text, confidence, wordBoxes };
+        results.push(pageResult);
+
+        await onPageComplete?.(pageResult);
 
         logger.info(
           `OCR page ${pageNumber}: ${text.length} chars, ${wordBoxes.length} words, confidence ${confidence.toFixed(1)}%`,
@@ -299,7 +346,9 @@ export async function runOcrOnPages(
           { pageNumber },
           error
         );
-        results.push({ pageNumber, text: '', confidence: 0, wordBoxes: [] });
+        const failedResult: OcrPageResult = { pageNumber, text: '', confidence: 0, wordBoxes: [] };
+        results.push(failedResult);
+        await onPageComplete?.(failedResult);
       }
     }
   } finally {

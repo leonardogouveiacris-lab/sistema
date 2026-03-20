@@ -4,6 +4,7 @@ import {
   getDocumentOcrStatus,
   saveOcrResults,
   type OcrDocumentStatus,
+  type OcrPageResult,
 } from '../services/pdfOcr.service';
 import type { OcrEngineProgress, OcrParams } from '../utils/pdfOcrEngine';
 import { OCR_PARAMS_DEFAULT } from '../utils/pdfOcrEngine';
@@ -24,6 +25,8 @@ const initialState: OcrState = {
   error: null,
   documentStatus: null,
 };
+
+const INCREMENTAL_SAVE_BATCH_SIZE = 5;
 
 export function usePdfOcr(documentId: string | null) {
   const [state, setState] = useState<OcrState>(initialState);
@@ -66,13 +69,40 @@ export function usePdfOcr(documentId: string | null) {
 
       const { runOcrOnPages } = await import('../utils/pdfOcrEngine');
 
-      const results = await runOcrOnPages(
+      const pendingBatch: OcrPageResult[] = [];
+      let savedCount = 0;
+
+      const handlePageComplete = async (result: OcrPageResult) => {
+        if (abortSignal.aborted) return;
+        pendingBatch.push(result);
+
+        if (pendingBatch.length >= INCREMENTAL_SAVE_BATCH_SIZE) {
+          const batch = pendingBatch.splice(0, INCREMENTAL_SAVE_BATCH_SIZE);
+          const validBatch = batch.filter(r => r.text.length > 0);
+          if (validBatch.length > 0) {
+            try {
+              await saveOcrResults(documentId, validBatch);
+              savedCount += validBatch.length;
+              logger.info(
+                `Incremental save: ${savedCount} pages saved so far`,
+                'usePdfOcr.runOcr',
+                { documentId }
+              );
+            } catch (err) {
+              logger.error('Incremental save failed', 'usePdfOcr.runOcr', { documentId }, err);
+            }
+          }
+        }
+      };
+
+      await runOcrOnPages(
         pdfDocument,
         pageNumbers,
         params,
         (progress) => {
           setState(prev => ({ ...prev, progress }));
         },
+        handlePageComplete,
         abortSignal
       );
 
@@ -88,9 +118,12 @@ export function usePdfOcr(documentId: string | null) {
 
       setState(prev => ({ ...prev, status: 'saving' }));
 
-      const validResults = results.filter(r => r.text.length > 0);
-      if (validResults.length > 0) {
-        await saveOcrResults(documentId, validResults);
+      if (pendingBatch.length > 0) {
+        const validRemaining = pendingBatch.filter(r => r.text.length > 0);
+        if (validRemaining.length > 0) {
+          await saveOcrResults(documentId, validRemaining);
+          savedCount += validRemaining.length;
+        }
       }
 
       const updatedStatus = await getDocumentOcrStatus(documentId);
@@ -104,7 +137,7 @@ export function usePdfOcr(documentId: string | null) {
       }));
 
       logger.info(
-        `OCR complete: ${validResults.length} pages with text`,
+        `OCR complete: ${savedCount} pages with text saved`,
         'usePdfOcr.runOcr',
         { documentId }
       );

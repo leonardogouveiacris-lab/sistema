@@ -20,6 +20,11 @@ const SCALE_OPTIONS: { value: number; label: string }[] = [
   { value: 3.5, label: '3.5x (lento, maior qualidade)' },
 ];
 
+const LANGUAGE_OPTIONS: { value: OcrParams['language']; label: string }[] = [
+  { value: 'por+eng', label: 'Portugues + Ingles (recomendado)' },
+  { value: 'por', label: 'Portugues apenas' },
+];
+
 const PAGE_SEG_MODES = Object.entries(PAGE_SEG_MODE_LABELS) as [OcrParams['pageSegMode'], string][];
 
 interface OcrProgressModalProps {
@@ -414,6 +419,25 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
                         Para formularios use PSM 3. Para texto corrido use PSM 6.
                       </p>
                     </div>
+
+                    {/* Language */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                        Idioma de reconhecimento
+                      </label>
+                      <select
+                        value={params.language}
+                        onChange={e => setParams(p => ({ ...p, language: e.target.value as OcrParams['language'] }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                      >
+                        {LANGUAGE_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-gray-400">
+                        Use Portugues + Ingles para documentos com termos tecnicos.
+                      </p>
+                    </div>
                   </div>
 
                   <button
@@ -452,31 +476,35 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
                       Digite os numeros das paginas no campo acima ou use os botoes de selecao rapida
                     </p>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 justify-items-center content-start">
-                    {sortedSelectedPages.map((pageNum, index) => {
-                      const shouldRender = index < thumbnailsToRender;
-                      return (
-                        <div
-                          key={pageNum}
-                          className="relative group flex flex-col items-center"
-                        >
-                          <div className="relative bg-white rounded-lg shadow-md overflow-hidden ring-2 ring-blue-500 ring-offset-2">
-                            {shouldRender && pdfUrl ? (
-                              <Document
-                                file={pdfUrl}
-                                options={PDF_DOCUMENT_OPTIONS}
-                                loading={
-                                  <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
-                                    <span className="text-gray-400 text-xs">{pageNum}</span>
-                                  </div>
-                                }
-                                error={
-                                  <div className="w-[90px] aspect-[3/4] bg-red-50 text-red-500 text-[10px] flex items-center justify-center p-1 text-center">
-                                    Erro
-                                  </div>
-                                }
-                              >
+                ) : pdfUrl ? (
+                  <Document
+                    file={pdfUrl}
+                    options={PDF_DOCUMENT_OPTIONS}
+                    loading={
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 justify-items-center content-start">
+                        {sortedSelectedPages.slice(0, thumbnailsToRender).map(pageNum => (
+                          <div key={pageNum} className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse rounded-lg flex items-center justify-center">
+                            <span className="text-gray-400 text-xs">{pageNum}</span>
+                          </div>
+                        ))}
+                      </div>
+                    }
+                    error={
+                      <div className="flex items-center justify-center h-32 text-red-500 text-sm">
+                        Erro ao carregar documento
+                      </div>
+                    }
+                  >
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 justify-items-center content-start">
+                      {sortedSelectedPages.map((pageNum, index) => {
+                        const shouldRender = index < thumbnailsToRender;
+                        return (
+                          <div
+                            key={pageNum}
+                            className="relative group flex flex-col items-center"
+                          >
+                            <div className="relative bg-white rounded-lg shadow-md overflow-hidden ring-2 ring-blue-500 ring-offset-2">
+                              {shouldRender ? (
                                 <Page
                                   pageNumber={pageNum}
                                   scale={THUMBNAIL_SCALE}
@@ -487,32 +515,37 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
                                       <span className="text-gray-400 text-xs">{pageNum}</span>
                                     </div>
                                   }
+                                  error={
+                                    <div className="w-[90px] aspect-[3/4] bg-red-50 text-red-500 text-[10px] flex items-center justify-center p-1 text-center">
+                                      Erro
+                                    </div>
+                                  }
                                   className="block"
                                 />
-                              </Document>
-                            ) : (
-                              <div className="w-[90px] aspect-[3/4] bg-gray-200 animate-pulse flex items-center justify-center">
-                                <span className="text-gray-400 text-xs">{pageNum}</span>
-                              </div>
-                            )}
+                              ) : (
+                                <div className="w-[90px] aspect-[3/4] bg-gray-200 flex items-center justify-center">
+                                  <span className="text-gray-400 text-xs">{pageNum}</span>
+                                </div>
+                              )}
 
-                            <button
-                              onClick={() => handleRemovePage(pageNum)}
-                              className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                              title="Remover pagina"
-                            >
-                              <Trash2 className="w-3 h-3 text-white" />
-                            </button>
+                              <button
+                                onClick={() => handleRemovePage(pageNum)}
+                                className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                                title="Remover pagina"
+                              >
+                                <Trash2 className="w-3 h-3 text-white" />
+                              </button>
+                            </div>
+
+                            <span className="mt-2 text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                              {pageNum}
+                            </span>
                           </div>
-
-                          <span className="mt-2 text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                            {pageNum}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  </Document>
+                ) : null}
               </div>
             </div>
           )}
@@ -543,7 +576,7 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
                 </p>
               )}
               <p className="text-xs text-gray-400 text-center max-w-sm mt-2">
-                OCR processado localmente via Tesseract (pt-BR) com pre-processamento de imagem. O primeiro uso baixa o modelo de linguagem (~40 MB).
+                OCR processado localmente via Tesseract com binarizacao adaptativa e remocao de ruido. O primeiro uso baixa o modelo de linguagem (~40-80 MB).
               </p>
             </div>
           )}
@@ -568,7 +601,7 @@ const OcrProgressModal: React.FC<OcrProgressModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-between gap-4">
           <p className="text-xs text-gray-400 max-w-xs">
-            OCR via Tesseract (pt-BR) com binarizacao adaptativa — processado localmente.
+            OCR via Tesseract com binarizacao adaptativa, remocao de ruido e salvamento incremental — processado localmente.
           </p>
 
           <div className="flex gap-3">
