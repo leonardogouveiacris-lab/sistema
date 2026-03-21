@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { DollarSign, Folder, Settings } from 'lucide-react';
 import { Process } from '../types/Process';
 import { NewVerbaComLancamento, NewVerbaLancamento } from '../types/Verba';
@@ -22,7 +22,6 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
 }) => {
   const {
     verbas,
-    isLoading: verbasLoading,
     addVerbaComLancamento,
     updateVerbaLancamento,
     removeVerbaLancamento,
@@ -34,14 +33,6 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
   const [isManagementModalOpen, setIsManagementModalOpen] = useState(false);
   const [tiposVersion, setTiposVersion] = useState(0);
   const [verbasVersion, setVerbasVersion] = useState(0);
-
-  useEffect(() => {
-    if (!selectedProcess || verbasLoading) return;
-    const processVerbas = verbas.filter(v => v.processId === selectedProcess.id);
-    if (processVerbas.length === 0) {
-      refreshVerbas();
-    }
-  }, [selectedProcess?.id]);
 
   const handleSaveVerba = useCallback(async (verba: NewVerbaComLancamento) => {
     const result = await addVerbaComLancamento(verba);
@@ -68,7 +59,7 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
 
   const handleTiposUpdated = useCallback(() => {
     setTiposVersion(prev => prev + 1);
-  }, [tiposVersion]);
+  }, []);
 
   const handleVerbasUpdated = useCallback(async () => {
     setVerbasVersion(prev => prev + 1);
@@ -82,7 +73,7 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
         'VerbasTab - handleVerbasUpdated'
       );
     }
-  }, [verbasVersion, selectedProcess?.id, refreshVerbas]);
+  }, [refreshVerbas]);
 
   const renderEmptyState = () => (
     <EmptyState
