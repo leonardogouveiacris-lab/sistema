@@ -110,6 +110,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
       const pid = activeProcessIdRef.current;
       if (!pid) return;
       if (loadingIdsRef.current.has(pid)) return;
+      loadingIdsRef.current.add(pid);
       logRealtimeEvent('Realtime refresh requested', 'VerbaContext', 'refresh_requested', { table: 'verbas', processId: pid });
       try {
         const data = await VerbasService.getByProcessId(pid);
@@ -120,8 +121,10 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
         });
       } catch {
         logRealtimeEvent('Realtime refresh failed', 'VerbaContext', 'refresh_failed', { table: 'verbas' }, 'error');
+      } finally {
+        loadingIdsRef.current.delete(pid);
       }
-    }, 400);
+    }, 800);
   }, []);
 
   const realtimeFilter = useMemo(() =>
@@ -132,12 +135,6 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
   useRealtimeSubscription({
     table: 'verbas',
     filter: realtimeFilter,
-    onAnyChange: debouncedRefresh,
-    enabled: !!activeProcessId
-  });
-
-  useRealtimeSubscription({
-    table: 'verba_lancamentos',
     onAnyChange: debouncedRefresh,
     enabled: !!activeProcessId
   });
