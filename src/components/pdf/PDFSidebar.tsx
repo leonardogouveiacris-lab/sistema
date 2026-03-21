@@ -102,7 +102,6 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
 
   const {
     verbas,
-    isLoading: verbasLoading,
     addVerbaComLancamento,
     updateVerbaLancamento,
     removeVerbaLancamento,
@@ -262,14 +261,6 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     });
   }, [processVerbas]);
 
-  useEffect(() => {
-    if (state.sidebarTab === 'verbas' && !verbasLoading && allLancamentos.length === 0 && processId) {
-      const processHasVerbas = verbas.some(v => v.processId === processId);
-      if (!processHasVerbas) {
-        refreshVerbas();
-      }
-    }
-  }, [state.sidebarTab, processId, verbasLoading, allLancamentos.length, verbas, refreshVerbas]);
 
   // Group by page
   const decisionsWithPage = useMemo(() =>
