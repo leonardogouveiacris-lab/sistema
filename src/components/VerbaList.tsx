@@ -239,33 +239,18 @@ const VerbaList: React.FC<VerbaListProps> = ({
   * Força refresh quando verbas são alteradas (rename, etc)
    */
   useEffect(() => {
-   const handleVerbasUpdated = async () => {
-      // Força recarregamento das verbas do banco
-      if (refreshVerbas) {
-        try {
-          await refreshVerbas();
-        } catch (error) {
-          logger.errorWithException(
-            'Lista: Erro ao recarregar verbas do banco',
-            error as Error,
-            'VerbaList - verbasUpdatedEvent'
-          );
-        }
-      }
-
-      // Notifica componente pai sobre mudanças
+    const handleVerbasUpdated = () => {
       if (onVerbasUpdated) {
         onVerbasUpdated();
       }
     };
 
-    // Escuta eventos de atualização de verbas
     window.addEventListener('verbas-updated', handleVerbasUpdated);
-    
+
     return () => {
       window.removeEventListener('verbas-updated', handleVerbasUpdated);
     };
-  }, [onVerbasUpdated, refreshVerbas, processId]);
+  }, [onVerbasUpdated]);
 
   /**
    * Lida com a seleção de uma verba
