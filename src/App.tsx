@@ -113,13 +113,18 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
   const handleRetryConnection = useCallback(async () => {
     setGlobalError('');
     logger.info('Tentando reconectar aos serviços...', 'App - handleRetryConnection');
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       refreshProcesses(),
       refreshDecisions(),
       refreshVerbas(),
       refreshDocumentos()
     ]);
-    logger.success('Tentativa de reconexão concluída', 'App - handleRetryConnection');
+    const failed = results.filter(r => r.status === 'rejected');
+    if (failed.length > 0) {
+      logger.error(`Reconexão parcial: ${failed.length} serviço(s) falharam`, 'App - handleRetryConnection');
+    } else {
+      logger.success('Tentativa de reconexão concluída', 'App - handleRetryConnection');
+    }
   }, [refreshProcesses, refreshDecisions, refreshVerbas, refreshDocumentos]);
 
   const handleSaveProcess = useCallback(async (process: NewProcess): Promise<boolean> => {
@@ -226,6 +231,8 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
     const refreshedProcess = processes.find(p => p.id === selectedProcess.id);
     if (!refreshedProcess) return;
 
+    if (refreshedProcess === selectedProcess) return;
+
     setSelectedProcess(refreshedProcess);
   }, [processes, selectedProcess]);
 
@@ -269,12 +276,20 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
               if (success) {
                 logger.success('Backup de processos importado', 'App - handleImportBackup', { fileName: file.name });
               }
+            }).catch(err => {
+              const errorMessage = getUserFriendlyMessage(err);
+              setGlobalError(`Erro ao importar backup: ${errorMessage}`);
+              logger.errorWithException('Erro ao executar importação de backup', err as Error, 'App - handleImportBackup', { fileName: file.name });
             });
           } else if (Array.isArray(backupData) && backupData.length > 0 && 'numeroProcesso' in backupData[0]) {
             importProcessBackup(backupData).then(success => {
               if (success) {
                 logger.success('Backup de processos importado', 'App - handleImportBackup', { fileName: file.name });
               }
+            }).catch(err => {
+              const errorMessage = getUserFriendlyMessage(err);
+              setGlobalError(`Erro ao importar backup: ${errorMessage}`);
+              logger.errorWithException('Erro ao executar importação de backup', err as Error, 'App - handleImportBackup', { fileName: file.name });
             });
           } else {
             throw new Error('Formato de backup não reconhecido ou inválido');

@@ -66,12 +66,22 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
     };
   }, [isOpen, onClose]);
 
-  const handleNavigateToPage = () => {
+  const handleNavigateToPage = useCallback(() => {
     if (lancamento.paginaVinculada) {
       navigateToPageWithHighlight(lancamento.paginaVinculada, lancamento.id);
       onClose();
     }
-  };
+  }, [lancamento.paginaVinculada, lancamento.id, navigateToPageWithHighlight, onClose]);
+
+  const handleEdit = useCallback(() => {
+    onEdit(lancamento.id);
+    onClose();
+  }, [onEdit, onClose, lancamento.id]);
+
+  const handleDelete = useCallback(() => {
+    onDelete(verba.id, lancamento.id);
+    onClose();
+  }, [onDelete, onClose, verba.id, lancamento.id]);
 
   const getSafeDate = (dateValue?: string | Date | null): Date | null => {
     if (!dateValue) return null;
@@ -216,13 +226,13 @@ const VerbaDetailModal: React.FC<VerbaDetailModalProps> = ({
             </div>
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => { onEdit(lancamento.id); onClose(); }}
+                onClick={handleEdit}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
               >
                 <Edit2 size={14} /> Editar
               </button>
               <button
-                onClick={() => { onDelete(verba.id, lancamento.id); onClose(); }}
+                onClick={handleDelete}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
               >
                 <Trash2 size={14} /> Excluir

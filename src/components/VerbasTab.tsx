@@ -51,7 +51,7 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
 
   const handleOpenManagementModal = useCallback(() => {
     setIsManagementModalOpen(true);
-  }, [selectedProcess]);
+  }, []);
 
   const handleCloseManagementModal = useCallback(() => {
     setIsManagementModalOpen(false);

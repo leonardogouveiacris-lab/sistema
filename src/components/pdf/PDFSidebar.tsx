@@ -262,27 +262,6 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   }, [processVerbas]);
 
 
-  // Group by page
-  const decisionsWithPage = useMemo(() =>
-    processDecisions.filter(d => d.paginaVinculada),
-    [processDecisions]
-  );
-
-  const decisionsWithoutPage = useMemo(() =>
-    processDecisions.filter(d => !d.paginaVinculada),
-    [processDecisions]
-  );
-
-  const lancamentosWithPage = useMemo(() =>
-    allLancamentos.filter(l => l.lancamento.paginaVinculada),
-    [allLancamentos]
-  );
-
-  const lancamentosWithoutPage = useMemo(() =>
-    allLancamentos.filter(l => !l.lancamento.paginaVinculada),
-    [allLancamentos]
-  );
-
   const filteredLancamentos = useMemo(() => {
     if (!debouncedSearchQuery.trim()) return allLancamentos;
     const query = debouncedSearchQuery.toLowerCase();
@@ -398,16 +377,6 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     return filteredDocumentos.filter(d => !d.paginaVinculada);
   }, [filteredDocumentos]);
 
-  const documentosWithPage = useMemo(() =>
-    processDocumentos.filter(d => d.paginaVinculada),
-    [processDocumentos]
-  );
-
-  const documentosWithoutPage = useMemo(() =>
-    processDocumentos.filter(d => !d.paginaVinculada),
-    [processDocumentos]
-  );
-
   const sortedComments = useMemo(() => {
     return [...state.comments].sort((a, b) => a.pageNumber - b.pageNumber);
   }, [state.comments]);
@@ -503,7 +472,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     setSelectedLancamentoId(null);
   }, []);
 
-  const handleNavigateModal = (direction: 'previous' | 'next') => {
+  const handleNavigateModal = useCallback((direction: 'previous' | 'next') => {
     if (!selectedLancamentoId) return;
     const currentIndex = filteredLancamentos.findIndex(l => l.lancamento.id === selectedLancamentoId);
     if (currentIndex === -1) return;
@@ -512,9 +481,9 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     if (newIndex >= 0 && newIndex < filteredLancamentos.length) {
       setSelectedLancamentoId(filteredLancamentos[newIndex].lancamento.id);
     }
-  };
+  }, [selectedLancamentoId, filteredLancamentos]);
 
-  const toggleGroup = (tipoVerba: string) => {
+  const toggleGroup = useCallback((tipoVerba: string) => {
     setCollapsedGroups(prev => {
       const newSet = new Set(prev);
       if (newSet.has(tipoVerba)) {
@@ -524,7 +493,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       }
       return newSet;
     });
-  };
+  }, []);
 
   const allTipoVerbas = useMemo(() => {
     if (!groupedLancamentos) return [];
@@ -558,17 +527,17 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     return filteredLancamentos.findIndex(l => l.lancamento.id === selectedLancamentoId);
   }, [selectedLancamentoId, filteredLancamentos]);
 
-  const handleViewDecisionDetails = (decisionId: string) => {
+  const handleViewDecisionDetails = useCallback((decisionId: string) => {
     setSelectedDecisionId(decisionId);
     setIsDecisionModalOpen(true);
-  };
+  }, []);
 
-  const handleCloseDecisionModal = () => {
+  const handleCloseDecisionModal = useCallback(() => {
     setIsDecisionModalOpen(false);
     setSelectedDecisionId(null);
-  };
+  }, []);
 
-  const handleNavigateDecisionModal = (direction: 'previous' | 'next') => {
+  const handleNavigateDecisionModal = useCallback((direction: 'previous' | 'next') => {
     if (!selectedDecisionId) return;
     const currentIndex = filteredDecisions.findIndex(d => d.id === selectedDecisionId);
     if (currentIndex === -1) return;
@@ -577,7 +546,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     if (newIndex >= 0 && newIndex < filteredDecisions.length) {
       setSelectedDecisionId(filteredDecisions[newIndex].id);
     }
-  };
+  }, [selectedDecisionId, filteredDecisions]);
 
   const selectedDecisionData = useMemo(() => {
     if (!selectedDecisionId) return null;
@@ -589,17 +558,17 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     return filteredDecisions.findIndex(d => d.id === selectedDecisionId);
   }, [selectedDecisionId, filteredDecisions]);
 
-  const handleViewDocumentoDetails = (documentoId: string) => {
+  const handleViewDocumentoDetails = useCallback((documentoId: string) => {
     setSelectedDocumentoId(documentoId);
     setIsDocumentoModalOpen(true);
-  };
+  }, []);
 
-  const handleCloseDocumentoModal = () => {
+  const handleCloseDocumentoModal = useCallback(() => {
     setIsDocumentoModalOpen(false);
     setSelectedDocumentoId(null);
-  };
+  }, []);
 
-  const handleNavigateDocumentoModal = (direction: 'previous' | 'next') => {
+  const handleNavigateDocumentoModal = useCallback((direction: 'previous' | 'next') => {
     if (!selectedDocumentoId) return;
     const currentIndex = filteredDocumentos.findIndex(d => d.id === selectedDocumentoId);
     if (currentIndex === -1) return;
@@ -608,7 +577,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     if (newIndex >= 0 && newIndex < filteredDocumentos.length) {
       setSelectedDocumentoId(filteredDocumentos[newIndex].id);
     }
-  };
+  }, [selectedDocumentoId, filteredDocumentos]);
 
   const selectedDocumentoData = useMemo(() => {
     if (!selectedDocumentoId) return null;
@@ -620,11 +589,11 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     return filteredDocumentos.findIndex(d => d.id === selectedDocumentoId);
   }, [selectedDocumentoId, filteredDocumentos]);
 
-  const handleEditDocumento = (documentoId: string) => {
+  const handleEditDocumento = useCallback((documentoId: string) => {
     startEditDocumento(documentoId);
-  };
+  }, [startEditDocumento]);
 
-  const handleDeleteDocumento = async (documentoId: string): Promise<boolean> => {
+  const handleDeleteDocumento = useCallback(async (documentoId: string): Promise<boolean> => {
     const result = await onDeleteDocumento(documentoId, true);
     if (result.success) {
       toast.success('Documento excluído com sucesso.');
@@ -632,9 +601,9 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       toast.error(result.error || 'Falha ao excluir documento.');
     }
     return result.success;
-  };
+  }, [onDeleteDocumento, toast]);
 
-  const handleSaveDecisionForm = async (decision: NewDecision): Promise<boolean> => {
+  const handleSaveDecisionForm = useCallback(async (decision: NewDecision): Promise<boolean> => {
     const isEdit = state.formMode === 'edit-decision';
 
     if (isEdit && state.editingRecordId) {
@@ -654,9 +623,9 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       }
       return result.success;
     }
-  };
+  }, [state.formMode, state.editingRecordId, onUpdateDecision, onSaveDecision, cancelForm, toast]);
 
-  const handleSaveVerbaForm = async (verba: NewVerbaComLancamento): Promise<boolean> => {
+  const handleSaveVerbaForm = useCallback(async (verba: NewVerbaComLancamento): Promise<boolean> => {
     const isEdit = state.formMode === 'edit-verba';
 
     if (isEdit && state.editingRecordId) {
@@ -695,7 +664,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       }
       return result.success;
     }
-  };
+  }, [state.formMode, state.editingRecordId, allLancamentos, processId, onUpdateVerba, onSaveVerba, cancelForm, refreshVerbas, toast]);
 
   const editingDecision = useMemo(() => {
     if (state.formMode === 'edit-decision' && state.editingRecordId) {
@@ -728,7 +697,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     return result.success;
   }, [renameTipoDocumento, toast]);
 
-  const handleSaveDocumentoForm = async (documento: NewDocumento): Promise<boolean> => {
+  const handleSaveDocumentoForm = useCallback(async (documento: NewDocumento): Promise<boolean> => {
     const isEdit = state.formMode === 'edit-documento';
 
     if (isEdit && state.editingRecordId) {
@@ -750,7 +719,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       }
       return result.success;
     }
-  };
+  }, [state.formMode, state.editingRecordId, onUpdateDocumento, onSaveDocumento, cancelForm, toast]);
 
   return (
     <div className="h-full flex flex-col bg-gray-50 notranslate" translate="no">

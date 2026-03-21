@@ -87,7 +87,10 @@ const VerbaLancamentoCard: React.FC<VerbaLancamentoCardProps> = ({
     finally { setIsUpdating(false); }
   }, [onToggleCheck, isUpdating, currentStatus, verba.id, lancamento.id, toast]);
 
-  const preview = getPreviewText(lancamento.fundamentacao || lancamento.comentariosCalculistas, 90);
+  const preview = useMemo(
+    () => getPreviewText(lancamento.fundamentacao || lancamento.comentariosCalculistas, 90),
+    [lancamento.fundamentacao, lancamento.comentariosCalculistas]
+  );
 
   return (
     <div
@@ -221,6 +224,10 @@ export default React.memo(VerbaLancamentoCard, (prev, next) => {
     new Date(prev.lancamento.dataAtualizacao).getTime() === new Date(next.lancamento.dataAtualizacao).getTime() &&
     prev.lancamento.checkCalculista === next.lancamento.checkCalculista &&
     prev.lancamento.checkRevisor === next.lancamento.checkRevisor &&
-    prev.isHighlighted === next.isHighlighted
+    prev.isHighlighted === next.isHighlighted &&
+    prev.onEdit === next.onEdit &&
+    prev.onDelete === next.onDelete &&
+    prev.onViewDetails === next.onViewDetails &&
+    prev.onToggleCheck === next.onToggleCheck
   );
 });
