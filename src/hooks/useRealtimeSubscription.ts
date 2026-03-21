@@ -36,7 +36,6 @@ export const useRealtimeSubscription = <T extends { id: string }>({
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
-  const subscribedAtRef = useRef<number>(0);
 
   useEffect(() => {
     callbacksRef.current = { onInsert, onUpdate, onDelete, onAnyChange };
@@ -114,7 +113,7 @@ export const useRealtimeSubscription = <T extends { id: string }>({
         if (!mountedRef.current) return;
 
         if (status === 'SUBSCRIBED') {
-          subscribedAtRef.current = Date.now();
+          retryCountRef.current = 0;
           logRealtimeEvent(
             'Realtime subscription active',
             'useRealtimeSubscription',
@@ -130,13 +129,6 @@ export const useRealtimeSubscription = <T extends { id: string }>({
             { table, schema, event, filter, status, attempt: retryCountRef.current },
             'error'
           );
-
-          const connectionWasStable = subscribedAtRef.current > 0 &&
-            (Date.now() - subscribedAtRef.current) > 10000;
-          if (connectionWasStable) {
-            retryCountRef.current = 0;
-            subscribedAtRef.current = 0;
-          }
 
           if (retryCountRef.current < MAX_RETRY_ATTEMPTS && mountedRef.current) {
             const delay = Math.min(BASE_RETRY_DELAY_MS * Math.pow(2, retryCountRef.current), 30000);
