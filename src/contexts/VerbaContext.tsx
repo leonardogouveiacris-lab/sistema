@@ -36,7 +36,7 @@ interface VerbaProviderProps {
 
 export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activeProcessId }) => {
   const [cacheByProcess, setCacheByProcess] = useState<Map<string, Verba[]>>(new Map());
-  const [loadedProcessIds, setLoadedProcessIds] = useState<Set<string>>(new Set());
+  const loadedProcessIdsRef = useRef<Set<string>>(new Set());
   const [loadingProcessIds, setLoadingProcessIds] = useState<Set<string>>(new Set());
   const loadingIdsRef = useRef<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +60,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
         next.set(processId, data);
         return next;
       });
-      setLoadedProcessIds(prev => new Set(prev).add(processId));
+      loadedProcessIdsRef.current.add(processId);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar verbas';
       setError(errorMessage);
@@ -76,10 +76,10 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
   }, []);
 
   useEffect(() => {
-    if (activeProcessId && !loadedProcessIds.has(activeProcessId)) {
+    if (activeProcessId && !loadedProcessIdsRef.current.has(activeProcessId)) {
       loadVerbasByProcess(activeProcessId);
     }
-  }, [activeProcessId, loadedProcessIds, loadVerbasByProcess]);
+  }, [activeProcessId, loadVerbasByProcess]);
 
   const verbas = useMemo((): Verba[] => {
     if (!activeProcessId) return [];
@@ -92,11 +92,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
   }, [activeProcessId, loadingProcessIds]);
 
   const refreshVerbasByProcess = useCallback(async (processId: string) => {
-    setLoadedProcessIds(prev => {
-      const next = new Set(prev);
-      next.delete(processId);
-      return next;
-    });
+    loadedProcessIdsRef.current.delete(processId);
     await loadVerbasByProcess(processId);
   }, [loadVerbasByProcess]);
 
@@ -113,6 +109,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
     refreshTimeoutRef.current = setTimeout(async () => {
       const pid = activeProcessIdRef.current;
       if (!pid) return;
+      if (loadingIdsRef.current.has(pid)) return;
       logRealtimeEvent('Realtime refresh requested', 'VerbaContext', 'refresh_requested', { table: 'verbas', processId: pid });
       try {
         const data = await VerbasService.getByProcessId(pid);
