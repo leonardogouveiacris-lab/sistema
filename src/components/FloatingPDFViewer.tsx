@@ -2726,8 +2726,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       goToPage(targetPage);
     }
 
-    const FALLBACK_SCROLL_ATTEMPT_MS = 75;
-    let fallbackAttempted = false;
     let lastAppliedTargetPage: number | null = null;
     let lastAppliedTargetScrollTop: number | null = null;
 
@@ -2750,7 +2748,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       scrollContainerRef.current.scrollTop = targetScrollTop;
       lastAppliedTargetPage = targetPage;
       lastAppliedTargetScrollTop = targetScrollTop;
-      fallbackAttempted = true;
     };
 
     const scrollToTargetPage = () => {
@@ -2772,9 +2769,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       const elapsed = Date.now() - startedAt;
 
-      if (!fallbackAttempted || elapsed >= FALLBACK_SCROLL_ATTEMPT_MS) {
-        applyFallbackByCumulativeTops();
-      }
+      applyFallbackByCumulativeTops();
 
       if (elapsed < PROGRAMMATIC_SCROLL_RETRY_TIMEOUT_MS) {
         requestAnimationFrame(scrollToTargetPage);
