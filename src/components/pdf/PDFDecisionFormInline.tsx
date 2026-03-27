@@ -470,21 +470,19 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           />
         )}
 
-        {!isEditMode && (
-          <CustomDropdown
-            label="Situação"
-            placeholder="Selecione ou crie novo..."
-            value={formData.situacao}
-            required={true}
-            error={errors.situacao}
-            enumType={DynamicEnumType.SITUACAO_DECISAO}
-            processId={processId}
-            onChange={(value) => handleInputChange('situacao', value)}
-            allowCustomValues={true}
-            onValueCreated={handleSituacaoDecisaoCreated}
-            itemActions={situacaoItemActions}
-          />
-        )}
+        <CustomDropdown
+          label="Situação"
+          placeholder="Selecione ou crie novo..."
+          value={formData.situacao}
+          required={true}
+          error={errors.situacao}
+          enumType={DynamicEnumType.SITUACAO_DECISAO}
+          processId={processId}
+          onChange={(value) => handleInputChange('situacao', value)}
+          allowCustomValues={true}
+          onValueCreated={handleSituacaoDecisaoCreated}
+          itemActions={situacaoItemActions}
+        />
 
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">
