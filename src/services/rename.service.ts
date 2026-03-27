@@ -95,7 +95,7 @@ export class RenameService {
       let query = supabase
         .from('verbas')
         .select('id, process_id')
-        .eq('tipo_verba', tipoAntigoNorm);
+        .eq('tipo_verba', tipoAntigo.trim());
 
       if (processId) {
         query = query.eq('process_id', processId);
@@ -175,7 +175,7 @@ export class RenameService {
       let queryVerbas = supabase
         .from('verbas')
         .update({ tipo_verba: tipoNovoNorm })
-        .eq('tipo_verba', tipoAntigoNorm);
+        .eq('tipo_verba', tipoAntigo.trim());
 
       if (processId) {
         queryVerbas = queryVerbas.eq('process_id', processId);
@@ -198,7 +198,7 @@ export class RenameService {
           .from('custom_enum_values')
           .update({ enum_value: tipoNovoNorm })
           .eq('enum_name', 'tipo_verba')
-          .eq('enum_value', tipoAntigoNorm)
+          .eq('enum_value', tipoAntigo.trim())
           .eq('created_by_process_id', processId);
       } else {
         // Atualiza valores globais (created_by_process_id IS NULL)
@@ -206,7 +206,7 @@ export class RenameService {
           .from('custom_enum_values')
           .update({ enum_value: tipoNovoNorm })
           .eq('enum_name', 'tipo_verba')
-          .eq('enum_value', tipoAntigoNorm)
+          .eq('enum_value', tipoAntigo.trim())
           .is('created_by_process_id', null);
       }
 
