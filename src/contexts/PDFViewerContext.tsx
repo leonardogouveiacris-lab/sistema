@@ -1529,7 +1529,12 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   }, [getPageHeight, state.totalPages]);
 
   const cumulativePageBottoms = useMemo(() => {
-    return cumulativePageTops.map((top, index) => top + getPageHeight(index + 1));
+    return cumulativePageTops.map((top, index) => {
+      if (index + 1 < cumulativePageTops.length) {
+        return cumulativePageTops[index + 1] - CONTINUOUS_PAGE_GAP_PX;
+      }
+      return top + getPageHeight(index + 1);
+    });
   }, [cumulativePageTops, getPageHeight]);
 
   const getVisiblePageFromScroll = useCallback(() => {
@@ -2206,8 +2211,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setState(prev => ({ ...prev, isPageExtractionModalOpen: false }));
   }, []);
 
-  const hasRotations = Object.keys(state.pageRotations).length > 0;
   const rotatedPageCount = Object.keys(state.pageRotations).length;
+  const hasRotations = rotatedPageCount > 0;
 
   const value = useMemo<PDFViewerContextType>(() => ({
     state,

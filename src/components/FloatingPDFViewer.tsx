@@ -95,7 +95,6 @@ const HEAVY_TASK_CONCURRENCY = 2;
 const CONTINUOUS_WINDOW_BUFFER_PAGES = 3;
 const CONTINUOUS_RENDER_BUDGET_PAGES = 14;
 const CONTINUOUS_INACTIVE_DOCUMENT_RENDER_BUDGET_PAGES = 2;
-const DEBUG_CONTINUOUS_RENDER = false;
 const CONTINUOUS_PRELOAD_RADIUS = 2;
 const CONTINUOUS_IDLE_PRELOAD_RADIUS = 4;
 const CONTINUOUS_PAGE_GAP_PX = 16;
@@ -763,10 +762,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     phaseTimersRef.current.delete(phase);
   }, []);
 
-
-  const logNavigationLatencySummary = useCallback((_flowId: string, _source: string) => {
-    // Metrics logging disabled
-  }, []);
 
   useEffect(() => {
     const originalWarn = console.warn;
@@ -1897,7 +1892,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           const elapsedMs = now - pendingNavigationTarget.startedAt;
           navigationStabilizedCapturedRef.current.add(pendingNavigationTarget.flowId);
           navigationMetricsSamplesRef.current.targetStabilizedMs.push(elapsedMs);
-          logNavigationLatencySummary(pendingNavigationTarget.flowId, pendingNavigationTarget.source);
         }
 
         commitActivePageChange({
@@ -2679,7 +2673,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     getPageWidth,
     commitActivePageChange,
     isSearchNavigationActive,
-    logNavigationLatencySummary,
     logPdfDebugEvent,
     releaseProgrammaticScroll,
     state.currentPage,
@@ -4422,33 +4415,6 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   const continuousCanvasPagesByDocument = useMemo(() => {
     const pagesByDocument = continuousCanvasPipeline.pagesByDocument;
-
-    if (DEBUG_CONTINUOUS_RENDER && state.viewMode === 'continuous') {
-      const documents = state.documents.map((doc) => {
-        const selectedPages = Array.from(pagesByDocument.get(doc.id) || []).sort((a, b) => a - b);
-        return {
-          documentId: doc.id,
-          isActiveDocument: continuousCanvasPipeline.activeDocumentId === doc.id,
-          selectedPagesCount: selectedPages.length,
-          selectedPagesMin: selectedPages.length > 0 ? selectedPages[0] : null,
-          selectedPagesMax: selectedPages.length > 0 ? selectedPages[selectedPages.length - 1] : null
-        };
-      });
-
-      logger.info(
-        'Depuração do cálculo de continuousCanvasPagesByDocument',
-        'FloatingPDFViewer.continuousCanvasPagesByDocument',
-        {
-          visibleStartPage: visibleStartPageRef.current,
-          visibleEndPage: visibleEndPageRef.current,
-          budget: {
-            active: CONTINUOUS_RENDER_BUDGET_PAGES,
-            inactive: CONTINUOUS_INACTIVE_DOCUMENT_RENDER_BUDGET_PAGES
-          },
-          documents
-        }
-      );
-    }
 
     return pagesByDocument;
   }, [continuousCanvasPipeline, state.viewMode, state.documents]);

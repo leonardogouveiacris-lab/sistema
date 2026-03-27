@@ -84,7 +84,7 @@ export class TipoVerbaService {
         return tiposBasicos;
       }
 
-      // === ETAPA 1: Busca tipos usados na tabela verbas ===
+      // === Busca todas as fontes de tipos em paralelo ===
       let verbaQuery = supabase
         .from('verbas')
         .select('tipo_verba');
@@ -93,38 +93,37 @@ export class TipoVerbaService {
         verbaQuery = verbaQuery.eq('process_id', processId);
       }
 
-      const { data: verbasData, error: verbasError } = await verbaQuery;
-      
-      if (verbasError) {
-        throw new Error(`Erro ao buscar tipos das verbas: ${verbasError.message}`);
-      }
-
-      // === ETAPA 2: Busca tipos personalizados da custom_enum_values ===
-      // Para valores globais (sempre incluídos)
-      const { data: globalCustomData, error: globalCustomError } = await supabase
+      const globalCustomQuery = supabase
         .from('custom_enum_values')
         .select('enum_value')
         .eq('enum_name', 'tipo_verba')
         .is('created_by_process_id', null);
 
+      const processCustomQuery = processId
+        ? supabase
+            .from('custom_enum_values')
+            .select('enum_value')
+            .eq('enum_name', 'tipo_verba')
+            .eq('created_by_process_id', processId)
+        : Promise.resolve({ data: [] as { enum_value: string }[], error: null });
+
+      const [
+        { data: verbasData, error: verbasError },
+        { data: globalCustomData, error: globalCustomError },
+        { data: processCustomRaw, error: processCustomError },
+      ] = await Promise.all([verbaQuery, globalCustomQuery, processCustomQuery]);
+
+      if (verbasError) {
+        throw new Error(`Erro ao buscar tipos das verbas: ${verbasError.message}`);
+      }
       if (globalCustomError) {
         throw new Error(`Erro ao buscar tipos globais personalizados: ${globalCustomError.message}`);
       }
-
-      // Para valores específicos do processo (se processId fornecido)
-      let processCustomData: any[] = [];
-      if (processId) {
-        const { data: processData, error: processCustomError } = await supabase
-          .from('custom_enum_values')
-          .select('enum_value')
-          .eq('enum_name', 'tipo_verba')
-          .eq('created_by_process_id', processId);
-
-        if (processCustomError) {
-          throw new Error(`Erro ao buscar tipos personalizados do processo: ${processCustomError.message}`);
-        }
-        processCustomData = processData || [];
+      if (processCustomError) {
+        throw new Error(`Erro ao buscar tipos personalizados do processo: ${processCustomError.message}`);
       }
+
+      const processCustomData = processCustomRaw || [];
 
       // === ETAPA 3: Combina e remove duplicatas ===
       const tiposUsados = (verbasData || []).map(item => item.tipo_verba);

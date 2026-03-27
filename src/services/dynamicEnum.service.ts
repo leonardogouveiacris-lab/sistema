@@ -269,7 +269,7 @@ export class DynamicEnumService {
         return [];
       }
 
-      const { data: globalData, error: globalError } = await supabase
+      const globalQuery = supabase
         .from('custom_enum_values')
         .select('*')
         .eq('enum_name', enumName)
@@ -277,27 +277,28 @@ export class DynamicEnumService {
         .order('enum_value')
         .limit(10000);
 
+      const processQuery = processId
+        ? supabase
+            .from('custom_enum_values')
+            .select('*')
+            .eq('enum_name', enumName)
+            .eq('created_by_process_id', processId)
+            .order('enum_value')
+            .limit(10000)
+        : null;
+
+      const results = await Promise.all([globalQuery, processQuery ?? Promise.resolve({ data: null, error: null })]);
+      const { data: globalData, error: globalError } = results[0];
+      const { data: processRaw, error: processError } = results[1];
+
       if (globalError) {
         throw new Error(`Erro ao buscar valores globais: ${globalError.message}`);
       }
-
-      let processData: typeof globalData = [];
-      if (processId) {
-        const { data, error } = await supabase
-          .from('custom_enum_values')
-          .select('*')
-          .eq('enum_name', enumName)
-          .eq('created_by_process_id', processId)
-          .order('enum_value')
-          .limit(10000);
-
-        if (error) {
-          throw new Error(`Erro ao buscar valores do processo: ${error.message}`);
-        }
-        processData = data || [];
+      if (processError) {
+        throw new Error(`Erro ao buscar valores do processo: ${processError.message}`);
       }
 
-      const allData = [...(globalData || []), ...processData];
+      const allData = [...(globalData || []), ...(processRaw || [])];
 
       const customValues = allData.map(record => ({
         id: record.id,
