@@ -5555,11 +5555,10 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     if (state.viewMode !== 'continuous' || !state.highlightedPage) return;
 
     const source = state.isSearchOpen ? 'search' : 'highlight';
-    const shouldSyncCurrentPage = state.currentPage !== state.highlightedPage;
+    const shouldSyncCurrentPage = currentPageRef.current !== state.highlightedPage;
 
     startProgrammaticPageNavigation(state.highlightedPage, source, shouldSyncCurrentPage, state.highlightNavigationFlowId || undefined);
   }, [
-    state.currentPage,
     state.highlightedPage,
     state.isSearchOpen,
     state.highlightNavigationFlowId,

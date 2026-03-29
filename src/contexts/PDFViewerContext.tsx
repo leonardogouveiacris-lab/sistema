@@ -1747,7 +1747,13 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
         return;
       }
 
-      const relevantHighlights = state.highlights.filter(h => highlightIds.includes(h.id));
+      const relevantHighlights = state.highlights
+        .filter(h => highlightIds.includes(h.id))
+        .sort((a, b) =>
+          a.pageNumber !== b.pageNumber
+            ? a.pageNumber - b.pageNumber
+            : (a.positionData.y ?? 0) - (b.positionData.y ?? 0)
+        );
 
       if (relevantHighlights.length === 0) {
         if (pageNumber) {
@@ -1781,6 +1787,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
             block: 'center'
           });
         }
+        scheduleHighlightedPageClear(400);
       }, 300);
       multiHighlightTimersRef.current.push(t1);
     },
