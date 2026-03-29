@@ -16,6 +16,7 @@ import { useLancamentosForReference } from '../hooks/useLancamentosForReference'
 import { useNavigateToReference } from '../hooks/useNavigateToReference';
 import { useProcessTable } from '../hooks/useProcessTable';
 import { useToast } from '../contexts/ToastContext';
+import { usePDFViewer } from '../contexts/PDFViewerContext';
 
 /**
  * Props do componente VerbaList
@@ -50,6 +51,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
   const referenceItems = useLancamentosForReference(processId, processTable);
   const navigateToReference = useNavigateToReference(processId);
   const toast = useToast();
+  const { state: pdfState } = usePDFViewer();
 
   // Estado do filtro de pesquisa para busca dinâmica
   const [filter, setFilter] = useState<VerbaFilter>({ searchTerm: '' });
@@ -380,6 +382,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
                   deletingLancamentoId={deletingLancamentoId}
                   checkLoading={checkLoading}
                   referenceItems={referenceItems}
+                  activeLancamentoId={pdfState.activeLancamentoId}
                   onNavigate={navigateToReference}
                   onToggleExpansion={toggleCardExpansion}
                   onToggleCalculista={handleToggleCalculista}

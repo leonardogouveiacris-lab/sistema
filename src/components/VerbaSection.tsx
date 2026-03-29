@@ -25,6 +25,7 @@ interface VerbaSectionProps {
   deletingLancamentoId: string | null;
   checkLoading: Record<string, boolean>;
   referenceItems: LancamentoReferenceItem[];
+  activeLancamentoId: string | null;
   onNavigate: (item: LancamentoReferenceItem) => void;
   onToggleExpansion: (id: string) => void;
   onToggleCalculista: (id: string, currentValue: boolean) => void;
@@ -42,6 +43,7 @@ const VerbaSection: React.FC<VerbaSectionProps> = ({
   deletingLancamentoId,
   checkLoading,
   referenceItems,
+  activeLancamentoId,
   onNavigate,
   onToggleExpansion,
   onToggleCalculista,
@@ -93,6 +95,7 @@ const VerbaSection: React.FC<VerbaSectionProps> = ({
               checkLoadingCalc={!!checkLoading[`calc-${lancamento.id}`]}
               checkLoadingRev={!!checkLoading[`rev-${lancamento.id}`]}
               referenceItems={referenceItems}
+              activeLancamentoId={activeLancamentoId}
               onNavigate={onNavigate}
               onToggleExpansion={onToggleExpansion}
               onToggleCalculista={onToggleCalculista}

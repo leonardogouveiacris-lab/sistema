@@ -53,7 +53,7 @@ export function useNavigateToReference(processId: string) {
         openViewer(pdfState.documents);
       }
       if (item.highlightIds?.length) {
-        scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada);
+        scrollToMultipleHighlights(item.highlightIds, item.paginaVinculada, item.id);
       } else {
         navigateToPageWithHighlight(item.paginaVinculada, item.id);
       }

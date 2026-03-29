@@ -266,7 +266,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     setTextExtractionProgress,
     consumePendingNavigation,
     navigateToPageWithHighlight,
-    scrollToMultipleHighlights
+    scrollToMultipleHighlights,
+    clearSelectedHighlights
   } = usePDFViewer();
 
   const toast = useToast();
@@ -6476,6 +6477,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
               ref={handleScrollContainerRef}
               className="absolute inset-0 overflow-auto bg-gray-200"
               style={{ visibility: isModeTransitioning ? 'hidden' : 'visible' }}
+              onClick={clearSelectedHighlights}
             >
               <div className="flex justify-center py-4">
                 <div className="flex flex-col items-center space-y-4">

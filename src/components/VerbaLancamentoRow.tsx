@@ -31,6 +31,7 @@ interface VerbaLancamentoRowProps {
   checkLoadingCalc: boolean;
   checkLoadingRev: boolean;
   referenceItems: LancamentoReferenceItem[];
+  activeLancamentoId: string | null;
   onNavigate: (item: LancamentoReferenceItem) => void;
   onToggleExpansion: (id: string) => void;
   onToggleCalculista: (id: string, currentValue: boolean) => void;
@@ -50,6 +51,7 @@ const VerbaLancamentoRow: React.FC<VerbaLancamentoRowProps> = ({
   checkLoadingCalc,
   checkLoadingRev,
   referenceItems,
+  activeLancamentoId,
   onNavigate,
   onToggleExpansion,
   onToggleCalculista,
@@ -65,9 +67,11 @@ const VerbaLancamentoRow: React.FC<VerbaLancamentoRowProps> = ({
     [lancamento.fundamentacao, lancamento.comentariosCalculistas]
   );
 
+  const isActive = activeLancamentoId === lancamento.id;
+
   return (
     <div
-      className={`bg-white border rounded-lg overflow-hidden group hover:shadow-sm transition-all duration-200 ${isConfirmingDelete ? 'border-red-200' : 'border-gray-200'}`}
+      className={`bg-white border rounded-lg overflow-hidden group hover:shadow-sm transition-all duration-200 ${isConfirmingDelete ? 'border-red-200' : isActive ? 'border-blue-400 shadow-sm ring-1 ring-blue-200' : 'border-gray-200'}`}
     >
       <div className="p-4">
         <div className="flex justify-between items-start">
@@ -266,6 +270,7 @@ export default React.memo(VerbaLancamentoRow, (prev, next) => {
     prev.onSetDeletingId === next.onSetDeletingId &&
     prev.onDeleteLancamento === next.onDeleteLancamento &&
     prev.referenceItems === next.referenceItems &&
-    prev.onNavigate === next.onNavigate
+    prev.onNavigate === next.onNavigate &&
+    prev.activeLancamentoId === next.activeLancamentoId
   );
 });

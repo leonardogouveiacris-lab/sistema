@@ -242,6 +242,7 @@ const HighlightLayer: React.FC<HighlightLayerProps> = ({ pageNumber, scale }) =>
                     opacity: isBeingDeleted ? 0.3 : isHovered ? 0.5 : undefined,
                     zIndex: isSelected ? 20 : undefined
                   }}
+                  onClick={(e) => e.stopPropagation()}
                   onContextMenu={(e) => handleContextMenu(e, id)}
                   onMouseEnter={() => handleMouseEnter(id)}
                   onMouseLeave={handleMouseLeave}

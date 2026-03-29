@@ -168,6 +168,7 @@ interface PDFViewerState {
   isDrawingConnector: boolean;
   drawingConnectorType: ConnectorType | null;
   editingConnectorId: string | null;
+  activeLancamentoId: string | null;
 }
 
 /**
@@ -274,7 +275,8 @@ interface PDFViewerContextType {
   setSelectedHighlightIds: (highlightIds: string[]) => void;
   addHighlightIdToLink: (highlightId: string) => void;
   clearHighlightIdsToLink: () => void;
-  scrollToMultipleHighlights: (highlightIds: string[], pageNumber?: number) => void;
+  scrollToMultipleHighlights: (highlightIds: string[], pageNumber?: number, lancamentoId?: string) => void;
+  clearSelectedHighlights: () => void;
 
   // Search
   openSearch: () => void;
@@ -431,7 +433,8 @@ const DEFAULT_STATE: PDFViewerState = {
   selectedCommentColor: 'yellow',
   isDrawingConnector: false,
   drawingConnectorType: null,
-  editingConnectorId: null
+  editingConnectorId: null,
+  activeLancamentoId: null
 };
 
 const ZOOM_MIN = 0.5;
@@ -1700,6 +1703,12 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setState(prev => ({ ...prev, selectedHighlightIds: highlightIds }));
   }, []);
 
+  const clearSelectedHighlights = useCallback(() => {
+    multiHighlightTimersRef.current.forEach(t => clearTimeout(t));
+    multiHighlightTimersRef.current = [];
+    setState(prev => ({ ...prev, selectedHighlightIds: [], highlightedPage: null, activeLancamentoId: null }));
+  }, []);
+
   /**
    * Adiciona um highlight ID para vincular ao próximo lançamento (acumula)
    */
@@ -1721,13 +1730,17 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
    * Navega até múltiplos highlights com scroll automático e destaque visual
    */
   const scrollToMultipleHighlights = useCallback(
-    (highlightIds: string[], pageNumber?: number) => {
+    (highlightIds: string[], pageNumber?: number, lancamentoId?: string) => {
+      multiHighlightTimersRef.current.forEach(t => clearTimeout(t));
+      multiHighlightTimersRef.current = [];
+
       if (highlightIds.length === 0) {
         if (pageNumber) {
           setState(prev => ({
             ...prev,
             currentPage: pageNumber,
-            highlightedPage: pageNumber
+            highlightedPage: pageNumber,
+            activeLancamentoId: lancamentoId ?? null
           }));
           scheduleHighlightedPageClear(1000);
         }
@@ -1741,76 +1754,35 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
           setState(prev => ({
             ...prev,
             currentPage: pageNumber,
-            highlightedPage: pageNumber
+            highlightedPage: pageNumber,
+            activeLancamentoId: lancamentoId ?? null
           }));
           scheduleHighlightedPageClear(1000);
         }
         return;
       }
 
-      const highlightsByPage = new Map<number, string[]>();
-      relevantHighlights.forEach(h => {
-        const pageHighlights = highlightsByPage.get(h.pageNumber) || [];
-        pageHighlights.push(h.id);
-        highlightsByPage.set(h.pageNumber, pageHighlights);
-      });
+      const targetPage = pageNumber ?? relevantHighlights[0].pageNumber;
 
-      const sortedPages = Array.from(highlightsByPage.keys()).sort((a, b) => a - b);
+      setState(prev => ({
+        ...prev,
+        currentPage: targetPage,
+        highlightedPage: targetPage,
+        selectedHighlightIds: highlightIds,
+        activeLancamentoId: lancamentoId ?? null
+      }));
 
-      const PAGE_RENDER_DELAY = 500;
-      const HIGHLIGHT_BLINK_TIME = 2500;
-
-      multiHighlightTimersRef.current.forEach(t => clearTimeout(t));
-      multiHighlightTimersRef.current = [];
-
-      const navigateToPageIndex = (pageIndex: number) => {
-        if (pageIndex >= sortedPages.length) {
-          setState(prev => ({
-            ...prev,
-            selectedHighlightIds: [],
-            highlightedPage: null
-          }));
-          return;
+      const t1 = setTimeout(() => {
+        const firstHighlight = relevantHighlights.find(h => h.pageNumber === targetPage) ?? relevantHighlights[0];
+        const highlightElement = document.getElementById(`highlight-${firstHighlight.id}`);
+        if (highlightElement) {
+          highlightElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+          });
         }
-
-        const targetPage = sortedPages[pageIndex];
-        const pageHighlightIds = highlightsByPage.get(targetPage) || [];
-
-        setState(prev => ({
-          ...prev,
-          currentPage: targetPage,
-          highlightedPage: targetPage,
-          selectedHighlightIds: []
-        }));
-
-        // não usar scheduleHighlightedPageClear aqui porque o "blink" controla
-        const t1 = setTimeout(() => {
-          setState(prev => ({
-            ...prev,
-            selectedHighlightIds: pageHighlightIds
-          }));
-
-          const t2 = setTimeout(() => {
-            const firstHighlightOnPage = pageHighlightIds[0];
-            const highlightElement = document.getElementById(`highlight-${firstHighlightOnPage}`);
-            if (highlightElement) {
-              highlightElement.scrollIntoView({
-                behavior: 'smooth',
-                block: 'center'
-              });
-            }
-          }, 200);
-          multiHighlightTimersRef.current.push(t2);
-
-          const t3 = setTimeout(() => {
-            navigateToPageIndex(pageIndex + 1);
-          }, HIGHLIGHT_BLINK_TIME);
-          multiHighlightTimersRef.current.push(t3);
-        }, PAGE_RENDER_DELAY);
-        multiHighlightTimersRef.current.push(t1);
-      };
-
-      navigateToPageIndex(0);
+      }, 300);
+      multiHighlightTimersRef.current.push(t1);
     },
     [state.highlights, scheduleHighlightedPageClear]
   );
@@ -2285,6 +2257,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     addHighlightIdToLink,
     clearHighlightIdsToLink,
     scrollToMultipleHighlights,
+    clearSelectedHighlights,
     openSearch,
     closeSearch,
     toggleSearch,
@@ -2343,7 +2316,7 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setPageDimensions, setPageDimensionsBatch, getPageHeight, getPageWidth, setRenderRange, getEffectiveRenderRange, registerScrollContainer, getVisiblePageFromScroll,
     setHighlights, addHighlight, removeHighlight, updateHighlightColor,
     toggleHighlighter, setHighlighterActive, setSelectedHighlightColor, setHoveredHighlightId,
-    getHighlightsByPage, setSelectedHighlightIds, addHighlightIdToLink, clearHighlightIdsToLink, scrollToMultipleHighlights,
+    getHighlightsByPage, setSelectedHighlightIds, addHighlightIdToLink, clearHighlightIdsToLink, scrollToMultipleHighlights, clearSelectedHighlights,
     openSearch, closeSearch, toggleSearch, setSearchQuery, setSearchAnchorPage, setSearchResults,
     setCurrentSearchIndex, goToNextSearchResult, goToPreviousSearchResult, setIsSearching,
     disableSearchNavigationSync, isSearchNavigationActive, setTextExtractionProgress, clearSearch,
