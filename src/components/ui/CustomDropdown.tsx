@@ -63,7 +63,7 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { addCustomValue, getCombinedValues, getValuesFromDatabase } = useDynamicEnums();
+  const { addCustomValue, getCombinedValues, getValuesFromDatabase, clearCache } = useDynamicEnums();
 
   useEffect(() => {
     if (!enumType) {
@@ -74,6 +74,7 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
     let isMounted = true;
 
     const loadCombinedValues = async () => {
+      clearCache();
       setIsLoadingOptions(true);
       try {
         let result;
@@ -101,7 +102,7 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [enumType, processId, options, getCombinedValues, getValuesFromDatabase]);
+  }, [enumType, processId, options, getCombinedValues, getValuesFromDatabase, clearCache]);
 
   const filteredOptions = useMemo(() => {
     if (!allowCustomValues || !customInput.trim()) {
