@@ -169,6 +169,7 @@ interface PDFViewerState {
   drawingConnectorType: ConnectorType | null;
   editingConnectorId: string | null;
   activeLancamentoId: string | null;
+  commentNavigationTarget: { pageNumber: number; positionX: number; positionY: number; commentId: string } | null;
 }
 
 /**
@@ -329,6 +330,8 @@ interface PDFViewerContextType {
   removeConnectorFromComment: (commentId: string, connectorId: string) => void;
   setDrawingConnector: (isDrawing: boolean, type: ConnectorType | null) => void;
   setEditingConnectorId: (connectorId: string | null) => void;
+  navigateToComment: (pageNumber: number, positionX: number, positionY: number, commentId: string) => void;
+  clearCommentNavigationTarget: () => void;
 }
 
 /**
@@ -434,7 +437,8 @@ const DEFAULT_STATE: PDFViewerState = {
   isDrawingConnector: false,
   drawingConnectorType: null,
   editingConnectorId: null,
-  activeLancamentoId: null
+  activeLancamentoId: null,
+  commentNavigationTarget: null
 };
 
 const ZOOM_MIN = 0.5;
@@ -1010,6 +1014,27 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     },
     [goToPage, scheduleHighlightedPageClear]
   );
+
+  const navigateToComment = useCallback(
+    (pageNumber: number, positionX: number, positionY: number, commentId: string) => {
+      const operationFlowId = generateFlowId();
+      goToPage(pageNumber);
+      setState(prev => ({
+        ...prev,
+        highlightedPage: pageNumber,
+        highlightNavigationFlowId: operationFlowId,
+        editingRecordId: null,
+        selectedCommentId: commentId,
+        commentNavigationTarget: { pageNumber, positionX, positionY, commentId }
+      }));
+      scheduleHighlightedPageClear(3000);
+    },
+    [goToPage, scheduleHighlightedPageClear]
+  );
+
+  const clearCommentNavigationTarget = useCallback(() => {
+    setState(prev => ({ ...prev, commentNavigationTarget: null }));
+  }, []);
 
   /**
    * Define aba ativa do sidebar
@@ -2308,7 +2333,9 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     updateConnectorInComment,
     removeConnectorFromComment,
     setDrawingConnector,
-    setEditingConnectorId
+    setEditingConnectorId,
+    navigateToComment,
+    clearCommentNavigationTarget
   }), [
     state, hasRotations, rotatedPageCount,
     openViewer, closeViewer, toggleMinimize, setPendingNavigation, consumePendingNavigation,
@@ -2332,7 +2359,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     toggleSidebar, setSidebarVisible, setSidebarWidth,
     setComments, addComment, updateComment, removeComment, toggleCommentMode, setCommentModeActive,
     selectComment, setSelectedCommentColor, getCommentsByPage,
-    addConnectorToComment, updateConnectorInComment, removeConnectorFromComment, setDrawingConnector, setEditingConnectorId
+    addConnectorToComment, updateConnectorInComment, removeConnectorFromComment, setDrawingConnector, setEditingConnectorId,
+    navigateToComment, clearCommentNavigationTarget
   ]);
 
   return <PDFViewerContext.Provider value={value}>{children}</PDFViewerContext.Provider>;

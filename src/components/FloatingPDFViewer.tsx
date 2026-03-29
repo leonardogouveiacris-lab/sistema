@@ -267,7 +267,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     consumePendingNavigation,
     navigateToPageWithHighlight,
     scrollToMultipleHighlights,
-    clearSelectedHighlights
+    clearSelectedHighlights,
+    clearCommentNavigationTarget
   } = usePDFViewer();
 
   const toast = useToast();
@@ -2795,6 +2796,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   useEffect(() => {
     calculateVisiblePagesFromScrollRef.current = calculateVisiblePagesFromScroll;
   }, [calculateVisiblePagesFromScroll]);
+
+  const wasRotatingRef = useRef(false);
+  useEffect(() => {
+    if (wasRotatingRef.current && !state.isRotating && state.viewMode === 'continuous') {
+      calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
+    }
+    wasRotatingRef.current = state.isRotating;
+  }, [state.isRotating, state.viewMode]);
 
   useEffect(() => {
     estimateCenterPageFromScrollRef.current = (scrollTop: number, viewportHeight: number) => {
@@ -5600,6 +5609,36 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }, 400);
     }, 50);
   }, [markProgrammaticScroll, releaseProgrammaticScroll, state.isRotating, state.rotationTargetPage, state.viewMode]);
+
+  const clearCommentNavigationTargetRef = useRef(clearCommentNavigationTarget);
+  clearCommentNavigationTargetRef.current = clearCommentNavigationTarget;
+
+  useEffect(() => {
+    const target = state.commentNavigationTarget;
+    if (!target) return;
+
+    const timer = setTimeout(() => {
+      const container = scrollContainerRef.current;
+      const pageElement = pageRefs.current.get(target.pageNumber);
+      if (!container || !pageElement) {
+        clearCommentNavigationTargetRef.current();
+        return;
+      }
+
+      const balloonYPx = target.positionY * state.zoom;
+      const viewportHeight = container.clientHeight;
+      const pageTopRelativeToContainer = pageElement.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      const additionalScroll = pageTopRelativeToContainer + balloonYPx - viewportHeight / 2;
+
+      if (Math.abs(additionalScroll) > 10) {
+        container.scrollTop += additionalScroll;
+      }
+
+      clearCommentNavigationTargetRef.current();
+    }, PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS + 50);
+
+    return () => clearTimeout(timer);
+  }, [state.commentNavigationTarget, state.zoom]);
 
   const scrollRatioBeforeZoomRef = useRef<number>(0);
 

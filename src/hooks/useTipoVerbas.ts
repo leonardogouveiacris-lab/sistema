@@ -14,8 +14,8 @@
  * FOCO: Interface limpa e operações diretas
  */
 
-import { useState, useCallback, useEffect } from 'react';
-import { TipoVerbaService, CreateTipoResult, TipoStats } from '../services/tipoVerba.service';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { TipoVerbaService, CreateTipoResult, TipoStats, subscribeTipoVerbaChange } from '../services/tipoVerba.service';
 import { RenameService, RenameResult } from '../services/rename.service';
 import { TipoVerbaNormalizer } from '../utils/tipoVerbaNormalizer';
 import { logger } from '../utils';
@@ -213,6 +213,19 @@ export const useTipoVerbas = (processId?: string): UseTipoVerbasReturn => {
   useEffect(() => {
     carregarTipos(processId);
   }, [processId, carregarTipos]);
+
+  const processIdRef = useRef(processId);
+  processIdRef.current = processId;
+
+  const carregarTiposRef = useRef(carregarTipos);
+  carregarTiposRef.current = carregarTipos;
+
+  useEffect(() => {
+    const unsubscribe = subscribeTipoVerbaChange(() => {
+      carregarTiposRef.current(processIdRef.current);
+    });
+    return unsubscribe;
+  }, []);
 
   // ===== RETORNO DO HOOK =====
   return {

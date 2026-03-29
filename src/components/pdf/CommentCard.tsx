@@ -35,11 +35,10 @@ const CommentCard: React.FC<CommentCardProps> = ({
   onDelete,
   isHighlighted = false,
 }) => {
-  const { navigateToPageWithHighlight, selectComment } = usePDFViewer();
+  const { navigateToComment } = usePDFViewer();
 
   const handleNavigate = () => {
-    navigateToPageWithHighlight(comment.pageNumber);
-    selectComment(comment.id);
+    navigateToComment(comment.pageNumber, comment.positionX, comment.positionY, comment.id);
   };
 
   const preview = previewText(comment.content);

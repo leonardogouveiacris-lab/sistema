@@ -18,6 +18,17 @@ import { TipoVerbaNormalizer } from '../utils/tipoVerbaNormalizer';
 import { VERBA_CONSTANTS } from '../types/Verba';
 import { logger } from '../utils';
 
+const tipoVerbaChangeListeners = new Set<() => void>();
+
+export const subscribeTipoVerbaChange = (listener: () => void): (() => void) => {
+  tipoVerbaChangeListeners.add(listener);
+  return () => tipoVerbaChangeListeners.delete(listener);
+};
+
+const notifyTipoVerbaChange = () => {
+  tipoVerbaChangeListeners.forEach(fn => fn());
+};
+
 /**
  * Interface para resultado de operações de criação
  */
@@ -412,6 +423,7 @@ export class TipoVerbaService {
    */
   static limparCache(): void {
     this.cache.clear();
+    notifyTipoVerbaChange();
   }
 
   /**
