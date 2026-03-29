@@ -6455,8 +6455,8 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         <div className="flex-1 flex overflow-hidden">
           {/* Bookmark Panel - Left Side (Responsivo) */}
           <div
-            className={`transition-all duration-300 ease-in-out border-r border-gray-300 bg-white overflow-hidden ${
-              state.isBookmarkPanelVisible ? 'opacity-100' : 'opacity-0 w-0'
+            className={`border-r border-gray-300 bg-white overflow-hidden ${
+              state.isBookmarkPanelVisible ? 'opacity-100 transition-opacity duration-300' : 'opacity-0 w-0'
             }`}
             style={{
               width: state.isBookmarkPanelVisible ? `${responsiveConfig.bookmarkPanelWidth}px` : '0px'
