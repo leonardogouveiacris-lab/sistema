@@ -191,26 +191,13 @@ export class RenameService {
       const processosUnicos = new Set(verbas.map(v => v.process_id));
 
       // === ETAPA 2: ATUALIZA TABELA CUSTOM_ENUM_VALUES ===
-      let queryCustom;
-      if (processId) {
-        // Atualiza apenas valores específicos do processo
-        queryCustom = supabase
-          .from('custom_enum_values')
-          .update({ enum_value: tipoNovoNorm })
-          .eq('enum_name', 'tipo_verba')
-          .eq('enum_value', tipoAntigo.trim())
-          .eq('created_by_process_id', processId);
-      } else {
-        // Atualiza valores globais (created_by_process_id IS NULL)
-        queryCustom = supabase
-          .from('custom_enum_values')
-          .update({ enum_value: tipoNovoNorm })
-          .eq('enum_name', 'tipo_verba')
-          .eq('enum_value', tipoAntigo.trim())
-          .is('created_by_process_id', null);
-      }
-
-      const { error: erroCustom } = await queryCustom;
+      // Atualiza TODOS os registros com o nome antigo independente do escopo (global ou por processo).
+      // Se filtrarmos apenas pelo processo, tipos globais não são atualizados, gerando duplicatas no dropdown.
+      const { error: erroCustom } = await supabase
+        .from('custom_enum_values')
+        .update({ enum_value: tipoNovoNorm })
+        .eq('enum_name', 'tipo_verba')
+        .eq('enum_value', tipoAntigo.trim());
 
       if (erroCustom) {
         logger.warn(
