@@ -110,18 +110,6 @@ const PDFVerbaFormInline: React.FC<PDFVerbaFormInlineProps> = ({
     setIsRenamingTipo(false);
   }, [editingVerba?.lancamento.id]);
 
-  useEffect(() => {
-    if (!isEditMode) {
-      setFormData(prev => ({
-        ...prev,
-        lancamento: {
-          ...prev.lancamento,
-          paginaVinculada: state.currentPage
-        }
-      }));
-    }
-  }, [state.currentPage, isEditMode]);
-
   const decisionOptions = useMemo(() => {
     const processDecisions = decisions.filter(d => d.processId === processId);
     return processDecisions.map(d => `${d.idDecisao} - ${d.tipoDecisao}`);

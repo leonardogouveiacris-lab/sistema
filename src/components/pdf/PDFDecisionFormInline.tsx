@@ -121,12 +121,6 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
     setIsRenamingSituacao(false);
   }, [isEditMode, editingDecision?.id, processId]);
 
-  useEffect(() => {
-    if (!isEditMode) {
-      setFormData(prev => ({ ...prev, paginaVinculada: state.currentPage }));
-    }
-  }, [state.currentPage, isEditMode]);
-
   const isSystemTipo = useCallback((tipo: string): boolean => {
     return predefinedTipos.includes(tipo);
   }, [predefinedTipos]);
