@@ -17,6 +17,7 @@ interface PDFSearchHighlightLayerProps {
   searchResults: SearchResultItem[];
   currentSearchIndex: number;
   searchQuery: string;
+  pageRotation?: number;
 }
 
 interface HighlightRect {
@@ -99,7 +100,8 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
   scale,
   searchResults,
   currentSearchIndex,
-  searchQuery
+  searchQuery,
+  pageRotation = 0
 }) => {
   const currentResultRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -123,6 +125,14 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
 
   useEffect(() => {
     if (pageResults.length === 0 || !normalizedSearchTerm) {
+      if (lastRectsRef.current.size > 0) {
+        lastRectsRef.current = new Map();
+        setHighlightRects(new Map());
+      }
+      return;
+    }
+
+    if (pageRotation !== 0) {
       if (lastRectsRef.current.size > 0) {
         lastRectsRef.current = new Map();
         setHighlightRects(new Map());
@@ -343,7 +353,7 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
         observerRef.current = null;
       }
     };
-  }, [pageResults, pageNumber, scale, normalizedSearchTerm]);
+  }, [pageResults, pageNumber, scale, normalizedSearchTerm, pageRotation]);
 
   useEffect(() => {
     return () => {
@@ -399,7 +409,8 @@ const PDFSearchHighlightLayer: React.FC<PDFSearchHighlightLayerProps> = memo(({
     prevProps.scale === nextProps.scale &&
     prevProps.searchResults === nextProps.searchResults &&
     prevProps.currentSearchIndex === nextProps.currentSearchIndex &&
-    prevProps.searchQuery === nextProps.searchQuery
+    prevProps.searchQuery === nextProps.searchQuery &&
+    prevProps.pageRotation === nextProps.pageRotation
   );
 });
 

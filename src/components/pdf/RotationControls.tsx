@@ -5,9 +5,10 @@ import { usePDFViewer } from '../../contexts/PDFViewerContext';
 interface RotationControlsProps {
   currentPage: number;
   totalPages: number;
+  enableKeyboardShortcuts?: boolean;
 }
 
-const RotationControls: React.FC<RotationControlsProps> = ({ currentPage, totalPages }) => {
+const RotationControls: React.FC<RotationControlsProps> = ({ currentPage, totalPages, enableKeyboardShortcuts = true }) => {
   const {
     rotatePageBy,
     resetPageRotation,
@@ -40,6 +41,8 @@ const RotationControls: React.FC<RotationControlsProps> = ({ currentPage, totalP
   }, [isDropdownOpen]);
 
   useEffect(() => {
+    if (!enableKeyboardShortcuts) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
@@ -58,7 +61,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ currentPage, totalP
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [currentPage, rotatePageBy]);
+  }, [currentPage, rotatePageBy, enableKeyboardShortcuts]);
 
   const handleRotate90CW = () => {
     rotatePageBy(currentPage, 90);

@@ -12,7 +12,7 @@
  * - Integração com sistema de notificações do Supabase
  */
 
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState } from 'react';
 import { LogOut } from 'lucide-react';
 import { SupabaseConfigMessage } from '../lib/supabase';
 import { isSupabaseAvailable, testSupabaseConnection } from '../lib/supabase';
@@ -55,36 +55,6 @@ const Header: React.FC<HeaderProps> = ({ onLogout }) => {
    * Evita múltiplos testes simultâneos
    */
   const [isTestingConnection, setIsTestingConnection] = useState(false);
-
-  // ===== EFEITOS =====
-
-  /**
-   * Effect para testar conexão inicial com Supabase
-   * 
-   * Executa um teste de conectividade na montagem do componente
-   * para verificar se o banco está realmente acessível
-   */
-  useEffect(() => {
-    const testInitialConnection = async () => {
-      if (isSupabaseAvailable) {
-        setConnectionStatus(ConnectionStatus.TESTING);
-        
-        try {
-          const isConnected = await testSupabaseConnection();
-          setConnectionStatus(isConnected ? ConnectionStatus.CONNECTED : ConnectionStatus.ERROR);
-        } catch (error) {
-          setConnectionStatus(ConnectionStatus.ERROR);
-          logger.errorWithException(
-            'Erro no teste inicial de conexão',
-            error as Error,
-            'Header - useEffect'
-          );
-        }
-      }
-    };
-
-    testInitialConnection();
-  }, []);
 
   // ===== HANDLERS =====
 

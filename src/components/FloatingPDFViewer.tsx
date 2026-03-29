@@ -766,6 +766,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   useEffect(() => {
     const originalWarn = console.warn;
+    const originalError = console.error;
 
     console.warn = (...args: unknown[]) => {
       const message = args.map(arg => (typeof arg === 'string' ? arg : JSON.stringify(arg))).join(' ');
@@ -774,12 +775,20 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (navigationFontWarningsRef.current.length > 200) {
           navigationFontWarningsRef.current.shift();
         }
+        if (/cannot load system font/i.test(message)) return;
       }
       originalWarn(...args);
     };
 
+    console.error = (...args: unknown[]) => {
+      const message = args.map(arg => (typeof arg === 'string' ? arg : JSON.stringify(arg))).join(' ');
+      if (/AbortException.*TextLayer task cancelled/i.test(message)) return;
+      originalError(...args);
+    };
+
     return () => {
       console.warn = originalWarn;
+      console.error = originalError;
     };
   }, []);
 
@@ -6358,6 +6367,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                       <RotationControls
                         currentPage={state.currentPage}
                         totalPages={state.totalPages}
+                        enableKeyboardShortcuts={false}
                       />
                     </div>
 
@@ -6633,6 +6643,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                 searchQuery={state.searchQuery}
                                 selectionRects={selectionsByPage.get(state.currentPage) || []}
                                 caretRect={caretByPage.get(state.currentPage) || null}
+                                pageRotation={getPageRotation(state.currentPage)}
                               />
                               <OcrTextOverlay
                                 documentId={doc.id}
@@ -6762,6 +6773,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
                                           searchQuery={state.searchQuery}
                                           selectionRects={selectionsByPage.get(globalPageNum) || []}
                                           caretRect={caretByPage.get(globalPageNum) || null}
+                                          pageRotation={getPageRotation(globalPageNum)}
                                         />
                                         <OcrTextOverlay
                                           documentId={doc.id}
