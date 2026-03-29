@@ -197,6 +197,7 @@ export function useSelectionOverlay(
     setCaretByPage(new Map([[glyph.pageNumber, caretRect]]));
   }, []);
 
+  /** No-op stub retained for interface compatibility. */
   const registerContextCommit = useCallback(() => {}, []);
 
   const flushOverlayUpdate = useCallback((pageRectsMap: Map<number, SelectionRect[]>, selectionText: string) => {

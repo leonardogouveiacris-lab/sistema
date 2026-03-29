@@ -2,17 +2,18 @@ import React from 'react';
 import TextSelectionPopup from './TextSelectionPopup';
 import PageRangeRotationModal from './PageRangeRotationModal';
 import PageExtractionModal from './PageExtractionModal';
+import type { SelectionPosition, FormMode } from '../../contexts/PDFViewerContext';
 
 interface PDFViewerOverlaysProps {
   selectedText: string;
-  selectionPosition: any;
+  selectionPosition: SelectionPosition | null;
   onCopy: () => void;
   onHighlight: () => void;
   onInsertFundamentacao: () => void;
   onInsertComentarios: () => void;
   onCloseSelection: () => void;
   containerRef: React.RefObject<HTMLDivElement>;
-  formMode: string;
+  formMode: FormMode;
   totalPages: number;
   isPageExtractionModalOpen: boolean;
   onClosePageExtractionModal: () => void;

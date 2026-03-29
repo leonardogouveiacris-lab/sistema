@@ -6,7 +6,7 @@
  * de backup/importação com interface intuitiva e acessível.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import { NewProcess } from '../types/Process';
 import { ValidationUtils, getUserFriendlyMessage } from '../utils';
 import { LoadingSpinner } from './ui';
@@ -23,27 +23,23 @@ interface ProcessFormProps {
   isLoading?: boolean;                                      // Estado de carregamento global
 }
 
+const INITIAL_FORM_DATA: NewProcess = {
+  numeroProcesso: '',
+  reclamante: '',
+  reclamada: '',
+  observacoesGerais: ''
+};
+
 /**
  * Componente ProcessForm - Formulário de cadastro de processos
  */
-const ProcessForm: React.FC<ProcessFormProps> = ({ 
-  onSaveProcess, 
+const ProcessForm: React.FC<ProcessFormProps> = ({
+  onSaveProcess,
   onImportBackup,
   isLoading = false
 }) => {
-  /**
-   * Estado inicial do formulário memoizado
-   * Memoizado para evitar recriação desnecessária do objeto
-   */
-  const initialFormData = useMemo((): NewProcess => ({
-    numeroProcesso: '',
-    reclamante: '',
-    reclamada: '',
-    observacoesGerais: ''
-  }), []);
-
   // Estados principais do componente
-  const [formData, setFormData] = useState<NewProcess>(initialFormData);
+  const [formData, setFormData] = useState<NewProcess>(INITIAL_FORM_DATA);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string>('');
@@ -76,16 +72,10 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
    */
   const handleInputChange = useCallback((field: keyof NewProcess, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // Limpa erro do campo específico quando usuário começar a digitar
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
-    
-    // Limpa mensagens de status quando há mudanças
-    if (successMessage) setSuccessMessage('');
-    if (generalError) setGeneralError('');
-  }, [errors, successMessage, generalError]);
+    setErrors(prev => prev[field] ? { ...prev, [field]: '' } : prev);
+    setSuccessMessage('');
+    setGeneralError('');
+  }, []);
 
   /**
    * Handler assíncrono para salvar processo
@@ -109,15 +99,14 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
       const success = await onSaveProcess(formData);
       
       if (success) {
-        // Limpa o formulário e mostra mensagem de sucesso
-        setFormData(initialFormData);
+        setFormData(INITIAL_FORM_DATA);
         setErrors({});
         setSuccessMessage(SUCCESS_MESSAGES.SAVE_SUCCESS('Processo'));
       }
     } catch (error) {
       const friendlyMessage = getUserFriendlyMessage(error);
       setGeneralError(friendlyMessage);
-      
+
       logger.errorWithException(
         'Erro ao salvar processo via formulário',
         error as Error,
@@ -126,7 +115,7 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [formData, validateForm, onSaveProcess, initialFormData]);
+  }, [formData, validateForm, onSaveProcess]);
 
   /**
    * Handler para reset/limpeza do formulário
@@ -135,11 +124,11 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
    * as mensagens de erro e sucesso
    */
   const handleReset = useCallback(() => {
-    setFormData(initialFormData);
+    setFormData(INITIAL_FORM_DATA);
     setErrors({});
     setSuccessMessage('');
     setGeneralError('');
-  }, [initialFormData]);
+  }, []);
 
   /**
    * Handler para atalhos de teclado
@@ -163,13 +152,12 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
    * Aplica estilos condicionais baseados no estado de validação
    * para feedback visual imediato ao usuário
    */
-  const getInputClasses = useCallback((fieldName: string): string => {
+  const getInputClasses = (fieldName: string): string => {
     const baseClasses = 'w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed';
     const focusClasses = 'focus:ring-blue-500';
     const errorClasses = errors[fieldName] ? 'border-red-500 focus:ring-red-500' : 'border-gray-300';
-    
     return `${baseClasses} ${focusClasses} ${errorClasses}`;
-  }, [errors]);
+  };
 
   /**
    * Renderiza campo de erro se existir
@@ -177,44 +165,40 @@ const ProcessForm: React.FC<ProcessFormProps> = ({
    * Mostra mensagens de erro específicas para cada campo
    * com ARIA labels para acessibilidade
    */
-  const renderFieldError = useCallback((fieldName: string) => {
+  const renderFieldError = (fieldName: string) => {
     if (!errors[fieldName]) return null;
-    
     return (
       <p id={`${fieldName}-error`} className="text-red-500 text-xs mt-1" role="alert">
         {errors[fieldName]}
       </p>
     );
-  }, [errors]);
+  };
 
   /**
    * Renderiza mensagens de status (sucesso/erro geral)
    * 
    * Mostra feedback visual do resultado das operações
    */
-  const renderStatusMessages = useCallback(() => {
-    return (
-      <>
-        {successMessage && (
-          <div className="bg-green-50 border border-green-200 rounded-md p-3 mb-4" role="alert">
-            <div className="flex items-center">
-              <CheckCircle size={14} className="text-green-600 mr-2" />
-              <p className="text-green-800 text-sm font-medium">{successMessage}</p>
-            </div>
+  const renderStatusMessages = () => (
+    <>
+      {successMessage && (
+        <div className="bg-green-50 border border-green-200 rounded-md p-3 mb-4" role="alert">
+          <div className="flex items-center">
+            <CheckCircle size={14} className="text-green-600 mr-2" />
+            <p className="text-green-800 text-sm font-medium">{successMessage}</p>
           </div>
-        )}
-        
-        {generalError && (
-          <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-4" role="alert">
-            <div className="flex items-center">
-              <XCircle size={14} className="text-red-600 mr-2" />
-              <p className="text-red-800 text-sm font-medium">{generalError}</p>
-            </div>
+        </div>
+      )}
+      {generalError && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-4" role="alert">
+          <div className="flex items-center">
+            <XCircle size={14} className="text-red-600 mr-2" />
+            <p className="text-red-800 text-sm font-medium">{generalError}</p>
           </div>
-        )}
-      </>
-    );
-  }, [successMessage, generalError]);
+        </div>
+      )}
+    </>
+  );
 
   // Renderização de loading state
   if (isLoading) {

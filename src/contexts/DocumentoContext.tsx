@@ -4,11 +4,9 @@ import { logger, translateSupabaseError } from '../utils';
 import { DocumentosService } from '../services';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
 import { logRealtimeEvent } from '../utils/domainLogger';
+import type { OperationResult } from '../types/Common';
 
-export interface OperationResult {
-  success: boolean;
-  error?: string;
-}
+export type { OperationResult };
 
 interface DocumentoContextValue {
   documentos: Documento[];

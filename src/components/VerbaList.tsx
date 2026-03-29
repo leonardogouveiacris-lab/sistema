@@ -67,13 +67,6 @@ const VerbaList: React.FC<VerbaListProps> = ({
 
   // Estado do checklist
   const [checklistFilter, setChecklistFilter] = useState<ChecklistStatus | 'todos'>('todos');
-  const [checklistStats, setChecklistStats] = useState<ChecklistStats>({
-    total: 0,
-    pendentes: 0,
-    aguardandoRevisao: 0,
-    concluidos: 0,
-    percentualConcluido: 0
-  });
   const [checkLoading, setCheckLoading] = useState<Record<string, boolean>>({});
 
   const toggleCardExpansion = useCallback((lancamentoId: string) => {
@@ -88,25 +81,16 @@ const VerbaList: React.FC<VerbaListProps> = ({
     });
   }, []);
 
-  /**
-   * Calcula as estatísticas do checklist baseado nos lançamentos
-   */
-  const calculateChecklistStats = useCallback(() => {
+  const checklistStats = useMemo((): ChecklistStats => {
     const processVerbas = verbas.filter(verba => verba.processId === processId);
     const allLancamentos = processVerbas.flatMap(v => v.lancamentos);
-
     const total = allLancamentos.length;
     const pendentes = allLancamentos.filter(l => !l.checkCalculista && !l.checkRevisor).length;
     const aguardandoRevisao = allLancamentos.filter(l => l.checkCalculista && !l.checkRevisor).length;
     const concluidos = allLancamentos.filter(l => l.checkCalculista && l.checkRevisor).length;
     const percentualConcluido = total > 0 ? Math.round((concluidos / total) * 100) : 0;
-
-    setChecklistStats({ total, pendentes, aguardandoRevisao, concluidos, percentualConcluido });
+    return { total, pendentes, aguardandoRevisao, concluidos, percentualConcluido };
   }, [verbas, processId]);
-
-  useEffect(() => {
-    calculateChecklistStats();
-  }, [calculateChecklistStats]);
 
   /**
    * Filtra verbas baseado no processo atual e termo de busca
@@ -269,7 +253,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
     } finally {
       setCheckLoading(prev => ({ ...prev, [`calc-${lancamentoId}`]: false }));
     }
-  }, [processId, refreshVerbas]);
+  }, [processId, refreshVerbas, toast]);
 
   /**
    * Alterna o check do revisor
@@ -300,7 +284,7 @@ const VerbaList: React.FC<VerbaListProps> = ({
     } finally {
       setCheckLoading(prev => ({ ...prev, [`rev-${lancamentoId}`]: false }));
     }
-  }, [processId, refreshVerbas]);
+  }, [processId, refreshVerbas, toast]);
 
   const handleRefresh = useCallback(async () => {
     if (refreshVerbas) {

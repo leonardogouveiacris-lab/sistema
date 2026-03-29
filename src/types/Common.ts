@@ -22,3 +22,9 @@ export enum LoadingState {
   SUCCESS = 'success',
   ERROR = 'error'
 }
+
+// Resultado padronizado para operações assíncronas de contexto
+export interface OperationResult {
+  success: boolean;
+  error?: string;
+}

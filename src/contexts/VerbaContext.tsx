@@ -4,11 +4,9 @@ import { logger, ValidationUtils, translateSupabaseError } from '../utils';
 import { VerbasService } from '../services';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
 import { logRealtimeEvent } from '../utils/domainLogger';
+import type { OperationResult } from '../types/Common';
 
-export interface OperationResult {
-  success: boolean;
-  error?: string;
-}
+export type { OperationResult };
 
 interface VerbaContextValue {
   verbas: Verba[];

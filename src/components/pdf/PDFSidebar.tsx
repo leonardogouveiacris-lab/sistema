@@ -12,7 +12,7 @@
 
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { NewDecision } from '../../types/Decision';
-import { NewVerbaComLancamento, VerbaLancamento } from '../../types/Verba';
+import { NewVerbaComLancamento, NewVerbaLancamento, VerbaLancamento } from '../../types/Verba';
 import { NewDocumento } from '../../types/Documento';
 import { usePDFViewer } from '../../contexts/PDFViewerContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -86,6 +86,27 @@ const GroupProgressIndicator: React.FC<GroupProgressIndicatorProps> = ({ stats }
   );
 };
 
+function sortByPageThenCreatedAt<T extends { paginaVinculada?: number | null; createdAt: string }>(
+  a: T, b: T
+): number {
+  if (a.paginaVinculada && !b.paginaVinculada) return -1;
+  if (!a.paginaVinculada && b.paginaVinculada) return 1;
+  if (a.paginaVinculada && b.paginaVinculada) return a.paginaVinculada - b.paginaVinculada;
+  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+}
+
+function sortLancamentoByPageThenCreatedAt(
+  a: { lancamento: { paginaVinculada?: number | null; createdAt: string } },
+  b: { lancamento: { paginaVinculada?: number | null; createdAt: string } }
+): number {
+  const pageA = a.lancamento.paginaVinculada;
+  const pageB = b.lancamento.paginaVinculada;
+  if (pageA && !pageB) return -1;
+  if (!pageA && pageB) return 1;
+  if (pageA && pageB) return pageA - pageB;
+  return new Date(b.lancamento.createdAt).getTime() - new Date(a.lancamento.createdAt).getTime();
+}
+
 interface PDFSidebarProps {
   processId: string;
 }
@@ -132,7 +153,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     return addVerbaComLancamento(verba, skipGlobalError);
   }, [addVerbaComLancamento]);
 
-  const onUpdateVerba = useCallback(async (verbaId: string, lancamentoId: string, data: any, skipGlobalError?: boolean): Promise<OperationResult> => {
+  const onUpdateVerba = useCallback(async (verbaId: string, lancamentoId: string, data: Partial<NewVerbaLancamento>, skipGlobalError?: boolean): Promise<OperationResult> => {
     return updateVerbaLancamento(verbaId, lancamentoId, data, skipGlobalError);
   }, [updateVerbaLancamento]);
 
@@ -227,15 +248,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
   const processDecisions = useMemo(() => {
     return decisions
       .filter(d => d.processId === processId)
-      .sort((a, b) => {
-        // Sort by page (linked first, then by page number)
-        if (a.paginaVinculada && !b.paginaVinculada) return -1;
-        if (!a.paginaVinculada && b.paginaVinculada) return 1;
-        if (a.paginaVinculada && b.paginaVinculada) {
-          return a.paginaVinculada - b.paginaVinculada;
-        }
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      });
+      .sort(sortByPageThenCreatedAt);
   }, [decisions, processId]);
 
   const processVerbas = useMemo(() => {
@@ -248,17 +261,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
       verba.lancamentos.map(lancamento => ({ verba, lancamento }))
     );
 
-    return items.sort((a, b) => {
-      // Sort by page (linked first, then by page number)
-      const pageA = a.lancamento.paginaVinculada;
-      const pageB = b.lancamento.paginaVinculada;
-
-      if (pageA && !pageB) return -1;
-      if (!pageA && pageB) return 1;
-      if (pageA && pageB) return pageA - pageB;
-
-      return new Date(b.lancamento.createdAt).getTime() - new Date(a.lancamento.createdAt).getTime();
-    });
+    return items.sort(sortLancamentoByPageThenCreatedAt);
   }, [processVerbas]);
 
 
@@ -312,18 +315,19 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     });
   }, [filteredLancamentos, groupByTipoVerba]);
 
-  const lancamentosToDisplay = useMemo(() => {
-    if (groupByTipoVerba) return [];
-    return filteredLancamentos;
+  const [displayLancamentosWithPage, displayLancamentosWithoutPage] = useMemo(() => {
+    if (groupByTipoVerba) return [[], []] as const;
+    const withPage: typeof filteredLancamentos = [];
+    const withoutPage: typeof filteredLancamentos = [];
+    for (const item of filteredLancamentos) {
+      if (item.lancamento.paginaVinculada) {
+        withPage.push(item);
+      } else {
+        withoutPage.push(item);
+      }
+    }
+    return [withPage, withoutPage] as const;
   }, [filteredLancamentos, groupByTipoVerba]);
-
-  const displayLancamentosWithPage = useMemo(() => {
-    return lancamentosToDisplay.filter(l => l.lancamento.paginaVinculada);
-  }, [lancamentosToDisplay]);
-
-  const displayLancamentosWithoutPage = useMemo(() => {
-    return lancamentosToDisplay.filter(l => !l.lancamento.paginaVinculada);
-  }, [lancamentosToDisplay]);
 
   const filteredDecisions = useMemo(() => {
     if (!debouncedDecisionSearchQuery.trim()) return processDecisions;
@@ -337,25 +341,20 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     });
   }, [processDecisions, debouncedDecisionSearchQuery]);
 
-  const displayDecisionsWithPage = useMemo(() => {
-    return filteredDecisions.filter(d => d.paginaVinculada);
-  }, [filteredDecisions]);
-
-  const displayDecisionsWithoutPage = useMemo(() => {
-    return filteredDecisions.filter(d => !d.paginaVinculada);
+  const [displayDecisionsWithPage, displayDecisionsWithoutPage] = useMemo(() => {
+    const withPage: typeof filteredDecisions = [];
+    const withoutPage: typeof filteredDecisions = [];
+    for (const d of filteredDecisions) {
+      if (d.paginaVinculada) withPage.push(d);
+      else withoutPage.push(d);
+    }
+    return [withPage, withoutPage] as const;
   }, [filteredDecisions]);
 
   const processDocumentos = useMemo(() => {
     return documentos
       .filter(d => d.processId === processId)
-      .sort((a, b) => {
-        if (a.paginaVinculada && !b.paginaVinculada) return -1;
-        if (!a.paginaVinculada && b.paginaVinculada) return 1;
-        if (a.paginaVinculada && b.paginaVinculada) {
-          return a.paginaVinculada - b.paginaVinculada;
-        }
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      });
+      .sort(sortByPageThenCreatedAt);
   }, [documentos, processId]);
 
   const filteredDocumentos = useMemo(() => {
@@ -369,12 +368,14 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     });
   }, [processDocumentos, debouncedDocumentoSearchQuery]);
 
-  const displayDocumentosWithPage = useMemo(() => {
-    return filteredDocumentos.filter(d => d.paginaVinculada);
-  }, [filteredDocumentos]);
-
-  const displayDocumentosWithoutPage = useMemo(() => {
-    return filteredDocumentos.filter(d => !d.paginaVinculada);
+  const [displayDocumentosWithPage, displayDocumentosWithoutPage] = useMemo(() => {
+    const withPage: typeof filteredDocumentos = [];
+    const withoutPage: typeof filteredDocumentos = [];
+    for (const d of filteredDocumentos) {
+      if (d.paginaVinculada) withPage.push(d);
+      else withoutPage.push(d);
+    }
+    return [withPage, withoutPage] as const;
   }, [filteredDocumentos]);
 
   const sortedComments = useMemo(() => {
@@ -602,6 +603,24 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
     }
     return result.success;
   }, [onDeleteDocumento, toast]);
+
+  const handleDeleteDecisionAndClose = useCallback(async (id: string): Promise<boolean> => {
+    await handleDeleteDecision(id);
+    cancelForm();
+    return true;
+  }, [handleDeleteDecision, cancelForm]);
+
+  const handleDeleteVerbaAndClose = useCallback(async (verbaId: string, lancamentoId: string): Promise<boolean> => {
+    await handleDeleteVerba(verbaId, lancamentoId);
+    cancelForm();
+    return true;
+  }, [handleDeleteVerba, cancelForm]);
+
+  const handleDeleteDocumentoAndClose = useCallback(async (id: string): Promise<boolean> => {
+    const ok = await handleDeleteDocumento(id);
+    if (ok) cancelForm();
+    return ok;
+  }, [handleDeleteDocumento, cancelForm]);
 
   const handleSaveDecisionForm = useCallback(async (decision: NewDecision): Promise<boolean> => {
     const isEdit = state.formMode === 'edit-decision';
@@ -840,7 +859,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                 processId={processId}
                 onSave={handleSaveDecisionForm}
                 onCancel={cancelForm}
-                onDelete={state.formMode === 'edit-decision' ? async (id) => { await handleDeleteDecision(id); cancelForm(); return true; } : undefined}
+                onDelete={state.formMode === 'edit-decision' ? handleDeleteDecisionAndClose : undefined}
                 editingDecision={editingDecision}
               />
             )}
@@ -1025,7 +1044,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                 decisions={decisions}
                 onSave={handleSaveVerbaForm}
                 onCancel={cancelForm}
-                onDelete={state.formMode === 'edit-verba' ? async (verbaId, lancamentoId) => { await handleDeleteVerba(verbaId, lancamentoId); cancelForm(); return true; } : undefined}
+                onDelete={state.formMode === 'edit-verba' ? handleDeleteVerbaAndClose : undefined}
                 editingVerba={editingVerbaLancamento}
               />
             )}
@@ -1247,7 +1266,7 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
                 processId={processId}
                 onSave={handleSaveDocumentoForm}
                 onCancel={cancelForm}
-                onDelete={state.formMode === 'edit-documento' ? async (id) => { const ok = await handleDeleteDocumento(id); if (ok) cancelForm(); return ok; } : undefined}
+                onDelete={state.formMode === 'edit-documento' ? handleDeleteDocumentoAndClose : undefined}
                 onRenameTipo={handleRenameTipoDocumento}
                 editingDocumento={editingDocumento}
               />

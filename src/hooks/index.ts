@@ -22,7 +22,7 @@ export { useDecisionContext as useDecisions } from '../contexts/DecisionContext'
 export { useVerbaContext as useVerbas } from '../contexts/VerbaContext';
 export { useDocumentoContext as useDocumentos } from '../contexts/DocumentoContext';
 
-export type { OperationResult } from '../contexts/VerbaContext';
+export type { OperationResult } from '../types/Common';
 export { useLancamentosForReference } from './useLancamentosForReference';
 export { useDraggablePanel } from './useDraggablePanel';
 export { useNavigateToReference } from './useNavigateToReference';

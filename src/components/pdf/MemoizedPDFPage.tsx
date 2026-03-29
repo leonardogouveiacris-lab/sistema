@@ -1,5 +1,6 @@
 import React, { memo, useMemo } from 'react';
 import { Page } from 'react-pdf';
+import type { PDFPageProxy } from 'pdfjs-dist';
 
 const CAPPED_DPR = Math.min(window.devicePixelRatio || 1, 1.5);
 
@@ -9,7 +10,7 @@ interface MemoizedPDFPageProps {
   displayScale?: number;
   userRotation?: number;
   internalRotation?: number;
-  onLoadSuccess?: (page: any) => void;
+  onLoadSuccess?: (page: PDFPageProxy) => void;
   loading?: React.ReactNode;
   className?: string;
   wrapperClassName?: string;
