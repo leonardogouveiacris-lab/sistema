@@ -67,6 +67,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
 
   const handleTipoDocumentoCreated = useCallback(() => {
     refreshEnumValues(DynamicEnumType.TIPO_DOCUMENTO);
+    setDropdownRefreshKey(k => k + 1);
   }, [refreshEnumValues]);
 
   const [formData, setFormData] = useState<NewDocumento>({
@@ -85,6 +86,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   const [renameTipoValue, setRenameTipoValue] = useState('');
   const [deletingTipo, setDeletingTipo] = useState<string | null>(null);
   const [predefinedTipos, setPredefinedTipos] = useState<string[]>([]);
+  const [dropdownRefreshKey, setDropdownRefreshKey] = useState(0);
 
   const [expandedTextModal, setExpandedTextModal] = useState({
     isOpen: false,
@@ -185,6 +187,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           setFormData(prev => ({ ...prev, tipoDocumento: '' }));
         }
         await refreshEnumValues(DynamicEnumType.TIPO_DOCUMENTO, processId);
+        setDropdownRefreshKey(k => k + 1);
       } else {
         toast.error(result.message);
       }
@@ -232,6 +235,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
           await onRenameTipo(editingDocumento.tipoDocumento, savedTipo);
         }
         await refreshEnumValues(DynamicEnumType.TIPO_DOCUMENTO, processId);
+        setDropdownRefreshKey(k => k + 1);
       }
 
       const dataToSave: NewDocumento = {
@@ -404,6 +408,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
             processId={processId}
             onValueCreated={handleTipoDocumentoCreated}
             itemActions={tipoItemActions}
+            refreshKey={dropdownRefreshKey}
           />
         )}
 

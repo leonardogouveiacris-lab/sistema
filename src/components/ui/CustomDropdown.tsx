@@ -31,6 +31,7 @@ interface CustomDropdownProps {
   allowCustomValues?: boolean;
   onValueCreated?: () => void | Promise<void>;
   itemActions?: DropdownItemAction;
+  refreshKey?: number;
 }
 
 /**
@@ -50,7 +51,8 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
   onChange,
   allowCustomValues = false,
   onValueCreated,
-  itemActions
+  itemActions,
+  refreshKey = 0
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
@@ -102,7 +104,7 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [enumType, processId, options, getCombinedValues, getValuesFromDatabase, clearCache]);
+  }, [enumType, processId, options, getCombinedValues, getValuesFromDatabase, clearCache, refreshKey]);
 
   const filteredOptions = useMemo(() => {
     if (!allowCustomValues || !customInput.trim()) {

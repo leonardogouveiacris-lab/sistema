@@ -64,10 +64,12 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
 
   const handleTipoDecisaoCreated = useCallback(() => {
     refreshEnumValues(DynamicEnumType.TIPO_DECISAO);
+    setDropdownRefreshKey(k => k + 1);
   }, [refreshEnumValues]);
 
   const handleSituacaoDecisaoCreated = useCallback(() => {
     refreshEnumValues(DynamicEnumType.SITUACAO_DECISAO);
+    setDropdownRefreshKey(k => k + 1);
   }, [refreshEnumValues]);
 
   const [formData, setFormData] = useState<NewDecision>({
@@ -91,6 +93,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
   const [isRenamingSituacao, setIsRenamingSituacao] = useState(false);
   const [renameSituacaoValue, setRenameSituacaoValue] = useState('');
   const [deletingSituacao, setDeletingSituacao] = useState<string | null>(null);
+  const [dropdownRefreshKey, setDropdownRefreshKey] = useState(0);
 
   const [predefinedTipos, setPredefinedTipos] = useState<string[]>([]);
   const [predefinedSituacoes, setPredefinedSituacoes] = useState<string[]>([]);
@@ -198,6 +201,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           setFormData(prev => ({ ...prev, tipoDecisao: '' }));
         }
         await refreshEnumValues(DynamicEnumType.TIPO_DECISAO, processId);
+        setDropdownRefreshKey(k => k + 1);
       } else {
         toast.error(result.message);
       }
@@ -240,6 +244,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           setFormData(prev => ({ ...prev, situacao: '' }));
         }
         await refreshEnumValues(DynamicEnumType.SITUACAO_DECISAO, processId);
+        setDropdownRefreshKey(k => k + 1);
       } else {
         toast.error(result.message);
       }
@@ -278,6 +283,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           await onRenameTipo(editingDecision.tipoDecisao, savedTipo);
         }
         await refreshEnumValues(DynamicEnumType.TIPO_DECISAO, processId);
+        setDropdownRefreshKey(k => k + 1);
       }
 
       const success = await onSave(formData);
@@ -461,6 +467,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
             allowCustomValues={true}
             onValueCreated={handleTipoDecisaoCreated}
             itemActions={tipoItemActions}
+            refreshKey={dropdownRefreshKey}
           />
         )}
 
@@ -476,6 +483,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
           allowCustomValues={true}
           onValueCreated={handleSituacaoDecisaoCreated}
           itemActions={situacaoItemActions}
+          refreshKey={dropdownRefreshKey}
         />
 
         <div>
