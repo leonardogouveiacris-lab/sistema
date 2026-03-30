@@ -271,10 +271,32 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
       popupRef.current.style.visibility = 'hidden';
     }
 
-    positionRafIdRef.current = requestAnimationFrame(() => {
+    let attempts = 0;
+    const MAX_ATTEMPTS = 24;
+    let lastIconBottom: number | null = null;
+    let lastIconLeft: number | null = null;
+
+    const stabilize = () => {
       positionRafIdRef.current = null;
-      applyPopupCoords(true);
-    });
+      if (!iconRef.current) return;
+
+      const rect = iconRef.current.getBoundingClientRect();
+      const stableBottom = Math.abs((lastIconBottom ?? rect.bottom + 1) - rect.bottom) < 0.5;
+      const stableLeft = Math.abs((lastIconLeft ?? rect.left + 1) - rect.left) < 0.5;
+      const isStable = stableBottom && stableLeft;
+
+      lastIconBottom = rect.bottom;
+      lastIconLeft = rect.left;
+      attempts++;
+
+      if (isStable || attempts >= MAX_ATTEMPTS) {
+        applyPopupCoords(true);
+      } else {
+        positionRafIdRef.current = requestAnimationFrame(stabilize);
+      }
+    };
+
+    positionRafIdRef.current = requestAnimationFrame(stabilize);
 
     return () => {
       if (positionRafIdRef.current !== null) {
