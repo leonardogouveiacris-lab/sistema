@@ -9,7 +9,7 @@ import {
   AllDecisionsList,
   RelatorioVerbas
 } from './components';
-import { EmptyState } from './components/ui';
+import { EmptyState, ConnectionStatusBanner } from './components/ui';
 import { AlertTriangle } from 'lucide-react';
 import FloatingPDFViewer from './components/FloatingPDFViewer';
 import FloatingTableViewer from './components/FloatingTableViewer';
@@ -431,6 +431,7 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
         hasSelectedProcess={!!selectedProcess}
         selectedProcessNumber={selectedProcess?.numeroProcesso}
       />
+      <ConnectionStatusBanner />
       {/* Após bootstrap, mostramos loading discreto em segundo plano para recargas/reconexões. */}
       {hasCompletedBootstrap && isAnyContextLoading && !systemError && (
         <div className="bg-blue-50 border-b border-blue-200 px-6 py-2">

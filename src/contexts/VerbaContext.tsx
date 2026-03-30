@@ -8,6 +8,33 @@ import type { OperationResult } from '../types/Common';
 
 export type { OperationResult };
 
+const NETWORK_ERROR_PATTERNS = [
+  'failed to fetch', 'fetch failed', 'network error', 'network request failed',
+  'timeout', 'connection refused', 'etimedout', 'econnreset',
+];
+
+async function withNetworkRetry<T>(
+  operation: () => Promise<T>,
+  context: string,
+  maxRetries = 2
+): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (err) {
+      const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      const isNetwork = NETWORK_ERROR_PATTERNS.some(p => message.includes(p));
+      if (isNetwork && attempt < maxRetries) {
+        logger.warn(`Tentativa ${attempt + 1}/${maxRetries} após falha de rede`, context);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('Número máximo de tentativas excedido');
+}
+
 interface VerbaContextValue {
   verbas: Verba[];
   isLoading: boolean;
@@ -157,7 +184,10 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
         return { success: false, error: errorMsg };
       }
 
-      const createdVerba = await VerbasService.createVerbaComLancamento(novaVerba);
+      const createdVerba = await withNetworkRetry(
+        () => VerbasService.createVerbaComLancamento(novaVerba),
+        'VerbaContext.addVerbaComLancamento'
+      );
       const pid = novaVerba.processId;
       setCacheByProcess(prev => {
         const next = new Map(prev);
@@ -189,7 +219,10 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
     skipGlobalError = false
   ): Promise<OperationResult> => {
     try {
-      const updatedLancamento = await VerbasService.updateLancamento(verbaId, lancamentoId, updatedData);
+      const updatedLancamento = await withNetworkRetry(
+        () => VerbasService.updateLancamento(verbaId, lancamentoId, updatedData),
+        'VerbaContext.updateVerbaLancamento'
+      );
       setCacheByProcess(prev => {
         const next = new Map(prev);
         for (const [pid, verbas] of next.entries()) {

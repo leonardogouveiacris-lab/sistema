@@ -13,3 +13,4 @@ export type { ToastData, ToastType } from './Toast';
 export { default as Tooltip } from './Tooltip';
 export { default as LancamentoReferencePicker } from './LancamentoReferencePicker';
 export { default as LancamentoRefRenderer } from './LancamentoRefRenderer';
+export { default as ConnectionStatusBanner } from './ConnectionStatusBanner';
