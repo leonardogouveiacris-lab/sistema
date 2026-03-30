@@ -257,7 +257,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   }, []);
 
   useLayoutEffect(() => {
-    if (isExpanded) applyPopupCoords(false);
+    if (isExpanded) applyPopupCoords(true);
   }, [isExpanded, applyPopupCoords]);
 
   useEffect(() => {
