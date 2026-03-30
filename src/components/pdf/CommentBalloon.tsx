@@ -271,7 +271,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     showTimeoutRef.current = setTimeout(() => {
       showTimeoutRef.current = null;
       applyPopupCoords();
-    }, 350);
+    }, 500);
 
     return () => {
       if (showTimeoutRef.current !== null) {
