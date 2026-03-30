@@ -1135,7 +1135,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const now = options?.scrollSnapshot?.timestamp ?? Date.now();
     const ignoreZoomLock = options?.ignoreZoomLock === true;
 
-    if (state.isRotating || isModeSwitchingRef.current) {
+    if ((state.isRotating && isProgrammaticScrollRef.current) || isModeSwitchingRef.current) {
       return;
     }
 
@@ -2923,7 +2923,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           return;
         }
 
-        if (isModeSwitchingRef.current || isRotatingRef.current) {
+        if (isModeSwitchingRef.current || (isRotatingRef.current && isProgrammaticScrollRef.current)) {
           return;
         }
 
