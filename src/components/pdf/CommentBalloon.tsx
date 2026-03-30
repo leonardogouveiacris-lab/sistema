@@ -96,7 +96,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const posY = comment.positionY * scale;
 
   useLayoutEffect(() => {
-    if (isExpanded) applyPopupCoords(true);
+    if (isExpanded) applyPopupCoords();
   }, [posX, posY]);
 
   useEffect(() => {
@@ -209,11 +209,10 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   };
 
   const popupCoordsRef = useRef<{ top?: number; bottom?: number; left: number; visible: boolean }>({ left: 0, visible: false });
-  const [, forcePopupRender] = useState(0);
   const popupRef = useRef<HTMLDivElement>(null);
   const showTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const applyPopupCoords = useCallback((direct: boolean) => {
+  const applyPopupCoords = useCallback(() => {
     if (!iconRef.current) return;
     const rect = iconRef.current.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
@@ -247,13 +246,11 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
     popupCoordsRef.current = { top: newTop, bottom: newBottom, left, visible };
 
-    if (direct && popupRef.current) {
+    if (popupRef.current) {
       popupRef.current.style.top = newTop !== undefined ? `${newTop}px` : '';
       popupRef.current.style.bottom = newBottom !== undefined ? `${newBottom}px` : '';
       popupRef.current.style.left = `${left}px`;
       popupRef.current.style.visibility = visible ? 'visible' : 'hidden';
-    } else {
-      forcePopupRender(n => n + 1);
     }
   }, []);
 
@@ -273,7 +270,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
     showTimeoutRef.current = setTimeout(() => {
       showTimeoutRef.current = null;
-      applyPopupCoords(true);
+      applyPopupCoords();
     }, 350);
 
     return () => {
@@ -286,7 +283,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
 
   useEffect(() => {
     if (!isExpanded) return;
-    const onUpdate = () => applyPopupCoords(true);
+    const onUpdate = () => applyPopupCoords();
     window.addEventListener('scroll', onUpdate, true);
     window.addEventListener('resize', onUpdate);
     return () => {
@@ -331,8 +328,8 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
     latestPositionRef.current = { x: clampedX, y: clampedY };
     updateComment(comment.id, { positionX: clampedX, positionY: clampedY });
 
-    if (isExpanded) applyPopupCoords(true);
-  }, [dragOffset, scale, pageWidth, pageHeight, comment.id, updateComment, isExpanded, applyPopupCoords]);
+    if (isExpanded) applyPopupCoords();
+  }, [dragOffset, scale, comment.id, updateComment, isExpanded, applyPopupCoords]);
 
   const handleDragEnd = useCallback(async () => {
     setIsDragging(false);

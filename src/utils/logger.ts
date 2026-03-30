@@ -62,7 +62,7 @@ class Logger {
       return LOG_LEVEL_ENV_MAP[configuredLevel];
     }
 
-    return isProduction ? LogLevel.WARN : LogLevel.DEBUG;
+    return isProduction ? LogLevel.WARN : LogLevel.INFO;
   }
 
   private resolveConsoleEnabled(): boolean {

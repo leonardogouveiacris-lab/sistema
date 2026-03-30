@@ -211,7 +211,7 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
     setSelectedProcess(process);
     setActiveTab(AppTabs.PROCESSO);
     setGlobalError('');
-    logger.info(`Processo selecionado: ${process.numeroProcesso}`, 'App - handleSelectProcess', { processId: process.id });
+    logger.debug(`Processo selecionado: ${process.numeroProcesso}`, 'App - handleSelectProcess', { processId: process.id });
   }, []);
 
   const handleBackToList = useCallback(() => {

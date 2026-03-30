@@ -73,7 +73,7 @@ export const testSupabaseConnection = async (): Promise<boolean> => {
   }
 
   try {
-    logger.info('Testando conexão com Supabase...', 'supabase-config');
+    logger.debug('Testando conexão com Supabase...', 'supabase-config');
     
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -105,7 +105,7 @@ export const testSupabaseConnection = async (): Promise<boolean> => {
       return false;
     }
     
-    logger.success('Conexão com Supabase estabelecida com sucesso', 'supabase-config');
+    logger.debug('Conexão com Supabase estabelecida com sucesso', 'supabase-config');
     return true;
   } catch (error) {
     // Trata especificamente erros de rede/conectividade

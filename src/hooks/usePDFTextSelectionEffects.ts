@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { UsePDFTextSelectionEffectsParams } from '../types/FloatingPDFViewerContracts';
 
 export function usePDFTextSelectionEffects({
@@ -48,9 +48,12 @@ export function usePDFTextSelectionEffects({
     };
   }, [onHandleTextSelection, scrollContainerRef, selectionMode, startedInsidePdfRef, textSelectionDebounceRef]);
 
+  const onHandleTextSelectionRef = useRef(onHandleTextSelection);
+  onHandleTextSelectionRef.current = onHandleTextSelection;
+
   useEffect(() => {
     if (hasSelection) {
-      onHandleTextSelection();
+      onHandleTextSelectionRef.current();
     }
-  }, [hasSelection, onHandleTextSelection]);
+  }, [hasSelection]);
 }

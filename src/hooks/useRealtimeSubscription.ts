@@ -119,7 +119,7 @@ export const useRealtimeSubscription = <T extends { id: string }>({
             'useRealtimeSubscription',
             'subscription_active',
             { table, schema, event, filter },
-            'info'
+            'debug'
           );
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           logRealtimeEvent(

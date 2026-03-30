@@ -286,15 +286,27 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     sidebarResizeStartX.current = e.clientX;
     sidebarResizeStartWidth.current = effectiveSidebarWidth;
 
+    let sidebarRafId: number | null = null;
+    let pendingClientX = 0;
     const onMouseMove = (ev: MouseEvent) => {
       if (!isResizingSidebar.current) return;
-      const delta = sidebarResizeStartX.current - ev.clientX;
-      const newWidth = Math.max(responsiveConfig.sidebarWidth, Math.min(700, sidebarResizeStartWidth.current + delta));
-      setSidebarWidth(newWidth);
+      pendingClientX = ev.clientX;
+      if (sidebarRafId !== null) return;
+      sidebarRafId = requestAnimationFrame(() => {
+        sidebarRafId = null;
+        if (!isResizingSidebar.current) return;
+        const delta = sidebarResizeStartX.current - pendingClientX;
+        const newWidth = Math.max(responsiveConfig.sidebarWidth, Math.min(700, sidebarResizeStartWidth.current + delta));
+        setSidebarWidth(newWidth);
+      });
     };
 
     const onMouseUp = () => {
       isResizingSidebar.current = false;
+      if (sidebarRafId !== null) {
+        cancelAnimationFrame(sidebarRafId);
+        sidebarRafId = null;
+      }
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       document.body.style.cursor = '';
@@ -572,9 +584,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       return;
     }
 
-    const handleResize = () => setDocumentLayoutVersion((prev) => prev + 1);
+    let resizeDebounceId: ReturnType<typeof setTimeout> | null = null;
+    const handleResize = () => {
+      if (resizeDebounceId !== null) clearTimeout(resizeDebounceId);
+      resizeDebounceId = setTimeout(() => {
+        resizeDebounceId = null;
+        setDocumentLayoutVersion((prev) => prev + 1);
+      }, 150);
+    };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeDebounceId !== null) clearTimeout(resizeDebounceId);
+    };
   }, [state.viewMode]);
 
   useEffect(() => {
@@ -756,7 +778,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const start = phaseTimersRef.current.get(phase);
     if (start === undefined) return;
     const durationMs = performance.now() - start;
-    logger.info(
+    logger.debug(
       `Fase "${phase}" concluída em ${durationMs.toFixed(2)}ms`,
       context,
       data ? { ...data, durationMs } : { durationMs }
@@ -784,6 +806,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     console.error = (...args: unknown[]) => {
       const message = args.map(arg => (typeof arg === 'string' ? arg : JSON.stringify(arg))).join(' ');
       if (/AbortException.*TextLayer task cancelled/i.test(message)) return;
+      if (/findDOMNode is deprecated/i.test(message)) return;
       originalError(...args);
     };
 
@@ -798,7 +821,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
   const logHeavyTaskMetrics = useCallback((reason: string) => {
     const metrics = heavyTaskMetricsRef.current;
     const completed = Math.max(metrics.completed, 1);
-    logger.info(
+    logger.debug(
       'Métricas do orquestrador de tarefas pesadas',
       'FloatingPDFViewer.heavyTaskQueue',
       {
@@ -2041,7 +2064,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       Math.abs(centerPage - effectiveCurrentPage) >= REMOUNT_ANOMALOUS_PAGE_DELTA;
 
     if (isCenterPageAnomalousDuringRemount) {
-      logger.info(
+      logger.debug(
         `Congelando centerPage durante remount: center=${centerPage}, current=${effectiveCurrentPage}`,
         'FloatingPDFViewer.calculateVisiblePagesFromScroll'
       );
@@ -3243,14 +3266,14 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     }
 
     const loadHighlights = async () => {
-      logger.info(
+      logger.debug(
         `Loading highlights for process ${processId}`,
         'FloatingPDFViewer.loadHighlights'
       );
 
       const highlights = await HighlightsService.getHighlights({ processId });
       setHighlights(highlights);
-      logger.success(
+      logger.debug(
         `Loaded ${highlights.length} highlights`,
         'FloatingPDFViewer.loadHighlights'
       );
@@ -3417,7 +3440,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const isProxyFresh = Boolean(pdf) && proxyGeneration === documentSetGenerationRef.current && loadedDocumentRefsByGenerationRef.current.has(documentId);
     let independentlyLoadedPdf: pdfjs.PDFDocumentProxy | null = null;
 
-    logger.info(
+    logger.debug(
       `Bookmark extraction proxy source = ${isProxyFresh ? 'fresh' : 'loading-independent'}`,
       'FloatingPDFViewer.extractBookmarksForDocument',
       {
@@ -3606,7 +3629,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       startPhaseTimer('critical-first-page');
     }
 
-    logger.success(
+    logger.debug(
       `PDF carregado: ${currentDoc?.fileName || 'desconhecido'} com ${numPages} páginas (doc ${documentIndex + 1}/${state.documents.length})`,
       'FloatingPDFViewer.onDocumentLoadSuccess'
     );
@@ -3924,7 +3947,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
     if (totalPages > 0) {
       setTotalPages(totalPages);
-      logger.info(
+      logger.debug(
         `Total de páginas atualizado: ${totalPages} (${documentPages.size}/${state.documents.length} documentos carregados)`,
         'FloatingPDFViewer.useEffect[documentPages]'
       );
@@ -4347,7 +4370,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
       if (shouldLogMetric) {
         currentPageVisibleDivergenceLastLogAtRef.current = now;
-        logger.info(
+        logger.debug(
           'Métrica: currentPage divergente do range visível por mais de 500ms',
           'FloatingPDFViewer.currentPageVisibleDivergence',
           {
@@ -5063,7 +5086,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       registerContextCommit();
       setSelectedText(selectedText, position);
 
-      logger.info(
+      logger.debug(
         `Texto selecionado: ${selectedText.substring(0, 50)}...`,
         'FloatingPDFViewer.handleTextSelection',
         {
@@ -5127,7 +5150,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       };
       const fieldName = fieldNames[field] || field;
       toast.success(`Texto formatado e inserido em ${fieldName}!`);
-      logger.success(
+      logger.debug(
         `Texto formatado e inserido em ${fieldName}`,
         'FloatingPDFViewer.handleInsertInField',
         { field, originalLength: selectedText.length, formattedLength: quotedText.length }
@@ -5144,7 +5167,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const targetDoc = getDocumentByGlobalPage(targetPageNumber);
       if (targetDoc) {
 
-        logger.info(
+        logger.debug(
           'Criando highlight azul automaticamente para fundamentação',
           'FloatingPDFViewer.handleInsertInField',
           {
@@ -5180,7 +5203,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         if (highlight) {
           addHighlight(highlight);
           addHighlightIdToLink(highlight.id);
-          logger.success(
+          logger.debug(
             'Highlight azul criado automaticamente',
             'FloatingPDFViewer.handleInsertInField',
             { highlightId: highlight.id }
@@ -5496,7 +5519,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         .filter(entry => entry.timestamp >= pendingNavigationTarget.startedAt && entry.timestamp <= Date.now())
         .map(entry => entry.message)
         .slice(-10);
-      logger.info('Primeiro render após navegação programática', 'FloatingPDFViewer.onPageLoadSuccess', {
+      logger.debug('Primeiro render após navegação programática', 'FloatingPDFViewer.onPageLoadSuccess', {
         flowId: pendingNavigationTarget.flowId,
         source: pendingNavigationTarget.source,
         targetPage: pendingNavigationTarget.page,
@@ -5513,7 +5536,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const criticalStart = criticalDocStartTimesRef.current.get(ownerDocument.id);
       if (criticalStart !== undefined) {
         const criticalDuration = performance.now() - criticalStart;
-        logger.info(
+        logger.debug(
           `Primeira página renderizada para ${ownerDocument.displayName || ownerDocument.fileName} em ${criticalDuration.toFixed(2)}ms`,
           'FloatingPDFViewer.onPageLoadSuccess',
           { documentId: ownerDocument.id, pageNumber, criticalDuration }
