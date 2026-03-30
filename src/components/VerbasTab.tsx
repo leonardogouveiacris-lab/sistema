@@ -9,6 +9,7 @@ import ProcessDocumentUpload from './ProcessDocumentUpload';
 import { EmptyState } from './ui';
 import TipoVerbaManagementModal from './ui/TipoVerbaManagementModal';
 import { useVerbas, useDecisions } from '../hooks';
+import { useToast } from '../contexts/ToastContext';
 import logger from '../utils/logger';
 
 interface VerbasTabProps {
@@ -29,6 +30,7 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
   } = useVerbas();
 
   const { decisions } = useDecisions();
+  const toast = useToast();
 
   const [isManagementModalOpen, setIsManagementModalOpen] = useState(false);
   const [tiposVersion, setTiposVersion] = useState(0);
@@ -46,8 +48,11 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
 
   const handleRemoveVerba = useCallback(async (verbaId: string, lancamentoId: string) => {
     const result = await removeVerbaLancamento(verbaId, lancamentoId);
+    if (result.warning) {
+      toast.warning(result.warning);
+    }
     return result.success;
-  }, [removeVerbaLancamento]);
+  }, [removeVerbaLancamento, toast]);
 
   const handleOpenManagementModal = useCallback(() => {
     setIsManagementModalOpen(true);

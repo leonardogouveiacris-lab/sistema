@@ -435,6 +435,9 @@ const PDFSidebar: React.FC<PDFSidebarProps> = ({
         toast.error(result.error || 'Falha ao excluir lancamento.');
         return;
       }
+      if (result.warning) {
+        toast.warning(result.warning);
+      }
       for (const hid of highlightIdsToRemove) {
         removeHighlight(hid);
       }

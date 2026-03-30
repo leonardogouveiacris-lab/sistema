@@ -545,10 +545,10 @@ export class VerbasService {
    * 
    * @param verbaId - UUID da verba
    * @param lancamentoId - UUID do lançamento a ser removido
-   * @returns Promise<boolean> - true se removido com sucesso
+   * @returns Promise<{ deleted: boolean; highlightCleanupFailed: boolean }> - resultado com flag de falha de limpeza de realces
    * @throws Error se lançamento não existir ou ocorrer problema na remoção
    */
-  static async removeLancamento(verbaId: string, lancamentoId: string): Promise<boolean> {
+  static async removeLancamento(verbaId: string, lancamentoId: string): Promise<{ deleted: boolean; highlightCleanupFailed: boolean }> {
     try {
       const verba = await this.getById(verbaId);
 
@@ -558,7 +558,7 @@ export class VerbasService {
           'VerbasService.removeLancamento',
           { verbaId, lancamentoId }
         );
-        return true;
+        return { deleted: true, highlightCleanupFailed: false };
       }
 
       const lancamento = verba.lancamentos.find(l => l.id === lancamentoId);
@@ -569,7 +569,7 @@ export class VerbasService {
           'VerbasService.removeLancamento',
           { verbaId, lancamentoId }
         );
-        return true;
+        return { deleted: true, highlightCleanupFailed: false };
       }
 
       const isLastLancamento = verba.lancamentos.length === 1;
@@ -609,6 +609,7 @@ export class VerbasService {
         await this.touchVerbaUpdatedAt(verbaId, verba.processId);
       }
 
+      let highlightCleanupFailed = false;
       if (highlightIdsToDelete.length > 0) {
         const { error: hlError } = await supabase
           .from('pdf_highlights')
@@ -616,15 +617,16 @@ export class VerbasService {
           .in('id', highlightIdsToDelete);
 
         if (hlError) {
+          highlightCleanupFailed = true;
           logger.warn(
             `Erro ao excluir highlights do lançamento ${lancamentoId}`,
             'VerbasService.removeLancamento',
-            { lancamentoId, highlightIdsToDelete }
+            { lancamentoId, highlightIdsToDelete, error: hlError.message }
           );
         }
       }
 
-      return true;
+      return { deleted: true, highlightCleanupFailed };
     } catch (error) {
       logger.errorWithException(
         `Falha ao remover lançamento: ${lancamentoId}`,

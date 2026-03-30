@@ -27,4 +27,5 @@ export enum LoadingState {
 export interface OperationResult {
   success: boolean;
   error?: string;
+  warning?: string;
 }

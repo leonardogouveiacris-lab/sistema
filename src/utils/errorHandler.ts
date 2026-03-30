@@ -153,7 +153,7 @@ export const safeAsyncOperation = async <T>(
     
     // Retry automático para erros de rede
     if (errorResult.canRetry && retryCount > 0) {
-      logger.info(
+      logger.warn(
         `Retrying operation in ${context}, attempts remaining: ${retryCount}`,
         context
       );

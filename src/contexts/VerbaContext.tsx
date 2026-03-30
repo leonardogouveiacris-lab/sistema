@@ -219,7 +219,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
 
   const removeVerbaLancamento = useCallback(async (verbaId: string, lancamentoId: string, skipGlobalError = false): Promise<OperationResult> => {
     try {
-      await VerbasService.removeLancamento(verbaId, lancamentoId);
+      const { highlightCleanupFailed } = await VerbasService.removeLancamento(verbaId, lancamentoId);
 
       setCacheByProcess(prev => {
         const next = new Map(prev);
@@ -241,6 +241,9 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
         return next;
       });
       setError(null);
+      if (highlightCleanupFailed) {
+        return { success: true, warning: 'Lançamento removido, mas os realces vinculados não puderam ser excluídos do banco.' };
+      }
       return { success: true };
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Erro ao remover';

@@ -334,6 +334,14 @@ interface PDFViewerContextType {
   clearCommentNavigationTarget: () => void;
 }
 
+interface PDFViewerStateContextType {
+  state: PDFViewerState;
+  hasRotations: boolean;
+  rotatedPageCount: number;
+}
+
+type PDFViewerDispatchContextType = Omit<PDFViewerContextType, keyof PDFViewerStateContextType>;
+
 /**
  * Calcula a largura padrão do painel baseado no tamanho da tela
  * Em telas compactas (<1200px), usa 100% da largura
@@ -446,9 +454,12 @@ const ZOOM_MAX = 3.0;
 const ZOOM_STEP = 0.25;
 
 /**
- * Cria o contexto
+ * Cria o contexto legado (mantido para compatibilidade via usePDFViewer)
  */
 const PDFViewerContext = createContext<PDFViewerContextType | undefined>(undefined);
+
+const PDFViewerStateContext = createContext<PDFViewerStateContextType | undefined>(undefined);
+const PDFViewerDispatchContext = createContext<PDFViewerDispatchContextType | undefined>(undefined);
 
 /**
  * Props do Provider
@@ -2218,8 +2229,13 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
   const rotatedPageCount = Object.keys(state.pageRotations).length;
   const hasRotations = rotatedPageCount > 0;
 
-  const value = useMemo<PDFViewerContextType>(() => ({
+  const stateValue = useMemo<PDFViewerStateContextType>(() => ({
     state,
+    hasRotations,
+    rotatedPageCount,
+  }), [state, hasRotations, rotatedPageCount]);
+
+  const dispatchValue = useMemo<PDFViewerDispatchContextType>(() => ({
     openViewer,
     closeViewer,
     toggleMinimize,
@@ -2313,8 +2329,6 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     resetAllRotations,
     openRotationModal,
     closeRotationModal,
-    hasRotations,
-    rotatedPageCount,
     openPageExtractionModal,
     closePageExtractionModal,
     toggleSidebar,
@@ -2335,9 +2349,8 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setDrawingConnector,
     setEditingConnectorId,
     navigateToComment,
-    clearCommentNavigationTarget
+    clearCommentNavigationTarget,
   }), [
-    state, hasRotations, rotatedPageCount,
     openViewer, closeViewer, toggleMinimize, setPendingNavigation, consumePendingNavigation,
     getCurrentDocument, getDocumentByGlobalPage, getLocalPageNumber, getGlobalPageNumber, setDocumentPageInfo,
     goToPage, nextPage, previousPage, setTotalPages, navigateToPageWithHighlight,
@@ -2360,10 +2373,23 @@ export const PDFViewerProvider: React.FC<PDFViewerProviderProps> = ({ children }
     setComments, addComment, updateComment, removeComment, toggleCommentMode, setCommentModeActive,
     selectComment, setSelectedCommentColor, getCommentsByPage,
     addConnectorToComment, updateConnectorInComment, removeConnectorFromComment, setDrawingConnector, setEditingConnectorId,
-    navigateToComment, clearCommentNavigationTarget
+    navigateToComment, clearCommentNavigationTarget,
   ]);
 
-  return <PDFViewerContext.Provider value={value}>{children}</PDFViewerContext.Provider>;
+  const value = useMemo<PDFViewerContextType>(
+    () => ({ ...stateValue, ...dispatchValue }),
+    [stateValue, dispatchValue]
+  );
+
+  return (
+    <PDFViewerStateContext.Provider value={stateValue}>
+      <PDFViewerDispatchContext.Provider value={dispatchValue}>
+        <PDFViewerContext.Provider value={value}>
+          {children}
+        </PDFViewerContext.Provider>
+      </PDFViewerDispatchContext.Provider>
+    </PDFViewerStateContext.Provider>
+  );
 };
 
 /**
@@ -2374,6 +2400,26 @@ export const usePDFViewer = (): PDFViewerContextType => {
 
   if (!context) {
     throw new Error('usePDFViewer must be used within PDFViewerProvider');
+  }
+
+  return context;
+};
+
+export const usePDFViewerState = (): PDFViewerStateContextType => {
+  const context = useContext(PDFViewerStateContext);
+
+  if (!context) {
+    throw new Error('usePDFViewerState must be used within PDFViewerProvider');
+  }
+
+  return context;
+};
+
+export const usePDFViewerDispatch = (): PDFViewerDispatchContextType => {
+  const context = useContext(PDFViewerDispatchContext);
+
+  if (!context) {
+    throw new Error('usePDFViewerDispatch must be used within PDFViewerProvider');
   }
 
   return context;
