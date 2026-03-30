@@ -4,6 +4,8 @@
  * Provides debounce, throttle, and other performance optimization helpers
  */
 
+import type { PDFBookmark } from '../types/PDFBookmark';
+
 /**
  * Debounces a function to prevent excessive calls
  * The function will only be called after the specified delay has passed since the last call
@@ -179,7 +181,7 @@ export function generatePDFCacheKey(url: string, numPages: number, documentId?: 
  * @param bookmarks - Bookmarks to cache
  * @returns True if saved successfully, false otherwise
  */
-export function saveBookmarksToCache(cacheKey: string, bookmarks: any[]): boolean {
+export function saveBookmarksToCache(cacheKey: string, bookmarks: PDFBookmark[]): boolean {
   try {
     const cacheData = {
       bookmarks,
@@ -203,7 +205,7 @@ export function saveBookmarksToCache(cacheKey: string, bookmarks: any[]): boolea
 export function loadBookmarksFromCache(
   cacheKey: string,
   maxAgeMs: number = 7 * 24 * 60 * 60 * 1000
-): any[] | null {
+): PDFBookmark[] | null {
   try {
     const cached = localStorage.getItem(cacheKey);
     if (!cached) return null;

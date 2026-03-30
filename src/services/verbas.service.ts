@@ -48,39 +48,6 @@ type VerbaLancamentoUpdate = Database['public']['Tables']['verba_lancamentos']['
 export class VerbasService {
 
   /**
-   * Função auxiliar para atualizar o campo updated_at de uma verba pai
-   * 
-   * Esta função força uma atualização no registro da verba, o que automaticamente
-   * atualiza o campo updated_at através do trigger do banco de dados.
-   * Isso é necessário para garantir que a aplicação detecte mudanças nos lançamentos.
-   * 
-   * @param verbaId - UUID da verba a ter o updated_at atualizado
-   * @param processId - UUID do processo (para validação de integridade)
-   * @throws Error se a verba não existir ou ocorrer problema na atualização
-   */
-  private static async touchVerbaUpdatedAt(verbaId: string, processId: string): Promise<void> {
-    try {
-      // Executa um UPDATE que não altera dados, mas dispara o trigger updated_at
-      const { error } = await supabase
-        .from('verbas')
-        .update({ process_id: processId }) // Atualiza para o mesmo valor (não muda dados)
-        .eq('id', verbaId);
-
-      if (error) {
-        throw new Error(`Erro ao atualizar timestamp da verba: ${error.message}`);
-      }
-    } catch (error) {
-      logger.errorWithException(
-        `Falha ao atualizar timestamp da verba pai: ${verbaId}`,
-        error as Error,
-        'VerbasService.touchVerbaUpdatedAt',
-        { verbaId, processId }
-      );
-      throw error;
-    }
-  }
-
-  /**
    * Converte um registro de lançamento do banco para o tipo da aplicação
    * 
    * @param record - Registro do lançamento do banco de dados
@@ -233,53 +200,6 @@ export class VerbasService {
   }
 
   /**
-   * Busca todas as verbas com seus lançamentos, ordenadas por data de atualização
-   * 
-   * @returns Promise<Verba[]> - Lista de todas as verbas com estrutura hierárquica
-   * @throws Error se ocorrer problema na consulta
-   */
-  static async getAll(): Promise<Verba[]> {
-    try {
-      // Verifica se Supabase está disponível
-      if (!supabase) {
-        logger.warn('Supabase não configurado, retornando array vazio', 'VerbasService.getAll');
-        return [];
-      }
-
-      // Busca verbas com lançamentos usando join
-      const { data, error } = await supabase
-        .from('verbas')
-        .select(`
-          *,
-          verba_lancamentos (*)
-        `)
-        .order('updated_at', { ascending: false })
-        .limit(10000);
-
-      if (error) {
-        throw new Error(`Erro ao buscar verbas: ${error.message}`);
-      }
-
-      const verbas = (data || []).map(verbaData => {
-        const { verba_lancamentos, ...verbaRecord } = verbaData;
-        return this.recordToVerba(
-          verbaRecord as VerbaRecord,
-          (verba_lancamentos || []) as VerbaLancamentoRecord[]
-        );
-      });
-
-      return verbas;
-    } catch (error) {
-      logger.errorWithException(
-        'Falha ao carregar verbas do banco de dados',
-        error as Error,
-        'VerbasService.getAll'
-      );
-      throw error;
-    }
-  }
-
-  /**
    * Busca uma verba específica por ID com seus lançamentos
    * 
    * @param id - UUID da verba
@@ -422,10 +342,6 @@ export class VerbasService {
     if (verbaExistente) {
       // Usa verba existente
       verbaId = verbaExistente.id;
-
-      // Atualiza timestamp da verba pai usando função auxiliar
-      await this.touchVerbaUpdatedAt(verbaId, novaVerba.processId);
-        
     } else {
       // Cria nova verba
       const insertVerbaData = this.verbaToInsert(novaVerba.processId, novaVerba.tipoVerba);
@@ -514,18 +430,6 @@ export class VerbasService {
 
       const updatedLancamento = this.recordToLancamento(data);
 
-      // Busca o process_id da verba para atualizar o timestamp corretamente
-      const { data: verbaData, error: verbaError } = await supabase
-        .from('verbas')
-        .select('process_id')
-        .eq('id', verbaId)
-        .single();
-
-      if (!verbaError && verbaData) {
-        // Atualiza timestamp da verba pai usando função auxiliar
-        await this.touchVerbaUpdatedAt(verbaId, verbaData.process_id);
-      }
-
       return updatedLancamento;
     } catch (error) {
       logger.errorWithException(
@@ -605,8 +509,6 @@ export class VerbasService {
         if (error) {
           throw new Error(`Erro ao remover lançamento: ${error.message}`);
         }
-
-        await this.touchVerbaUpdatedAt(verbaId, verba.processId);
       }
 
       let highlightCleanupFailed = false;

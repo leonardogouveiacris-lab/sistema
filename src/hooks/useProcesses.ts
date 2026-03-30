@@ -20,6 +20,7 @@ import { logger, ValidationUtils } from '../utils';
 import { ProcessesService } from '../services';
 import { testSupabaseConnection, isSupabaseAvailable } from '../lib/supabase.tsx';
 import { useRealtimeSubscription } from './useRealtimeSubscription';
+import { useDebouncedCallback } from './useDebouncedCallback';
 
 /**
  * Interface para estatísticas dos processos
@@ -54,7 +55,6 @@ export const useProcesses = () => {
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const pendingLocalOpsRef = useRef(0);
-  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // ===== FUNÇÕES DE CARREGAMENTO =====
   
@@ -132,34 +132,21 @@ export const useProcesses = () => {
     initializeData();
   }, []);
 
-  const debouncedRefresh = useCallback(() => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
+  const debouncedRefresh = useDebouncedCallback(async () => {
+    if (pendingLocalOpsRef.current > 0) return;
+    try {
+      const data = await ProcessesService.getAll();
+      setProcesses(data);
+    } catch (_err) {
+      // Silent fail for realtime refresh
     }
-    refreshTimeoutRef.current = setTimeout(async () => {
-      if (pendingLocalOpsRef.current > 0) return;
-      try {
-        const data = await ProcessesService.getAll();
-        setProcesses(data);
-      } catch (_err) {
-        // Silent fail for realtime refresh
-      }
-    }, 300);
-  }, []);
+  }, 300);
 
   useRealtimeSubscription({
     table: 'processes',
     onAnyChange: debouncedRefresh,
     enabled: isConnected
   });
-
-  useEffect(() => {
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const addProcess = useCallback(async (newProcess: NewProcess): Promise<boolean> => {
     const validation = ValidationUtils.validateNewProcess(newProcess);
@@ -170,8 +157,8 @@ export const useProcesses = () => {
 
     pendingLocalOpsRef.current += 1;
     try {
-      await ProcessesService.create(newProcess);
-      await loadProcesses();
+      const createdProcess = await ProcessesService.create(newProcess);
+      setProcesses(prev => [createdProcess, ...prev]);
       setError(null);
       return true;
     } catch (error) {
@@ -182,7 +169,7 @@ export const useProcesses = () => {
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, [loadProcesses]);
+  }, []);
 
   /**
    * Atualiza um processo existente no Supabase
@@ -216,8 +203,8 @@ export const useProcesses = () => {
 
     pendingLocalOpsRef.current += 1;
     try {
-      await ProcessesService.update(id, updatedData);
-      await loadProcesses();
+      const updatedProcess = await ProcessesService.update(id, updatedData);
+      setProcesses(prev => prev.map(p => p.id === id ? updatedProcess : p));
       setError(null);
       return true;
     } catch (error) {
@@ -228,7 +215,7 @@ export const useProcesses = () => {
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, [processes, loadProcesses]);
+  }, [processes]);
 
   /**
    * Remove um processo do Supabase
@@ -262,30 +249,35 @@ export const useProcesses = () => {
     let removed = 0;
     let failed = 0;
     const CHUNK_SIZE = 10;
+    const removedIds: string[] = [];
 
     pendingLocalOpsRef.current += 1;
     try {
       for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
         const chunk = ids.slice(i, i + CHUNK_SIZE);
         const results = await Promise.allSettled(
-          chunk.map(id => ProcessesService.delete(id))
+          chunk.map(id => ProcessesService.delete(id).then(() => id))
         );
         results.forEach(result => {
           if (result.status === 'fulfilled') {
             removed++;
+            removedIds.push(result.value);
           } else {
             failed++;
           }
         });
         onProgress?.(Math.min(i + CHUNK_SIZE, ids.length), ids.length);
       }
-      await loadProcesses();
+      if (removedIds.length > 0) {
+        const removedSet = new Set(removedIds);
+        setProcesses(prev => prev.filter(p => !removedSet.has(p.id)));
+      }
       setError(null);
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
     return { removed, failed };
-  }, [loadProcesses]);
+  }, []);
 
   const removeProcess = useCallback(async (id: string): Promise<boolean> => {
     const processToRemove = processes.find(p => p.id === id);
@@ -297,7 +289,7 @@ export const useProcesses = () => {
     pendingLocalOpsRef.current += 1;
     try {
       await ProcessesService.delete(id);
-      await loadProcesses();
+      setProcesses(prev => prev.filter(p => p.id !== id));
       setError(null);
       return true;
     } catch (error) {
@@ -308,7 +300,7 @@ export const useProcesses = () => {
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, [processes, loadProcesses]);
+  }, [processes]);
 
   // ===== OPERAÇÕES DE CONSULTA =====
 

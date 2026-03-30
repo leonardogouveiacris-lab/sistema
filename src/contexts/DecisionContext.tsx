@@ -3,6 +3,7 @@ import { Decision, NewDecision } from '../types/Decision';
 import { logger, ValidationUtils, translateSupabaseError } from '../utils';
 import { DecisionsService } from '../services';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
+import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { logRealtimeEvent } from '../utils/domainLogger';
 import type { OperationResult } from '../types/Common';
 
@@ -28,7 +29,6 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
 
   const refreshDecisions = useCallback(async () => {
@@ -88,34 +88,21 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
   }, []);
 
-  const debouncedRefresh = useCallback(() => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
+  const debouncedRefresh = useDebouncedCallback(async () => {
+    logRealtimeEvent('Realtime refresh requested', 'DecisionContext', 'refresh_requested', { table: 'decisions' });
+    try {
+      const data = await DecisionsService.getAll();
+      setDecisions(data);
+    } catch {
+      logRealtimeEvent('Realtime refresh failed', 'DecisionContext', 'refresh_failed', { table: 'decisions' }, 'error');
     }
-    refreshTimeoutRef.current = setTimeout(async () => {
-      logRealtimeEvent('Realtime refresh requested', 'DecisionContext', 'refresh_requested', { table: 'decisions' });
-      try {
-        const data = await DecisionsService.getAll();
-        setDecisions(data);
-      } catch {
-        logRealtimeEvent('Realtime refresh failed', 'DecisionContext', 'refresh_failed', { table: 'decisions' }, 'error');
-      }
-    }, 400);
-  }, []);
+  }, 400);
 
   useRealtimeSubscription({
     table: 'decisions',
     onAnyChange: debouncedRefresh,
     enabled: true
   });
-
-  useEffect(() => {
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const addDecision = useCallback(async (newDecision: NewDecision, skipGlobalError = false): Promise<OperationResult> => {
     try {

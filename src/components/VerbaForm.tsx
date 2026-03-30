@@ -212,13 +212,6 @@ const VerbaForm: React.FC<VerbaFormProps> = ({
     handleCloseExpandedModal();
   }, [expandedTextModal.field, handleInputChange, handleCloseExpandedModal]);
 
-  const handleReset = useCallback(() => {
-    setFormData(initialFormData);
-    setErrors({});
-    setSaveError(null);
-    clearDraft();
-  }, [initialFormData, clearDraft]);
-
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && e.ctrlKey) {
       e.preventDefault();

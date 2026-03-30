@@ -3,6 +3,7 @@ import { Documento, NewDocumento } from '../types/Documento';
 import { logger, translateSupabaseError } from '../utils';
 import { DocumentosService } from '../services';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
+import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { logRealtimeEvent } from '../utils/domainLogger';
 import type { OperationResult } from '../types/Common';
 
@@ -28,7 +29,6 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
 
   const refreshDocumentos = useCallback(async () => {
@@ -88,34 +88,21 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
     };
   }, []);
 
-  const debouncedRefresh = useCallback(() => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
+  const debouncedRefresh = useDebouncedCallback(async () => {
+    logRealtimeEvent('Realtime refresh requested', 'DocumentoContext', 'refresh_requested', { table: 'documentos' });
+    try {
+      const data = await DocumentosService.getAll();
+      setDocumentos(data);
+    } catch {
+      logRealtimeEvent('Realtime refresh failed', 'DocumentoContext', 'refresh_failed', { table: 'documentos' }, 'error');
     }
-    refreshTimeoutRef.current = setTimeout(async () => {
-      logRealtimeEvent('Realtime refresh requested', 'DocumentoContext', 'refresh_requested', { table: 'documentos' });
-      try {
-        const data = await DocumentosService.getAll();
-        setDocumentos(data);
-      } catch {
-        logRealtimeEvent('Realtime refresh failed', 'DocumentoContext', 'refresh_failed', { table: 'documentos' }, 'error');
-      }
-    }, 400);
-  }, []);
+  }, 400);
 
   useRealtimeSubscription({
     table: 'lancamentos_documentos',
     onAnyChange: debouncedRefresh,
     enabled: true
   });
-
-  useEffect(() => {
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const addDocumento = useCallback(async (newDocumento: NewDocumento, skipGlobalError = false): Promise<OperationResult> => {
     try {

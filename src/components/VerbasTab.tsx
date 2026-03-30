@@ -34,7 +34,6 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
 
   const [isManagementModalOpen, setIsManagementModalOpen] = useState(false);
   const [tiposVersion, setTiposVersion] = useState(0);
-  const [verbasVersion, setVerbasVersion] = useState(0);
 
   const handleSaveVerba = useCallback(async (verba: NewVerbaComLancamento) => {
     const result = await addVerbaComLancamento(verba);
@@ -67,8 +66,6 @@ const VerbasTab: React.FC<VerbasTabProps> = ({
   }, []);
 
   const handleVerbasUpdated = useCallback(async () => {
-    setVerbasVersion(prev => prev + 1);
-
     try {
       await refreshVerbas();
     } catch (error) {

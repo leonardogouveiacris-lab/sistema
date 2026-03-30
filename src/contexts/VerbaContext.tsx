@@ -3,6 +3,7 @@ import { Verba, VerbaLancamento, NewVerbaComLancamento, NewVerbaLancamento } fro
 import { logger, ValidationUtils, translateSupabaseError } from '../utils';
 import { VerbasService } from '../services';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
+import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { logRealtimeEvent } from '../utils/domainLogger';
 import type { OperationResult } from '../types/Common';
 
@@ -65,7 +66,6 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
   const [loadingProcessIds, setLoadingProcessIds] = useState<Set<string>>(new Set());
   const loadingIdsRef = useRef<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
-  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const activeProcessIdRef = useRef<string | null | undefined>(activeProcessId);
 
   useEffect(() => {
@@ -127,27 +127,22 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
     await refreshVerbasByProcess(pid);
   }, [refreshVerbasByProcess]);
 
-  const debouncedRefresh = useCallback(() => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
+  const debouncedRefresh = useDebouncedCallback(async () => {
+    const pid = activeProcessIdRef.current;
+    if (!pid) return;
+    if (loadingIdsRef.current.has(pid)) return;
+    logRealtimeEvent('Realtime refresh requested', 'VerbaContext', 'refresh_requested', { table: 'verbas', processId: pid });
+    try {
+      const data = await VerbasService.getByProcessId(pid);
+      setCacheByProcess(prev => {
+        const next = new Map(prev);
+        next.set(pid, data);
+        return next;
+      });
+    } catch {
+      logRealtimeEvent('Realtime refresh failed', 'VerbaContext', 'refresh_failed', { table: 'verbas' }, 'error');
     }
-    refreshTimeoutRef.current = setTimeout(async () => {
-      const pid = activeProcessIdRef.current;
-      if (!pid) return;
-      if (loadingIdsRef.current.has(pid)) return;
-      logRealtimeEvent('Realtime refresh requested', 'VerbaContext', 'refresh_requested', { table: 'verbas', processId: pid });
-      try {
-        const data = await VerbasService.getByProcessId(pid);
-        setCacheByProcess(prev => {
-          const next = new Map(prev);
-          next.set(pid, data);
-          return next;
-        });
-      } catch {
-        logRealtimeEvent('Realtime refresh failed', 'VerbaContext', 'refresh_failed', { table: 'verbas' }, 'error');
-      }
-    }, 400);
-  }, []);
+  }, 400);
 
   const realtimeFilter = useMemo(() =>
     activeProcessId ? `process_id=eq.${activeProcessId}` : undefined,
@@ -166,14 +161,6 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
     onAnyChange: debouncedRefresh,
     enabled: !!activeProcessId
   });
-
-  useEffect(() => {
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const addVerbaComLancamento = useCallback(async (novaVerba: NewVerbaComLancamento, skipGlobalError = false): Promise<OperationResult> => {
     try {

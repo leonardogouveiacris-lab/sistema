@@ -231,7 +231,10 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
     const refreshedProcess = processes.find(p => p.id === selectedProcess.id);
     if (!refreshedProcess) return;
 
-    if (refreshedProcess === selectedProcess) return;
+    const unchanged =
+      refreshedProcess.dataAtualizacao.getTime() === selectedProcess.dataAtualizacao.getTime() &&
+      refreshedProcess.statusVerbas === selectedProcess.statusVerbas;
+    if (unchanged) return;
 
     setSelectedProcess(refreshedProcess);
   }, [processes, selectedProcess]);

@@ -9,6 +9,7 @@ export { useTipoVerbas } from './useTipoVerbas';
 export { useProcessDocuments } from './useProcessDocuments';
 export { useDocumentoLancamentos } from './useDocumentoLancamentos';
 export { useDebounce } from './useDebounce';
+export { useDebouncedCallback } from './useDebouncedCallback';
 export { useBackToTop } from './useBackToTop';
 export { useRealtimeSubscription } from './useRealtimeSubscription';
 export { useResponsivePanel } from './useResponsivePanel';
