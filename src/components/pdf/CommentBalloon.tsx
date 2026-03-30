@@ -211,6 +211,7 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   const popupCoordsRef = useRef<{ top?: number; bottom?: number; left: number; visible: boolean }>({ left: 0, visible: false });
   const [, forcePopupRender] = useState(0);
   const popupRef = useRef<HTMLDivElement>(null);
+  const positionRafIdRef = useRef<number | null>(null);
 
   const applyPopupCoords = useCallback((direct: boolean) => {
     if (!iconRef.current) return;
@@ -257,7 +258,30 @@ const CommentBalloon: React.FC<CommentBalloonProps> = ({
   }, []);
 
   useLayoutEffect(() => {
-    if (isExpanded) applyPopupCoords(true);
+    if (!isExpanded) {
+      popupCoordsRef.current = { ...popupCoordsRef.current, visible: false };
+      if (positionRafIdRef.current !== null) {
+        cancelAnimationFrame(positionRafIdRef.current);
+        positionRafIdRef.current = null;
+      }
+      return;
+    }
+
+    if (popupRef.current) {
+      popupRef.current.style.visibility = 'hidden';
+    }
+
+    positionRafIdRef.current = requestAnimationFrame(() => {
+      positionRafIdRef.current = null;
+      applyPopupCoords(true);
+    });
+
+    return () => {
+      if (positionRafIdRef.current !== null) {
+        cancelAnimationFrame(positionRafIdRef.current);
+        positionRafIdRef.current = null;
+      }
+    };
   }, [isExpanded, applyPopupCoords]);
 
   useEffect(() => {
