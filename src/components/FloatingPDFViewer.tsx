@@ -3060,6 +3060,17 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     const scheduleInitialScrollRecalculation = () => {
       let hasRun = false;
 
+      const scheduleRetry = () => {
+        if (hasRun) return;
+        if (initialScrollRecalcTimeoutRef.current) {
+          clearTimeout(initialScrollRecalcTimeoutRef.current);
+        }
+        initialScrollRecalcTimeoutRef.current = setTimeout(() => {
+          initialScrollRecalcTimeoutRef.current = null;
+          runInitialRecalculation();
+        }, 300);
+      };
+
       const runInitialRecalculation = () => {
         if (hasRun) {
           return;
@@ -3067,6 +3078,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
         const activeContainer = scrollContainerRef.current;
         if (!activeContainer || state.viewMode !== 'continuous' || totalPagesRef.current === 0) {
+          scheduleRetry();
           return;
         }
 
@@ -3098,6 +3110,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
         const hasMountedActiveWindow = pageRefs.current.has(currentPage) && mountedPagesInWindow >= minMountedPages;
 
         if (!hasMountedActiveWindow) {
+          scheduleRetry();
           return;
         }
 
@@ -5551,7 +5564,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   /**
    * Effect para fallback de renderização - garante que a página atual sempre renderize
-   * Se após 500ms a página ainda não estiver no range, força sua renderização
+   * Se após 150ms a página ainda não estiver no range, força sua renderização
    */
   useEffect(() => {
     if (state.viewMode !== 'continuous') return;
@@ -5566,6 +5579,9 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       const isInScrollBased = scrollBasedVisiblePages.has(state.currentPage);
 
       if (!isInIdlePages && !isInVisitedPages && !isInScrollBased) {
+        if (scrollBasedVisiblePagesRef.current.size === 0) {
+          calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
+        }
         setForceRenderPages(prev => {
           const newSet = new Set(prev);
           newSet.add(state.currentPage);
@@ -5580,7 +5596,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           return newSet;
         });
       }
-    }, 500);
+    }, 150);
 
     return () => {
       if (renderFallbackTimeoutRef.current) {
@@ -5588,6 +5604,19 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       }
     };
   }, [state.currentPage, state.viewMode, idlePages, visitedPages, scrollBasedVisiblePages]);
+
+  useEffect(() => {
+    if (state.viewMode !== 'continuous' || state.totalPages === 0) return;
+    if (scrollBasedVisiblePages.size > 0) return;
+
+    const timeout = setTimeout(() => {
+      if (scrollBasedVisiblePagesRef.current.size === 0) {
+        calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
+      }
+    }, 50);
+
+    return () => clearTimeout(timeout);
+  }, [state.totalPages, state.viewMode, scrollBasedVisiblePages.size]);
 
   /**
    * Effect para scroll instantâneo até página quando highlightedPage muda (navegação manual explícita)
