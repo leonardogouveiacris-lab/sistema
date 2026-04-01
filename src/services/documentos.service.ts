@@ -26,6 +26,7 @@ interface DocumentoRecord {
   tipo_documento: string;
   comentarios: string | null;
   pagina_vinculada: number | null;
+  process_document_id: string | null;
   highlight_ids: string[] | null;
   check_calculista: boolean;
   check_calculista_at: string | null;
@@ -43,6 +44,7 @@ interface DocumentoInsert {
   tipo_documento: string;
   comentarios?: string | null;
   pagina_vinculada?: number | null;
+  process_document_id?: string | null;
   highlight_ids?: string[];
 }
 
@@ -53,6 +55,7 @@ interface DocumentoUpdate {
   tipo_documento?: string;
   comentarios?: string | null;
   pagina_vinculada?: number | null;
+  process_document_id?: string | null;
   highlight_ids?: string[];
 }
 
@@ -82,6 +85,7 @@ export class DocumentosService {
       tipoDocumento: record.tipo_documento,
       comentarios: record.comentarios || '',
       paginaVinculada: record.pagina_vinculada ?? undefined,
+      processDocumentId: record.process_document_id ?? undefined,
       highlightIds: record.highlight_ids || [],
       checkCalculista: record.check_calculista ?? false,
       checkCalculistaAt: record.check_calculista_at ? new Date(record.check_calculista_at) : undefined,
@@ -104,6 +108,7 @@ export class DocumentosService {
       tipo_documento: documento.tipoDocumento,
       comentarios: documento.comentarios || null,
       pagina_vinculada: documento.paginaVinculada ?? null,
+      process_document_id: documento.processDocumentId ?? null,
       highlight_ids: documento.highlightIds || []
     };
   }
@@ -131,6 +136,10 @@ export class DocumentosService {
 
     if (updates.highlightIds !== undefined) {
       record.highlight_ids = updates.highlightIds || [];
+    }
+
+    if (updates.processDocumentId !== undefined) {
+      record.process_document_id = updates.processDocumentId ?? null;
     }
 
     return record;

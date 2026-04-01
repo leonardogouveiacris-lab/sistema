@@ -30,6 +30,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
+  const pendingLocalOpsRef = useRef(0);
 
   const refreshDocumentos = useCallback(async () => {
     try {
@@ -70,7 +71,6 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
         if (isMountedRef.current) {
           const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
           setError(errorMessage);
-          setDocumentos([]);
         }
       } finally {
         clearTimeout(timeoutId);
@@ -89,10 +89,13 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, []);
 
   const debouncedRefresh = useDebouncedCallback(async () => {
+    if (pendingLocalOpsRef.current > 0) return;
     logRealtimeEvent('Realtime refresh requested', 'DocumentoContext', 'refresh_requested', { table: 'documentos' });
     try {
       const data = await DocumentosService.getAll();
-      setDocumentos(data);
+      if (isMountedRef.current) {
+        setDocumentos(data);
+      }
     } catch {
       logRealtimeEvent('Realtime refresh failed', 'DocumentoContext', 'refresh_failed', { table: 'documentos' }, 'error');
     }
@@ -118,6 +121,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
         return { success: false, error: errorMsg };
       }
 
+      pendingLocalOpsRef.current += 1;
       const createdDocumento = await DocumentosService.create(newDocumento);
       setDocumentos(prev => [createdDocumento, ...prev]);
       setError(null);
@@ -127,11 +131,14 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
       const errorMessage = translateSupabaseError(rawMessage);
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
   }, []);
 
   const updateDocumento = useCallback(async (id: string, updatedData: Partial<NewDocumento>, skipGlobalError = false): Promise<OperationResult> => {
     try {
+      pendingLocalOpsRef.current += 1;
       const updatedDocumento = await DocumentosService.update(id, updatedData);
       setDocumentos(prev => prev.map(d => d.id === id ? updatedDocumento : d));
       setError(null);
@@ -141,11 +148,14 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
       const errorMessage = translateSupabaseError(rawMessage);
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
   }, []);
 
   const removeDocumento = useCallback(async (id: string, skipGlobalError = false): Promise<OperationResult> => {
     try {
+      pendingLocalOpsRef.current += 1;
       await DocumentosService.delete(id);
       setDocumentos(prev => prev.filter(d => d.id !== id));
       setError(null);
@@ -155,6 +165,8 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
       const errorMessage = translateSupabaseError(rawMessage);
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
   }, []);
 

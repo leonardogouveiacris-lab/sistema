@@ -30,6 +30,7 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
+  const pendingLocalOpsRef = useRef(0);
 
   const refreshDecisions = useCallback(async () => {
     try {
@@ -70,7 +71,6 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
         if (isMountedRef.current) {
           const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar';
           setError(errorMessage);
-          setDecisions([]);
         }
       } finally {
         clearTimeout(timeoutId);
@@ -89,10 +89,13 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, []);
 
   const debouncedRefresh = useDebouncedCallback(async () => {
+    if (pendingLocalOpsRef.current > 0) return;
     logRealtimeEvent('Realtime refresh requested', 'DecisionContext', 'refresh_requested', { table: 'decisions' });
     try {
       const data = await DecisionsService.getAll();
-      setDecisions(data);
+      if (isMountedRef.current) {
+        setDecisions(data);
+      }
     } catch {
       logRealtimeEvent('Realtime refresh failed', 'DecisionContext', 'refresh_failed', { table: 'decisions' }, 'error');
     }
@@ -113,6 +116,7 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
         return { success: false, error: errorMsg };
       }
 
+      pendingLocalOpsRef.current += 1;
       const createdDecision = await DecisionsService.create(newDecision);
       setDecisions(prev => [createdDecision, ...prev]);
       setError(null);
@@ -122,11 +126,14 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
       const errorMessage = translateSupabaseError(rawMessage);
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
   }, []);
 
   const updateDecision = useCallback(async (id: string, updatedData: Partial<NewDecision>, skipGlobalError = false): Promise<OperationResult> => {
     try {
+      pendingLocalOpsRef.current += 1;
       const updatedDecision = await DecisionsService.update(id, updatedData);
       setDecisions(prev => prev.map(d => d.id === id ? updatedDecision : d));
       setError(null);
@@ -136,11 +143,14 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
       const errorMessage = translateSupabaseError(rawMessage);
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
   }, []);
 
   const removeDecision = useCallback(async (id: string, skipGlobalError = false): Promise<OperationResult> => {
     try {
+      pendingLocalOpsRef.current += 1;
       await DecisionsService.delete(id);
       setDecisions(prev => prev.filter(d => d.id !== id));
       setError(null);
@@ -150,6 +160,8 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
       const errorMessage = translateSupabaseError(rawMessage);
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
+    } finally {
+      pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
   }, []);
 

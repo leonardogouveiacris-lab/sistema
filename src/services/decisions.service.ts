@@ -56,6 +56,7 @@ export class DecisionsService {
       situacao: record.situacao,
       observacoes: record.observacoes || '',
       paginaVinculada: record.pagina_vinculada ?? undefined,
+      processDocumentId: record.process_document_id ?? undefined,
       dataCriacao: new Date(record.created_at),
       dataAtualizacao: new Date(record.updated_at)
     };
@@ -74,7 +75,8 @@ export class DecisionsService {
       id_decisao: decision.idDecisao,
       situacao: decision.situacao,
       observacoes: decision.observacoes || null,
-      pagina_vinculada: decision.paginaVinculada ?? null
+      pagina_vinculada: decision.paginaVinculada ?? null,
+      process_document_id: decision.processDocumentId ?? null
     };
   }
 
@@ -105,6 +107,10 @@ export class DecisionsService {
 
     if (updates.paginaVinculada !== undefined) {
       record.pagina_vinculada = updates.paginaVinculada ?? null;
+    }
+
+    if (updates.processDocumentId !== undefined) {
+      record.process_document_id = updates.processDocumentId ?? null;
     }
 
     return record;
