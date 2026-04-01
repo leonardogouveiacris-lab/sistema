@@ -70,6 +70,7 @@ export interface UsePDFKeyboardShortcutsParams {
 
 export interface UsePDFTextSelectionEffectsParams {
   selectionMode: 'idle' | 'native-drag' | 'programmatic-click' | 'keyboard-extend';
+  selectionModeRef: React.MutableRefObject<'idle' | 'native-drag' | 'programmatic-click' | 'keyboard-extend'>;
   hasSelection: boolean;
   onHandleTextSelection: () => void;
   startedInsidePdfRef: React.MutableRefObject<boolean>;

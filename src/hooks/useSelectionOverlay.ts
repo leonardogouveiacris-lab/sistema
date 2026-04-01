@@ -582,6 +582,8 @@ export function useSelectionOverlay(
       if (wasDragging) {
         mouseupProtectionUntilRef.current = Date.now() + MOUSEUP_PROTECTION_MS;
 
+        updateSelectionMode('idle');
+
         if (finalSyntheticRange) {
           applySelectionSafely(finalSyntheticRange, 'mouseup-finalize');
 
@@ -597,7 +599,6 @@ export function useSelectionOverlay(
             }
           }
         }
-        updateSelectionMode('idle');
         dragSyntheticRangeRef.current = null;
         lastValidRangeRef.current = null;
         lastValidRangeSignatureRef.current = null;
@@ -776,6 +777,7 @@ export function useSelectionOverlay(
     caretByPage,
     hasSelection,
     selectionMode,
+    selectionModeRef,
     canWriteProgrammaticSelection: selectionMode !== 'native-drag',
     applySelectionSafely,
     registerContextCommit,

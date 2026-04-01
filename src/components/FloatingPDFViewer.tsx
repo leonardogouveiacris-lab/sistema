@@ -969,6 +969,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
     caretByPage,
     hasSelection,
     selectionMode,
+    selectionModeRef,
     registerContextCommit,
     clearSelection: clearSelectionOverlay
   } = useSelectionOverlay(scrollContainerRef);
@@ -4958,7 +4959,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
    * CORREÇÃO: Filtra seleções de fora do container PDF
    */
   const handleTextSelection = useCallback(() => {
-    if (selectionMode === 'native-drag' && !hasSelection) {
+    if (selectionModeRef.current === 'native-drag' && !hasSelection) {
       return;
     }
 
@@ -5110,7 +5111,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
       setSelectedText(selectedText);
       startedInsidePdfRef.current = false;
     }
-  }, [hasSelection, registerContextCommit, selectionMode, setSelectedText, state.currentPage, state.zoom, state.displayZoom]);
+  }, [hasSelection, registerContextCommit, selectionModeRef, setSelectedText, state.currentPage, state.zoom, state.displayZoom]);
 
   const getCommentFieldForCurrentMode = useCallback((): InsertionField => {
     const formMode = state.formMode;
@@ -5361,6 +5362,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
 
   usePDFTextSelectionEffects({
     selectionMode,
+    selectionModeRef,
     hasSelection,
     onHandleTextSelection: handleTextSelection,
     startedInsidePdfRef,

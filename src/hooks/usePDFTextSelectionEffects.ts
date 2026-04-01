@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { UsePDFTextSelectionEffectsParams } from '../types/FloatingPDFViewerContracts';
 
 export function usePDFTextSelectionEffects({
-  selectionMode,
+  selectionModeRef,
   hasSelection,
   onHandleTextSelection,
   startedInsidePdfRef,
@@ -16,7 +16,7 @@ export function usePDFTextSelectionEffects({
       }
       textSelectionDebounceRef.current = setTimeout(() => {
         const hasTextSelected = (window.getSelection()?.toString() || '').trim().length >= 3;
-        if (selectionMode !== 'native-drag' || hasTextSelected) {
+        if (selectionModeRef.current !== 'native-drag' || hasTextSelected) {
           onHandleTextSelection();
         }
       }, 150);
@@ -46,7 +46,7 @@ export function usePDFTextSelectionEffects({
         clearTimeout(textSelectionDebounceRef.current);
       }
     };
-  }, [onHandleTextSelection, scrollContainerRef, selectionMode, startedInsidePdfRef, textSelectionDebounceRef]);
+  }, [onHandleTextSelection, scrollContainerRef, selectionModeRef, startedInsidePdfRef, textSelectionDebounceRef]);
 
   const onHandleTextSelectionRef = useRef(onHandleTextSelection);
   onHandleTextSelectionRef.current = onHandleTextSelection;
