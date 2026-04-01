@@ -301,7 +301,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
   }, [handleInputChange, handleCloseExpandedModal]);
 
   const currentTipo = formData.tipoDocumento;
-  const canRenameTipo = isEditMode && currentTipo && !isSystemTipo(currentTipo);
+  const canRenameTipo = !!currentTipo && !isSystemTipo(currentTipo);
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden">
@@ -319,7 +319,7 @@ const PDFDocumentoFormInline: React.FC<PDFDocumentoFormInlineProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1 mb-0.5">
-                {isEditMode && isRenamingTipo ? (
+                {isRenamingTipo ? (
                   <div className="flex items-center gap-1">
                     <input
                       value={renameTipoValue}

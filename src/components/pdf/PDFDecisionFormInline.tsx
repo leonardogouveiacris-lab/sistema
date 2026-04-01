@@ -326,7 +326,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
 
   const currentTipo = formData.tipoDecisao;
   const currentSituacao = formData.situacao;
-  const canRenameTipo = isEditMode && currentTipo && !isSystemTipo(currentTipo);
+  const canRenameTipo = !!currentTipo && !isSystemTipo(currentTipo);
   const canRenameSituacao = isEditMode && currentSituacao && !isSystemSituacao(currentSituacao);
 
   return (
@@ -345,7 +345,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 mb-0.5">
-                {isEditMode && isRenamingTipo ? (
+                {isRenamingTipo ? (
                   <div className="flex items-center gap-1">
                     <input
                       value={renameTipoValue}
@@ -365,7 +365,7 @@ const PDFDecisionFormInline: React.FC<PDFDecisionFormInlineProps> = ({
                 ) : (
                   <>
                     <span className="text-sm font-semibold text-gray-900 truncate">
-                      {isEditMode ? (currentTipo || 'Editar Decisão') : 'Nova Decisão'}
+                      {currentTipo || (isEditMode ? 'Editar Decisão' : 'Nova Decisão')}
                     </span>
                     {canRenameTipo && !isRenamingTipo && !isRenamingSituacao && (
                       <button
