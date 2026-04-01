@@ -215,16 +215,36 @@ export function buildGlyphMapFromTextLayer(textLayer: Element): GlyphMap {
     }
   }
 
-  const lineGroupsMap = new Map<number, GlyphPosition[]>();
-  for (const glyph of glyphs) {
-    const lineKey = Math.round(glyph.y / 4);
-    const line = lineGroupsMap.get(lineKey) || [];
-    line.push(glyph);
-    lineGroupsMap.set(lineKey, line);
+  const sorted = [...glyphs].sort((a, b) => a.y - b.y);
+  const lineClusters: { sumY: number; count: number; minH: number; members: GlyphPosition[] }[] = [];
+
+  for (const glyph of sorted) {
+    const midY = glyph.y + glyph.height * 0.5;
+    const tolerance = Math.max(3, glyph.height * 0.45);
+    let best: (typeof lineClusters)[0] | null = null;
+    let bestDist = Infinity;
+
+    for (const cluster of lineClusters) {
+      const clusterMidY = cluster.sumY / cluster.count;
+      const dist = Math.abs(midY - clusterMidY);
+      if (dist < tolerance && dist < bestDist) {
+        bestDist = dist;
+        best = cluster;
+      }
+    }
+
+    if (best) {
+      best.members.push(glyph);
+      best.sumY += midY;
+      best.count += 1;
+      best.minH = Math.min(best.minH, glyph.height);
+    } else {
+      lineClusters.push({ sumY: midY, count: 1, minH: glyph.height, members: [glyph] });
+    }
   }
 
-  const lineGroups = Array.from(lineGroupsMap.values())
-    .map((line) => line.sort((a, b) => a.x - b.x))
+  const lineGroups = lineClusters
+    .map((c) => c.members.sort((a, b) => a.x - b.x))
     .sort((a, b) => a[0].y - b[0].y);
 
   return { glyphs, lineGroups };
@@ -272,6 +292,27 @@ export function createRangeFromGlyphs(anchorGlyph: GlyphPosition, focusGlyph: Gl
     focusGlyph.textNode,
     focusGlyph.offset
   );
+}
+
+export function selectLineGlyphs(
+  glyphMap: GlyphMap,
+  clickedGlyph: GlyphPosition
+): { first: GlyphPosition; last: GlyphPosition } | null {
+  for (const lineGroup of glyphMap.lineGroups) {
+    if (lineGroup.some((g) => g.index === clickedGlyph.index)) {
+      const sorted = [...lineGroup].sort((a, b) => a.x - b.x);
+      return { first: sorted[0], last: sorted[sorted.length - 1] };
+    }
+  }
+
+  const midY = clickedGlyph.y + clickedGlyph.height * 0.5;
+  const tolerance = Math.max(4, clickedGlyph.height * 0.45);
+  const sameLine = glyphMap.glyphs.filter(
+    (g) => Math.abs(g.y + g.height * 0.5 - midY) < tolerance
+  );
+  if (sameLine.length === 0) return null;
+  const sorted = [...sameLine].sort((a, b) => a.x - b.x);
+  return { first: sorted[0], last: sorted[sorted.length - 1] };
 }
 
 interface LineBounds {

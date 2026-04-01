@@ -18,6 +18,7 @@ import {
   buildGlyphMapFromTextLayer,
   findClosestGlyphByPoint,
   createRangeFromGlyphs,
+  selectLineGlyphs,
   getGlyphRectInPage,
   GlyphPosition,
   GlyphMap
@@ -611,16 +612,31 @@ export function useSelectionOverlay(
     // Todo gesto de double-click deve passar exclusivamente por este fluxo
     // para evitar reaplicações concorrentes de applySelectionSafely(...).
     const handleDoubleClick = (e: MouseEvent) => {
-      if (e.detail >= 3) {
-        return;
-      }
-
       const target = e.target as HTMLElement;
       const textLayer = target.closest('.textLayer') || target.closest('.react-pdf__Page__textContent');
 
       if (!textLayer) return;
 
       e.preventDefault();
+
+      if (e.detail >= 3) {
+        const glyphMap = glyphMapRef.current;
+        if (!glyphMap) return;
+
+        const clickedGlyph = findClosestGlyphByPoint(glyphMap, e.clientX, e.clientY);
+        if (!clickedGlyph) return;
+
+        const lineBounds = selectLineGlyphs(glyphMap, clickedGlyph);
+        if (!lineBounds) return;
+
+        const range = createRangeFromGlyphs(lineBounds.first, lineBounds.last);
+        const applied = applySelectionSafely(range, 'double-click-word');
+
+        if (applied) {
+          scheduleRafUpdate(true);
+        }
+        return;
+      }
 
       const metrics = getTextMetricsFromTextLayer(textLayer);
       currentTextMetricsRef.current = metrics;
