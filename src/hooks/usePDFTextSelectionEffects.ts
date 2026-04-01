@@ -9,15 +9,19 @@ export function usePDFTextSelectionEffects({
   scrollContainerRef,
   textSelectionDebounceRef,
 }: UsePDFTextSelectionEffectsParams) {
+  const onHandleTextSelectionRef = useRef(onHandleTextSelection);
+  onHandleTextSelectionRef.current = onHandleTextSelection;
+
   useEffect(() => {
     const debouncedTextSelection = () => {
       if (textSelectionDebounceRef.current) {
         clearTimeout(textSelectionDebounceRef.current);
       }
       textSelectionDebounceRef.current = setTimeout(() => {
+        textSelectionDebounceRef.current = null;
         const hasTextSelected = (window.getSelection()?.toString() || '').trim().length >= 3;
         if (selectionMode !== 'native-drag' || hasTextSelected) {
-          onHandleTextSelection();
+          onHandleTextSelectionRef.current();
         }
       }, 150);
     };
@@ -42,14 +46,17 @@ export function usePDFTextSelectionEffects({
     return () => {
       document.removeEventListener('mouseup', debouncedTextSelection);
       document.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [scrollContainerRef, selectionMode, startedInsidePdfRef, textSelectionDebounceRef]);
+
+  useEffect(() => {
+    return () => {
       if (textSelectionDebounceRef.current) {
         clearTimeout(textSelectionDebounceRef.current);
+        textSelectionDebounceRef.current = null;
       }
     };
-  }, [onHandleTextSelection, scrollContainerRef, selectionMode, startedInsidePdfRef, textSelectionDebounceRef]);
-
-  const onHandleTextSelectionRef = useRef(onHandleTextSelection);
-  onHandleTextSelectionRef.current = onHandleTextSelection;
+  }, [textSelectionDebounceRef]);
 
   useEffect(() => {
     if (hasSelection) {
