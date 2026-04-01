@@ -136,7 +136,7 @@ export function useSelectionOverlay(
   }, []);
 
   const applySelectionSafely = useCallback((range: Range, source: SelectionProgrammaticSource): boolean => {
-    if (selectionModeRef.current === 'native-drag' && isDraggingRef.current) {
+    if (selectionModeRef.current === 'native-drag') {
       return false;
     }
 
