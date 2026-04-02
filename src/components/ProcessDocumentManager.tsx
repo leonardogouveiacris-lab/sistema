@@ -318,13 +318,6 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
 
                   <div className="flex items-center space-x-2 ml-4">
                     <button
-                      onClick={() => openViewer([doc])}
-                      className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded transition-colors duration-200"
-                      title="Visualizar este PDF"
-                    >
-                      <Eye className="w-5 h-5" />
-                    </button>
-                    <button
                       onClick={() => handleDownload(doc)}
                       disabled={downloadingDocId === doc.id}
                       aria-busy={downloadingDocId === doc.id}
