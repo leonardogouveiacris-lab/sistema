@@ -3089,6 +3089,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           now < keyboardNavCooldownUntilRef.current;
 
         if (pendingNavigationTargetRef.current || hasKeyboardNavigationGuard || now < offsetRebuildBlockUntilRef.current) {
+          scheduleRetry();
           return;
         }
 
