@@ -94,6 +94,8 @@ export function useSelectionOverlay(
   const selectionAnchorGlyphRef = useRef<GlyphPosition | null>(null);
   const gapHysteresisRef = useRef(createHysteresisState());
   const mouseupProtectionUntilRef = useRef<number>(0);
+  const lastMoveClientXRef = useRef<number>(-9999);
+  const lastMoveClientYRef = useRef<number>(-9999);
 
   const rafCoalesceRef = useRef<{
     pending: boolean;
@@ -407,7 +409,7 @@ export function useSelectionOverlay(
         currentTextMetricsRef.current = metrics;
         activeTextLayerRef.current = textLayer;
         cachedSpansRef.current = getSpansWithInfo(textLayer);
-        glyphMapRef.current = buildGlyphMapFromTextLayer(textLayer);
+        glyphMapRef.current = buildGlyphMapFromTextLayer(textLayer, cachedSpansRef.current ?? undefined);
 
         const clickedCaret = getSnappedCaretInfo(
           e.clientX,
@@ -449,6 +451,8 @@ export function useSelectionOverlay(
 
         isDraggingRef.current = true;
         gapHysteresisRef.current = createHysteresisState();
+        lastMoveClientXRef.current = -9999;
+        lastMoveClientYRef.current = -9999;
         updateSelectionMode('native-drag');
 
         if (clickedCaret) {
@@ -504,6 +508,12 @@ export function useSelectionOverlay(
       if (!anchor || !metrics) return;
 
       lastValidCaretRef.current = { x: e.clientX, y: e.clientY };
+
+      const movedX = Math.abs(e.clientX - lastMoveClientXRef.current);
+      const movedY = Math.abs(e.clientY - lastMoveClientYRef.current);
+      if (movedX < 2 && movedY < 2) return;
+      lastMoveClientXRef.current = e.clientX;
+      lastMoveClientYRef.current = e.clientY;
 
       const hysteresisResult = shouldHoldSelection(
         e.clientX,

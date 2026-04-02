@@ -187,8 +187,8 @@ export function getSpansWithInfo(textLayer: Element): SpanInfo[] {
   return result;
 }
 
-export function buildGlyphMapFromTextLayer(textLayer: Element): GlyphMap {
-  const spans = getSpansWithInfo(textLayer);
+export function buildGlyphMapFromTextLayer(textLayer: Element, prebuiltSpans?: SpanInfo[]): GlyphMap {
+  const spans = prebuiltSpans ?? getSpansWithInfo(textLayer);
   const glyphs: GlyphPosition[] = [];
 
   for (const info of spans) {
@@ -253,17 +253,45 @@ export function buildGlyphMapFromTextLayer(textLayer: Element): GlyphMap {
 export function findClosestGlyphByPoint(glyphMap: GlyphMap, x: number, y: number): GlyphPosition | null {
   if (glyphMap.glyphs.length === 0) return null;
 
+  const lineGroups = glyphMap.lineGroups;
+  if (lineGroups.length === 0) {
+    let closest: GlyphPosition | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (const glyph of glyphMap.glyphs) {
+      const score = Math.abs((glyph.y + glyph.height / 2) - y) * 20 + Math.abs(glyph.x - x);
+      if (score < bestScore) { bestScore = score; closest = glyph; }
+    }
+    return closest;
+  }
+
+  let bestLineIdx = 0;
+  let bestLineDy = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < lineGroups.length; i++) {
+    const line = lineGroups[i];
+    if (line.length === 0) continue;
+    const lineRepY = line[0].y + line[0].height * 0.5;
+    const dy = Math.abs(lineRepY - y);
+    if (dy < bestLineDy) {
+      bestLineDy = dy;
+      bestLineIdx = i;
+    }
+  }
+
+  const start = Math.max(0, bestLineIdx - 1);
+  const end = Math.min(lineGroups.length - 1, bestLineIdx + 1);
+
   let closest: GlyphPosition | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
-  for (const glyph of glyphMap.glyphs) {
-    const dy = Math.abs((glyph.y + glyph.height / 2) - y);
-    const dx = Math.abs(glyph.x - x);
-    const score = dy * 20 + dx;
-
-    if (score < bestScore) {
-      bestScore = score;
-      closest = glyph;
+  for (let i = start; i <= end; i++) {
+    for (const glyph of lineGroups[i]) {
+      const dy = Math.abs((glyph.y + glyph.height / 2) - y);
+      const dx = Math.abs(glyph.x - x);
+      const score = dy * 20 + dx;
+      if (score < bestScore) {
+        bestScore = score;
+        closest = glyph;
+      }
     }
   }
 

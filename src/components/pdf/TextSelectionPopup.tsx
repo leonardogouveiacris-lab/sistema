@@ -39,9 +39,11 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
   hasFundamentacaoField = false
 }) => {
   const popupRef = useRef<HTMLDivElement>(null);
-  const [calculatedPosition, setCalculatedPosition] = useState<{ top: number; left: number; placement: 'top' | 'bottom'; ready: boolean }>({
+  const mountTimeRef = useRef(Date.now());
+  const [calculatedPosition, setCalculatedPosition] = useState<{ top: number; left: number; arrowLeft: number; placement: 'top' | 'bottom'; ready: boolean }>({
     top: 0,
     left: 0,
+    arrowLeft: 120,
     placement: 'bottom',
     ready: false
   });
@@ -80,6 +82,9 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       left = containerRect.right - popupWidth - padding;
     }
 
+    const selectionCenterX = posX + selectionWidth / 2;
+    const arrowLeft = Math.max(12, Math.min(popupWidth - 12, selectionCenterX - left));
+
     const spaceAbove = posY - containerRect.top;
     const spaceBelow = containerRect.bottom - (posY + selectionHeight);
     const preferBottom = spaceBelow >= popupHeight + padding || spaceBelow > spaceAbove;
@@ -95,7 +100,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       placement = 'top';
     }
 
-    setCalculatedPosition({ top, left, placement, ready: true });
+    setCalculatedPosition({ top, left, arrowLeft, placement, ready: true });
   }, [position, containerRef]);
 
   /**
@@ -112,7 +117,9 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       }
     };
 
+    const SCROLL_GRACE_MS = 150;
     const handleScroll = () => {
+      if (Date.now() - mountTimeRef.current < SCROLL_GRACE_MS) return;
       onClose();
     };
 
@@ -146,7 +153,10 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
         top: `${calculatedPosition.top}px`,
         left: `${calculatedPosition.left}px`,
         width: '240px',
-        visibility: calculatedPosition.ready ? 'visible' : 'hidden'
+        opacity: calculatedPosition.ready ? 1 : 0,
+        transform: calculatedPosition.ready ? 'translateY(0)' : 'translateY(4px)',
+        transition: calculatedPosition.ready ? 'opacity 120ms ease, transform 120ms ease' : 'none',
+        pointerEvents: calculatedPosition.ready ? undefined : 'none'
       }}
     >
       {/* Seta indicadora */}
@@ -157,8 +167,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
             : '-bottom-1.5 border-b border-r'
         }`}
         style={{
-          left: '50%',
-          marginLeft: '-6px'
+          left: `${calculatedPosition.arrowLeft - 6}px`
         }}
       />
 
