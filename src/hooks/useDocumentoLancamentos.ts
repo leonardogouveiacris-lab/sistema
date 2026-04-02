@@ -3,6 +3,7 @@ import { DocumentoLancamento, DocumentoLancamentoCreateInput, DocumentoLancament
 import { documentoLancamentoService } from '../services';
 import { useRealtimeSubscription } from './useRealtimeSubscription';
 import logger from '../utils/logger';
+import { useOfflineMutationGuard } from './useOfflineMutationGuard';
 
 interface UseDocumentoLancamentosResult {
   documentos: DocumentoLancamento[];
@@ -19,6 +20,7 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const pendingLocalOpsRef = useRef(0);
+  const { checkOnline, OFFLINE_MESSAGE } = useOfflineMutationGuard();
 
   const fetchDocumentos = useCallback(async () => {
     if (!processId) {
@@ -82,6 +84,7 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
   });
 
   const createDocumento = useCallback(async (input: DocumentoLancamentoCreateInput): Promise<DocumentoLancamento | null> => {
+    if (!checkOnline()) return null;
     try {
       setError(null);
       pendingLocalOpsRef.current += 1;
@@ -98,9 +101,10 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, []);
+  }, [checkOnline]);
 
   const updateDocumento = useCallback(async (id: string, input: DocumentoLancamentoUpdateInput): Promise<DocumentoLancamento | null> => {
+    if (!checkOnline()) return null;
     try {
       setError(null);
       pendingLocalOpsRef.current += 1;
@@ -119,9 +123,10 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, []);
+  }, [checkOnline]);
 
   const deleteDocumento = useCallback(async (id: string): Promise<boolean> => {
+    if (!checkOnline()) return false;
     try {
       setError(null);
       pendingLocalOpsRef.current += 1;
@@ -138,7 +143,7 @@ export const useDocumentoLancamentos = (processId: string | null): UseDocumentoL
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, []);
+  }, [checkOnline]);
 
   const refreshDocumentos = useCallback(async (): Promise<void> => {
     await fetchDocumentos();

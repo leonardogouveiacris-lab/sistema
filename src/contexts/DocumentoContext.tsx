@@ -6,6 +6,7 @@ import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { logRealtimeEvent } from '../utils/domainLogger';
 import type { OperationResult } from '../types/Common';
+import { useOfflineMutationGuard, OFFLINE_MESSAGE } from '../hooks/useOfflineMutationGuard';
 
 export type { OperationResult };
 
@@ -31,6 +32,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [error, setError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
   const pendingLocalOpsRef = useRef(0);
+  const { checkOnline } = useOfflineMutationGuard();
 
   const refreshDocumentos = useCallback(async () => {
     try {
@@ -108,6 +110,7 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
   });
 
   const addDocumento = useCallback(async (newDocumento: NewDocumento, skipGlobalError = false): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       if (!newDocumento.tipoDocumento?.trim()) {
         const errorMsg = 'Tipo de documento é obrigatório';
@@ -134,9 +137,10 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, []);
+  }, [checkOnline]);
 
   const updateDocumento = useCallback(async (id: string, updatedData: Partial<NewDocumento>, skipGlobalError = false): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       pendingLocalOpsRef.current += 1;
       const updatedDocumento = await DocumentosService.update(id, updatedData);
@@ -151,9 +155,10 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, []);
+  }, [checkOnline]);
 
   const removeDocumento = useCallback(async (id: string, skipGlobalError = false): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       pendingLocalOpsRef.current += 1;
       await DocumentosService.delete(id);
@@ -168,9 +173,10 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, []);
+  }, [checkOnline]);
 
   const renameTipoDocumento = useCallback(async (oldTipo: string, newTipo: string, skipGlobalError = false): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       await DocumentosService.bulkUpdateTipo(oldTipo, newTipo);
       setDocumentos(prev => prev.map(d => d.tipoDocumento === oldTipo ? { ...d, tipoDocumento: newTipo } : d));
@@ -182,16 +188,17 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
     }
-  }, []);
+  }, [checkOnline]);
 
   const toggleDocumentoCheck = useCallback(async (documentoId: string, field: 'calculista' | 'revisor', value: boolean): Promise<void> => {
+    if (!checkOnline()) return;
     try {
       const updatedDocumento = await DocumentosService.toggleCheck(documentoId, field, value);
       setDocumentos(prev => prev.map(d => d.id === documentoId ? updatedDocumento : d));
     } catch (err) {
       logger.errorWithException(`Falha ao alternar check ${field} do documento`, err as Error, 'DocumentoContext.toggleDocumentoCheck');
     }
-  }, []);
+  }, [checkOnline]);
 
   const getDocumentoById = useCallback((id: string): Documento | undefined => {
     return documentos.find(d => d.id === id);

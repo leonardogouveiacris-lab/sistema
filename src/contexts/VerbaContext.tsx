@@ -6,6 +6,7 @@ import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { logRealtimeEvent } from '../utils/domainLogger';
 import type { OperationResult } from '../types/Common';
+import { useOfflineMutationGuard, OFFLINE_MESSAGE } from '../hooks/useOfflineMutationGuard';
 
 export type { OperationResult };
 
@@ -67,6 +68,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
   const loadingIdsRef = useRef<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const activeProcessIdRef = useRef<string | null | undefined>(activeProcessId);
+  const { checkOnline } = useOfflineMutationGuard();
 
   useEffect(() => {
     activeProcessIdRef.current = activeProcessId;
@@ -163,6 +165,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
   });
 
   const addVerbaComLancamento = useCallback(async (novaVerba: NewVerbaComLancamento, skipGlobalError = false): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       const validation = ValidationUtils.validateNewVerbaComLancamento(novaVerba);
       if (!validation.isValid) {
@@ -197,7 +200,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
     }
-  }, []);
+  }, [checkOnline]);
 
   const updateVerbaLancamento = useCallback(async (
     verbaId: string,
@@ -205,6 +208,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
     updatedData: Partial<NewVerbaLancamento>,
     skipGlobalError = false
   ): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       const updatedLancamento = await withNetworkRetry(
         () => VerbasService.updateLancamento(verbaId, lancamentoId, updatedData),
@@ -235,9 +239,10 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
     }
-  }, []);
+  }, [checkOnline]);
 
   const removeVerbaLancamento = useCallback(async (verbaId: string, lancamentoId: string, skipGlobalError = false): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       const { highlightCleanupFailed } = await VerbasService.removeLancamento(verbaId, lancamentoId);
 
@@ -271,9 +276,10 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
     }
-  }, []);
+  }, [checkOnline]);
 
   const removeVerba = useCallback(async (verbaId: string, skipGlobalError = false): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       await VerbasService.removeVerba(verbaId);
       setCacheByProcess(prev => {
@@ -294,7 +300,7 @@ export const VerbaProvider: React.FC<VerbaProviderProps> = ({ children, activePr
       if (!skipGlobalError) setError(errorMessage);
       return { success: false, error: errorMessage };
     }
-  }, []);
+  }, [checkOnline]);
 
   const getVerbaById = useCallback((id: string): Verba | undefined => {
     for (const verbas of cacheByProcess.values()) {

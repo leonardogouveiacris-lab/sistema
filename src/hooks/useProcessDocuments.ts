@@ -13,6 +13,7 @@ import { ProcessDocument, DocumentUploadResult } from '../types/ProcessDocument'
 import ProcessDocumentService from '../services/processDocument.service';
 import { useRealtimeSubscription } from './useRealtimeSubscription';
 import logger from '../utils/logger';
+import { useOfflineMutationGuard, OFFLINE_MESSAGE } from './useOfflineMutationGuard';
 
 /**
  * Interface de retorno do hook
@@ -44,6 +45,7 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
   const progressResetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
+  const { checkOnline } = useOfflineMutationGuard();
 
   useEffect(() => {
     return () => {
@@ -133,6 +135,7 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
     file: File,
     displayName?: string
   ): Promise<DocumentUploadResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     if (!processId || !file) {
       return { success: false, error: 'ProcessId e arquivo são obrigatórios' };
     }
@@ -199,12 +202,13 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
         setIsLoading(false);
       }
     }
-  }, [loadDocuments]);
+  }, [loadDocuments, checkOnline]);
 
   /**
    * Remove documento
    */
   const deleteDocument = useCallback(async (processId: string): Promise<boolean> => {
+    if (!checkOnline()) return false;
     if (!processId) {
       logger.warn('ProcessId não fornecido para deleteDocument', 'useProcessDocuments');
       return false;
@@ -239,12 +243,13 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [checkOnline]);
 
   /**
    * Remove documento específico por ID
    */
   const deleteDocumentById = useCallback(async (documentId: string): Promise<boolean> => {
+    if (!checkOnline()) return false;
     if (!documentId) {
       logger.warn('DocumentId não fornecido para deleteDocumentById', 'useProcessDocuments');
       return false;
@@ -279,7 +284,7 @@ export const useProcessDocuments = (initialProcessId?: string): UseProcessDocume
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [checkOnline]);
 
   /**
    * Obtém estatísticas de lançamentos vinculados a um documento

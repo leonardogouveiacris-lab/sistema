@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useOfflineMutationGuard } from './useOfflineMutationGuard';
 import type { ProcessTable, FormulaColumnDef, ParsedTableData, AggregateRow, AggregateOperation } from '../types/ProcessTable';
 import {
   getProcessTable,
@@ -40,6 +41,7 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const tableRef = useRef<ProcessTable | null>(null);
+  const { checkOnline } = useOfflineMutationGuard();
 
   const syncTableRef = (t: ProcessTable | null) => {
     tableRef.current = t;
@@ -66,6 +68,7 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
 
   const importTableData = useCallback(
     async (parsed: ParsedTableData, tableName: string) => {
+      if (!checkOnline()) return;
       setImporting(true);
       setError(null);
       try {
@@ -78,11 +81,12 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
         setImporting(false);
       }
     },
-    [processId]
+    [processId, checkOnline]
   );
 
   const editCell = useCallback(
     async (rowId: string, columnId: string, value: string | null) => {
+      if (!checkOnline()) return;
       let previousValue: string | null | undefined;
       setTable((prev) => {
         if (!prev) return prev;
@@ -112,11 +116,12 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
         throw err;
       }
     },
-    []
+    [checkOnline]
   );
 
   const addFormula = useCallback(
     async (def: FormulaColumnDef) => {
+      if (!checkOnline()) return;
       const current = tableRef.current;
       if (!current) return;
       const nextIndex = current.columns.reduce((max, c) => Math.max(max, c.index), -1) + 1;
@@ -132,11 +137,12 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
         return updated;
       });
     },
-    []
+    [checkOnline]
   );
 
   const editFormula = useCallback(
     async (columnId: string, headerName: string, expression: string) => {
+      if (!checkOnline()) return;
       await updateFormulaColumn(columnId, headerName, expression);
       setTable((prev) => {
         if (!prev) return prev;
@@ -149,11 +155,12 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
         };
       });
     },
-    []
+    [checkOnline]
   );
 
   const renameColumnHeader = useCallback(
     async (columnId: string, headerName: string) => {
+      if (!checkOnline()) return;
       await renameColumn(columnId, headerName);
       setTable((prev) => {
         if (!prev) return prev;
@@ -165,11 +172,12 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
         };
       });
     },
-    []
+    [checkOnline]
   );
 
   const removeColumn = useCallback(
     async (columnId: string) => {
+      if (!checkOnline()) return;
       const current = tableRef.current;
       if (!current) return;
       await deleteColumn(columnId, current.id);
@@ -185,19 +193,21 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
         return updated;
       });
     },
-    []
+    [checkOnline]
   );
 
   const removeTable = useCallback(async () => {
+    if (!checkOnline()) return;
     const current = tableRef.current;
     if (!current) return;
     await deleteProcessTable(current.id);
     setTable(null);
     tableRef.current = null;
-  }, []);
+  }, [checkOnline]);
 
   const renameTable = useCallback(
     async (name: string) => {
+      if (!checkOnline()) return;
       const current = tableRef.current;
       if (!current) return;
       await updateTableName(current.id, name);
@@ -208,11 +218,12 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
         return updated;
       });
     },
-    []
+    [checkOnline]
   );
 
   const addAggregate = useCallback(
     async (columnId: string, operation: AggregateOperation, rangeStart: number | null, rangeEnd: number | null) => {
+      if (!checkOnline()) return;
       const current = tableRef.current;
       if (!current) return;
       const nextOrder = current.aggregateRows.length;
@@ -224,11 +235,12 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
         return updated;
       });
     },
-    []
+    [checkOnline]
   );
 
   const editAggregate = useCallback(
     async (id: string, operation: AggregateOperation, rangeStart: number | null, rangeEnd: number | null) => {
+      if (!checkOnline()) return;
       await updateAggregateRow(id, operation, rangeStart, rangeEnd);
       setTable((prev) => {
         if (!prev) return prev;
@@ -240,16 +252,17 @@ export function useProcessTable(processId: string): UseProcessTableReturn {
         };
       });
     },
-    []
+    [checkOnline]
   );
 
   const removeAggregate = useCallback(async (id: string) => {
+    if (!checkOnline()) return;
     await deleteAggregateRow(id);
     setTable((prev) => {
       if (!prev) return prev;
       return { ...prev, aggregateRows: prev.aggregateRows.filter((a) => a.id !== id) };
     });
-  }, []);
+  }, [checkOnline]);
 
   return {
     table,

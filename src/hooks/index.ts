@@ -4,6 +4,7 @@
  */
 
 export { useProcesses } from './useProcesses';
+export { useOfflineMutationGuard, OFFLINE_MESSAGE } from './useOfflineMutationGuard';
 export { useDynamicEnums } from './useDynamicEnums';
 export { useTipoVerbas } from './useTipoVerbas';
 export { useProcessDocuments } from './useProcessDocuments';

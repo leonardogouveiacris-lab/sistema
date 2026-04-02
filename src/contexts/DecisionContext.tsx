@@ -6,6 +6,7 @@ import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { logRealtimeEvent } from '../utils/domainLogger';
 import type { OperationResult } from '../types/Common';
+import { useOfflineMutationGuard, OFFLINE_MESSAGE } from '../hooks/useOfflineMutationGuard';
 
 export type { OperationResult };
 
@@ -31,6 +32,7 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [error, setError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
   const pendingLocalOpsRef = useRef(0);
+  const { checkOnline } = useOfflineMutationGuard();
 
   const refreshDecisions = useCallback(async () => {
     try {
@@ -108,6 +110,7 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
   });
 
   const addDecision = useCallback(async (newDecision: NewDecision, skipGlobalError = false): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       const validation = ValidationUtils.validateNewDecision(newDecision);
       if (!validation.isValid) {
@@ -129,9 +132,10 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, []);
+  }, [checkOnline]);
 
   const updateDecision = useCallback(async (id: string, updatedData: Partial<NewDecision>, skipGlobalError = false): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       pendingLocalOpsRef.current += 1;
       const updatedDecision = await DecisionsService.update(id, updatedData);
@@ -146,9 +150,10 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, []);
+  }, [checkOnline]);
 
   const removeDecision = useCallback(async (id: string, skipGlobalError = false): Promise<OperationResult> => {
+    if (!checkOnline()) return { success: false, error: OFFLINE_MESSAGE };
     try {
       pendingLocalOpsRef.current += 1;
       await DecisionsService.delete(id);
@@ -163,7 +168,7 @@ export const DecisionProvider: React.FC<{ children: ReactNode }> = ({ children }
     } finally {
       pendingLocalOpsRef.current = Math.max(0, pendingLocalOpsRef.current - 1);
     }
-  }, []);
+  }, [checkOnline]);
 
   const getDecisionById = useCallback((id: string): Decision | undefined => {
     return decisions.find(d => d.id === id);

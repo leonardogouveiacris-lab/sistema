@@ -20,6 +20,7 @@ import { VerbaProvider } from './contexts/VerbaContext';
 import { DecisionProvider } from './contexts/DecisionContext';
 import { DocumentoProvider } from './contexts/DocumentoContext';
 import { useProcesses, useDecisions, useVerbas, useDocumentos } from './hooks';
+import { useOfflineMutationGuard, OFFLINE_MESSAGE } from './hooks/useOfflineMutationGuard';
 import { Process, NewProcess } from './types';
 import { logger, getUserFriendlyMessage } from './utils';
 
@@ -88,6 +89,8 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
     refreshDocumentos
   } = useDocumentos();
 
+  const { checkOnline } = useOfflineMutationGuard();
+
   const isAnyContextLoading = useMemo(() =>
     processesLoading || decisionsLoading || verbasLoading || documentosLoading,
     [processesLoading, decisionsLoading, verbasLoading, documentosLoading]
@@ -128,6 +131,7 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
   }, [refreshProcesses, refreshDecisions, refreshVerbas, refreshDocumentos]);
 
   const handleSaveProcess = useCallback(async (process: NewProcess): Promise<boolean> => {
+    if (!checkOnline()) return false;
     setGlobalError('');
     try {
       logger.info('Iniciando salvamento de processo', 'App - handleSaveProcess', { numeroProcesso: process.numeroProcesso });
@@ -143,9 +147,10 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
       logger.errorWithException('Erro ao salvar processo', error as Error, 'App - handleSaveProcess', { process });
       return false;
     }
-  }, [addProcess]);
+  }, [addProcess, checkOnline]);
 
   const handleRemoveProcess = useCallback(async (processId: string): Promise<boolean> => {
+    if (!checkOnline()) return false;
     const processToRemove = processes.find(p => p.id === processId);
     if (!processToRemove) {
       setGlobalError('Processo não encontrado');
@@ -165,12 +170,13 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
       logger.errorWithException('Erro ao remover processo', error as Error, 'App - handleRemoveProcess', { processId });
       return false;
     }
-  }, [removeProcess, processes]);
+  }, [removeProcess, processes, checkOnline]);
 
   const handleUpdateProcess = useCallback(async (
     processId: string,
     updatedData: Partial<NewProcess>
   ): Promise<boolean> => {
+    if (!checkOnline()) return false;
     setGlobalError('');
 
     try {
@@ -205,7 +211,7 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
 
       return false;
     }
-  }, [updateProcess]);
+  }, [updateProcess, checkOnline]);
 
   const handleSelectProcess = useCallback((process: Process) => {
     setSelectedProcess(process);
@@ -262,6 +268,7 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
   }, []);
 
   const handleImportBackup = useCallback(() => {
+    if (!checkOnline()) return;
     setGlobalError('');
     const input = document.createElement('input');
     input.type = 'file';
@@ -310,7 +317,7 @@ function AppContent({ onSelectedProcessIdChange }: AppContentProps) {
       reader.readAsText(file);
     };
     input.click();
-  }, [importProcessBackup]);
+  }, [importProcessBackup, checkOnline]);
 
   const renderGlobalError = (): ReactNode => {
     if (!systemError) return null;
