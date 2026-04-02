@@ -90,4 +90,4 @@ const DecisionsTab: React.FC<DecisionsTabProps> = ({
   return selectedProcess ? renderDecisionsContent() : renderEmptyState();
 };
 
-export default DecisionsTab;
+export default React.memo(DecisionsTab);

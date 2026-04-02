@@ -6,6 +6,29 @@ import { sortByPagina } from '../utils/sortByPagina';
 
 const ITEMS_PER_PAGE = 10;
 
+const TIPO_BADGE_COLORS: Record<string, string> = {
+  'Petição Inicial': 'bg-blue-100 text-blue-800 border-blue-300',
+  'Contestação': 'bg-red-100 text-red-800 border-red-300',
+  'Réplica': 'bg-teal-100 text-teal-800 border-teal-300',
+  'Laudo Pericial': 'bg-amber-100 text-amber-800 border-amber-300',
+  'Recurso': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  'Contrato': 'bg-orange-100 text-orange-800 border-orange-300',
+  'Sentença': 'bg-sky-100 text-sky-800 border-sky-300',
+  'Acordo': 'bg-green-100 text-green-800 border-green-300',
+};
+
+const getTipoBadgeClass = (tipo: string) =>
+  TIPO_BADGE_COLORS[tipo] || 'bg-gray-100 text-gray-700 border-gray-300';
+
+const formatDate = (date: Date): string =>
+  new Date(date).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
 interface DocumentoLancamentoListProps {
   documentos: DocumentoLancamento[];
   onEdit: (documento: DocumentoLancamento) => void;
@@ -24,36 +47,12 @@ const DocumentoLancamentoList: React.FC<DocumentoLancamentoListProps> = ({
   const [selectedTipo, setSelectedTipo] = useState<string>('all');
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     setDeletingId(id);
     await onDelete(id);
     setDeletingId(null);
     setConfirmingDeleteId(null);
-  };
-
-  const TIPO_BADGE_COLORS: Record<string, string> = {
-    'Petição Inicial': 'bg-blue-100 text-blue-800 border-blue-300',
-    'Contestação': 'bg-red-100 text-red-800 border-red-300',
-    'Réplica': 'bg-teal-100 text-teal-800 border-teal-300',
-    'Laudo Pericial': 'bg-amber-100 text-amber-800 border-amber-300',
-    'Recurso': 'bg-yellow-100 text-yellow-800 border-yellow-300',
-    'Contrato': 'bg-orange-100 text-orange-800 border-orange-300',
-    'Sentença': 'bg-sky-100 text-sky-800 border-sky-300',
-    'Acordo': 'bg-green-100 text-green-800 border-green-300',
-  };
-
-  const getTipoBadgeClass = (tipo: string) =>
-    TIPO_BADGE_COLORS[tipo] || 'bg-gray-100 text-gray-700 border-gray-300';
-
-  const formatDate = useCallback((date: Date): string => {
-    return new Date(date).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }, []);
+  }, [onDelete]);
 
   const toggleCardExpansion = useCallback((documentoId: string) => {
     setExpandedCards(prev => {

@@ -91,4 +91,4 @@ const DocumentosTab: React.FC<DocumentosTabProps> = ({ processId }) => {
   );
 };
 
-export default DocumentosTab;
+export default React.memo(DocumentosTab);

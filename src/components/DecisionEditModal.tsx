@@ -357,4 +357,4 @@ const DecisionEditModal: React.FC<DecisionEditModalProps> = ({
   );
 };
 
-export default DecisionEditModal;
+export default React.memo(DecisionEditModal);

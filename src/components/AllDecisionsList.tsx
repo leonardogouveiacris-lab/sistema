@@ -2,7 +2,6 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { Scale, Search, ChevronDown } from 'lucide-react';
 import { Decision, DecisionFilter } from '../types/Decision';
 import { Process } from '../types/Process';
-import logger from '../utils/logger';
 import { getPreviewText, hasLongText, PREVIEW_LENGTHS } from '../utils/previewText';
 
 const ITEMS_PER_PAGE = 5;

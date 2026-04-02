@@ -5,7 +5,7 @@
  * com funcionalidades de pesquisa, filtros e agrupamento
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Documento } from '../types/Documento';
 import { FileText, Search, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { hasLongText } from '../utils/previewText';
@@ -36,7 +36,7 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
   const referenceItems = useLancamentosForReference(processId, processTable);
   const navigateToReference = useNavigateToReference(processId);
 
-  const toggleCardExpansion = (docId: string) => {
+  const toggleCardExpansion = useCallback((docId: string) => {
     setExpandedCards(prev => {
       const newSet = new Set(prev);
       if (newSet.has(docId)) {
@@ -46,7 +46,7 @@ const ProcessDocumentoList: React.FC<ProcessDocumentoListProps> = ({
       }
       return newSet;
     });
-  };
+  }, []);
 
   const processDocumentos = useMemo(() => {
     return documentos.filter(d => d.processId === processId);

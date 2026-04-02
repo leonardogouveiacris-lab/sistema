@@ -26,6 +26,8 @@ interface ProcessDocumentManagerProps {
   onDeleteSuccess?: () => void;
 }
 
+const DELETE_PASSWORD = '123321';
+
 const GRAU_CONFIG: Record<string, string> = {
   'ATOrd': '1grau',
   'ROT': '2grau'
@@ -176,8 +178,6 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
   }, []);
 
   const handleConfirmDelete = useCallback(async () => {
-    const DELETE_PASSWORD = '123321';
-
     if (deleteConfirmModal.password !== DELETE_PASSWORD) {
       setDeleteConfirmModal(prev => ({
         ...prev,
@@ -207,7 +207,7 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
     if (!documents || documents.length === 0) return;
 
     openViewer(documents);
-  }, [documents, openViewer, processId]);
+  }, [documents, openViewer]);
 
   const handleClickUpload = useCallback(() => {
     fileInputRef.current?.click();

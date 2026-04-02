@@ -196,6 +196,8 @@ export const DocumentoProvider: React.FC<{ children: ReactNode }> = ({ children 
       const updatedDocumento = await DocumentosService.toggleCheck(documentoId, field, value);
       setDocumentos(prev => prev.map(d => d.id === documentoId ? updatedDocumento : d));
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : `Erro ao alternar ${field}`;
+      setError(errorMessage);
       logger.errorWithException(`Falha ao alternar check ${field} do documento`, err as Error, 'DocumentoContext.toggleDocumentoCheck');
     }
   }, [checkOnline]);

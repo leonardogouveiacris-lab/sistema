@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 interface TableViewerState {
   isOpen: boolean;
@@ -34,8 +34,13 @@ export function TableViewerProvider({ children }: { children: React.ReactNode })
     setState(prev => ({ ...prev, isMinimized: !prev.isMinimized }));
   }, []);
 
+  const value = useMemo(
+    () => ({ state, openTableViewer, closeTableViewer, toggleMinimize }),
+    [state, openTableViewer, closeTableViewer, toggleMinimize]
+  );
+
   return (
-    <TableViewerContext.Provider value={{ state, openTableViewer, closeTableViewer, toggleMinimize }}>
+    <TableViewerContext.Provider value={value}>
       {children}
     </TableViewerContext.Provider>
   );

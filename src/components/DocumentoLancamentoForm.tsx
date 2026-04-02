@@ -346,4 +346,4 @@ const DocumentoLancamentoForm: React.FC<DocumentoLancamentoFormProps> = ({
   );
 };
 
-export default DocumentoLancamentoForm;
+export default React.memo(DocumentoLancamentoForm);
