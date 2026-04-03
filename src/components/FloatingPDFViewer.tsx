@@ -2791,6 +2791,7 @@ const FloatingPDFViewer: React.FC<FloatingPDFViewerProps> = ({
           if (pendingNavigationTargetRef.current?.page === targetPage) {
             pendingNavigationTargetRef.current = null;
           }
+          calculateVisiblePagesFromScrollRef.current({ allowLargeJump: true });
         }, PROGRAMMATIC_SCROLL_RELEASE_DELAY_MS);
         return;
       }
