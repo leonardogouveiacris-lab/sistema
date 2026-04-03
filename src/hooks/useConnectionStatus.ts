@@ -11,14 +11,19 @@ export interface ConnectionStatus {
 
 const CHANNEL_NAME = '__connection_health__';
 const RECONNECT_DELAY_MS = 4000;
+const SHOW_BANNER_DELAY_MS = 6000;
 
 export const useConnectionStatus = (): ConnectionStatus => {
   const [connectionState, setConnectionState] = useState<ConnectionState>(
     typeof navigator !== 'undefined' && !navigator.onLine ? 'disconnected' : 'connected'
   );
+  const [displayState, setDisplayState] = useState<ConnectionState>(
+    typeof navigator !== 'undefined' && !navigator.onLine ? 'disconnected' : 'connected'
+  );
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bannerDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasEverConnectedRef = useRef(false);
   const mountedRef = useRef(true);
 
@@ -26,6 +31,13 @@ export const useConnectionStatus = (): ConnectionStatus => {
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
+    }
+  }, []);
+
+  const clearBannerDelayTimer = useCallback(() => {
+    if (bannerDelayTimerRef.current) {
+      clearTimeout(bannerDelayTimerRef.current);
+      bannerDelayTimerRef.current = null;
     }
   }, []);
 
@@ -52,6 +64,8 @@ export const useConnectionStatus = (): ConnectionStatus => {
         hasEverConnectedRef.current = true;
         setConnectionState('connected');
         clearReconnectTimer();
+        clearBannerDelayTimer();
+        setDisplayState('connected');
       } else if (
         status === 'CHANNEL_ERROR' ||
         status === 'TIMED_OUT' ||
@@ -65,12 +79,21 @@ export const useConnectionStatus = (): ConnectionStatus => {
           reconnectTimerRef.current = setTimeout(() => {
             if (mountedRef.current) setupChannel();
           }, RECONNECT_DELAY_MS);
+
+          clearBannerDelayTimer();
+          bannerDelayTimerRef.current = setTimeout(() => {
+            if (mountedRef.current) setDisplayState('reconnecting');
+          }, SHOW_BANNER_DELAY_MS);
         } else {
           setConnectionState('disconnected');
+          clearBannerDelayTimer();
+          bannerDelayTimerRef.current = setTimeout(() => {
+            if (mountedRef.current) setDisplayState('disconnected');
+          }, SHOW_BANNER_DELAY_MS);
         }
       }
     });
-  }, [clearReconnectTimer, removeChannel]);
+  }, [clearReconnectTimer, clearBannerDelayTimer, removeChannel]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -84,6 +107,10 @@ export const useConnectionStatus = (): ConnectionStatus => {
       if (!mountedRef.current) return;
       clearReconnectTimer();
       setConnectionState('disconnected');
+      clearBannerDelayTimer();
+      bannerDelayTimerRef.current = setTimeout(() => {
+        if (mountedRef.current) setDisplayState('disconnected');
+      }, SHOW_BANNER_DELAY_MS);
     };
 
     window.addEventListener('online', handleOnline);
@@ -96,14 +123,15 @@ export const useConnectionStatus = (): ConnectionStatus => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       clearReconnectTimer();
+      clearBannerDelayTimer();
       removeChannel();
     };
-  }, [setupChannel, clearReconnectTimer, removeChannel]);
+  }, [setupChannel, clearReconnectTimer, clearBannerDelayTimer, removeChannel]);
 
   return {
-    connectionState,
-    isConnected: connectionState === 'connected',
-    isReconnecting: connectionState === 'reconnecting',
+    connectionState: displayState,
+    isConnected: displayState === 'connected',
+    isReconnecting: displayState === 'reconnecting',
   };
 };
 
