@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { X, HardDrive, AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, HardDrive, AlertCircle, CheckCircle, Lock } from 'lucide-react';
 
 const PRESET_LIMITS = [100, 200, 350, 500, 750, 1024];
+const ACCESS_PASSWORD = '123321';
 
 interface Props {
   isOpen: boolean;
@@ -18,19 +19,39 @@ const UploadLimitModal: React.FC<Props> = ({
   updating,
   onUpdate,
 }) => {
+  const [unlocked, setUnlocked] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
   const [inputValue, setInputValue] = useState(String(currentLimitMb));
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
+      setUnlocked(false);
+      setPassword('');
+      setPasswordError(false);
       setInputValue(String(currentLimitMb));
       setError(null);
       setSuccess(false);
+      setTimeout(() => passwordInputRef.current?.focus(), 50);
     }
   }, [isOpen, currentLimitMb]);
 
   if (!isOpen) return null;
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === ACCESS_PASSWORD) {
+      setUnlocked(true);
+      setPasswordError(false);
+    } else {
+      setPasswordError(true);
+      setPassword('');
+      setTimeout(() => passwordInputRef.current?.focus(), 50);
+    }
+  };
 
   const parsedValue = parseInt(inputValue, 10);
   const isValid = !isNaN(parsedValue) && parsedValue >= 1 && parsedValue <= 1024;
@@ -69,93 +90,146 @@ const UploadLimitModal: React.FC<Props> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
-          <p className="text-sm text-gray-500">
-            Define o tamanho máximo permitido para upload de arquivos PDF. O valor e sincronizado
-            automaticamente com o Supabase Storage.
-          </p>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Limite atual: <span className="text-blue-600 font-semibold">{currentLimitMb} MB</span>
-            </label>
-            <div className="flex items-center space-x-3">
-              <input
-                type="number"
-                value={inputValue}
-                onChange={(e) => {
-                  setInputValue(e.target.value);
-                  setError(null);
-                  setSuccess(false);
-                }}
-                min={1}
-                max={1024}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Ex: 500"
-              />
-              <span className="text-sm text-gray-500 font-medium shrink-0">MB</span>
+        {!unlocked ? (
+          <form onSubmit={handlePasswordSubmit} className="px-6 py-5 space-y-4">
+            <div className="flex flex-col items-center text-center py-2">
+              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                <Lock size={20} className="text-gray-500" />
+              </div>
+              <p className="text-sm text-gray-600">
+                Informe a senha para alterar o limite de upload.
+              </p>
             </div>
-            {!isValid && inputValue !== '' && (
-              <p className="text-xs text-red-600">Informe um valor entre 1 e 1024 MB.</p>
-            )}
-          </div>
 
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Valores sugeridos</p>
-            <div className="flex flex-wrap gap-2">
-              {PRESET_LIMITS.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => {
-                    setInputValue(String(preset));
+            <div className="space-y-1">
+              <input
+                ref={passwordInputRef}
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setPasswordError(false);
+                }}
+                placeholder="Senha"
+                className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                  passwordError ? 'border-red-400 bg-red-50' : 'border-gray-300'
+                }`}
+              />
+              {passwordError && (
+                <p className="text-xs text-red-600 flex items-center gap-1">
+                  <AlertCircle size={11} />
+                  Senha incorreta. Tente novamente.
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={!password}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirmar
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
+            <p className="text-sm text-gray-500">
+              Define o tamanho maximo permitido para upload de arquivos PDF. O valor e sincronizado
+              automaticamente com o Supabase Storage.
+            </p>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Limite atual: <span className="text-blue-600 font-semibold">{currentLimitMb} MB</span>
+              </label>
+              <div className="flex items-center space-x-3">
+                <input
+                  type="number"
+                  value={inputValue}
+                  onChange={(e) => {
+                    setInputValue(e.target.value);
                     setError(null);
                     setSuccess(false);
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    parsedValue === preset
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {preset >= 1024 ? '1 GB' : `${preset} MB`}
-                </button>
-              ))}
+                  min={1}
+                  max={1024}
+                  autoFocus
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Ex: 500"
+                />
+                <span className="text-sm text-gray-500 font-medium shrink-0">MB</span>
+              </div>
+              {!isValid && inputValue !== '' && (
+                <p className="text-xs text-red-600">Informe um valor entre 1 e 1024 MB.</p>
+              )}
             </div>
-          </div>
 
-          {error && (
-            <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <AlertCircle size={14} className="text-red-500 shrink-0" />
-              <p className="text-xs text-red-700">{error}</p>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Valores sugeridos</p>
+              <div className="flex flex-wrap gap-2">
+                {PRESET_LIMITS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => {
+                      setInputValue(String(preset));
+                      setError(null);
+                      setSuccess(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      parsedValue === preset
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {preset >= 1024 ? '1 GB' : `${preset} MB`}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
 
-          {success && (
-            <div className="flex items-center space-x-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <CheckCircle size={14} className="text-green-500 shrink-0" />
-              <p className="text-xs text-green-700">Limite atualizado com sucesso!</p>
+            {error && (
+              <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <AlertCircle size={14} className="text-red-500 shrink-0" />
+                <p className="text-xs text-red-700">{error}</p>
+              </div>
+            )}
+
+            {success && (
+              <div className="flex items-center space-x-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <CheckCircle size={14} className="text-green-500 shrink-0" />
+                <p className="text-xs text-green-700">Limite atualizado com sucesso!</p>
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-3 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={updating}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={!isValid || updating || parsedValue === currentLimitMb}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {updating ? 'Salvando...' : 'Salvar'}
+              </button>
             </div>
-          )}
-
-          <div className="flex justify-end space-x-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={updating}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={!isValid || updating || parsedValue === currentLimitMb}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {updating ? 'Salvando...' : 'Salvar'}
-            </button>
-          </div>
-        </form>
+          </form>
+        )}
       </div>
     </div>
   );
