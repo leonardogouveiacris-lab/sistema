@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useState, useRef } from 'react';
-import { FileText, Trash2, Eye, AlertCircle, Plus, Info, Download, Loader2, Lock, X } from 'lucide-react';
+import { FileText, Trash2, Eye, AlertCircle, Plus, Info, Download, Loader2, Lock, X, Settings } from 'lucide-react';
 import { useProcessDocuments } from '../hooks/useProcessDocuments';
 import { usePDFViewer } from '../contexts/PDFViewerContext';
 import { useToast } from '../contexts/ToastContext';
@@ -18,6 +18,8 @@ import { ProcessDocument, DocumentValidation } from '../types/ProcessDocument';
 import { downloadDocument } from '../services/processDocument.service';
 import { DynamicEnumType } from '../services/dynamicEnum.service';
 import { CustomDropdown } from './ui';
+import { useUploadLimit } from '../hooks/useUploadLimit';
+import UploadLimitModal from './ui/UploadLimitModal';
 
 interface ProcessDocumentManagerProps {
   processId: string;
@@ -57,8 +59,10 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
 
   const { openViewer } = usePDFViewer();
   const toast = useToast();
+  const { limitMb, limitBytes, updating, updateLimit } = useUploadLimit();
 
   const [showUploadForm, setShowUploadForm] = useState(false);
+  const [showUploadLimitModal, setShowUploadLimitModal] = useState(false);
   const [uploadFormData, setUploadFormData] = useState<UploadFormData>({
     file: null,
     documentType: ''
@@ -82,7 +86,7 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
   const handleFileSelect = useCallback((file: File) => {
     clearError();
 
-    const validation = DocumentValidation.validateFile(file);
+    const validation = DocumentValidation.validateFile(file, limitBytes);
     if (!validation.valid) {
       toast.error(validation.error || 'Arquivo invalido');
       return;
@@ -243,15 +247,33 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-          <FileText className="w-5 h-5 mr-2" />
-          Documentos do Processo
-        </h3>
-        <p className="text-sm text-gray-600 mt-1">
-          Gerencie os PDFs vinculados ao processo (integra e atualizações)
-        </p>
+      <div className="mb-4 flex items-start justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+            <FileText className="w-5 h-5 mr-2" />
+            Documentos do Processo
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Gerencie os PDFs vinculados ao processo (integra e atualizações)
+          </p>
+        </div>
+        <button
+          onClick={() => setShowUploadLimitModal(true)}
+          className="flex items-center space-x-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+          title="Configurar limite de upload"
+        >
+          <Settings size={13} />
+          <span>Limite: {limitMb} MB</span>
+        </button>
       </div>
+
+      <UploadLimitModal
+        isOpen={showUploadLimitModal}
+        onClose={() => setShowUploadLimitModal(false)}
+        currentLimitMb={limitMb}
+        updating={updating}
+        onUpdate={updateLimit}
+      />
 
       {error && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start">
@@ -442,7 +464,7 @@ const ProcessDocumentManager: React.FC<ProcessDocumentManagerProps> = ({
               Arraste um arquivo PDF ou clique para selecionar
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              Tamanho máximo: 350MB
+              Tamanho máximo: {limitMb} MB
             </p>
           </div>
 

@@ -16,6 +16,7 @@ import { useProcessDocuments } from '../hooks/useProcessDocuments';
 import { usePDFViewer } from '../contexts/PDFViewerContext';
 import { useToast } from '../contexts/ToastContext';
 import { DocumentValidation } from '../types/ProcessDocument';
+import { useUploadLimit } from '../hooks/useUploadLimit';
 import logger from '../utils/logger';
 
 /**
@@ -48,6 +49,7 @@ const ProcessDocumentUpload: React.FC<ProcessDocumentUploadProps> = ({
 
   const { openViewer } = usePDFViewer();
   const toast = useToast();
+  const { limitMb, limitBytes } = useUploadLimit();
 
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,8 +60,7 @@ const ProcessDocumentUpload: React.FC<ProcessDocumentUploadProps> = ({
   const handleFileSelect = useCallback(async (file: File) => {
     clearError();
 
-    // Validação do arquivo
-    const validation = DocumentValidation.validateFile(file);
+    const validation = DocumentValidation.validateFile(file, limitBytes);
     if (!validation.valid) {
       toast.error(validation.error || 'Arquivo invalido');
       return;
@@ -290,7 +291,7 @@ const ProcessDocumentUpload: React.FC<ProcessDocumentUploadProps> = ({
               {isDragging ? 'Solte o arquivo aqui' : 'Arraste um arquivo PDF ou clique para selecionar'}
             </p>
             <p className="text-xs text-gray-600">
-              Tamanho máximo: 350MB • Apenas arquivos PDF
+              Tamanho máximo: {limitMb} MB • Apenas arquivos PDF
             </p>
           </div>
 

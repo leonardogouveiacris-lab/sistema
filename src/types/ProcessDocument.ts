@@ -73,7 +73,7 @@ export interface UploadProgress {
  * Constantes relacionadas a documentos
  */
 export const DOCUMENT_CONSTANTS = {
-  MAX_FILE_SIZE: 367001600,          // 350MB em bytes
+  MAX_FILE_SIZE: 524288000,          // 500MB em bytes (fallback; valor real vem de app_settings)
   ALLOWED_MIME_TYPE: 'application/pdf',
   STORAGE_BUCKET: 'process-documents',
   SESSION_STORAGE_KEY: 'temp_process_documents'
@@ -123,8 +123,9 @@ export const DocumentValidation = {
   /**
    * Valida se o tamanho do arquivo está dentro do limite
    */
-  isValidSize: (file: File): boolean => {
-    return file.size > 0 && file.size <= DOCUMENT_CONSTANTS.MAX_FILE_SIZE;
+  isValidSize: (file: File, maxSize?: number): boolean => {
+    const limit = maxSize ?? DOCUMENT_CONSTANTS.MAX_FILE_SIZE;
+    return file.size > 0 && file.size <= limit;
   },
 
   /**
@@ -143,7 +144,7 @@ export const DocumentValidation = {
   /**
    * Valida arquivo completo
    */
-  validateFile: (file: File): { valid: boolean; error?: string } => {
+  validateFile: (file: File, maxSize?: number): { valid: boolean; error?: string } => {
     if (!DocumentValidation.isPDF(file)) {
       return {
         valid: false,
@@ -151,10 +152,11 @@ export const DocumentValidation = {
       };
     }
 
-    if (!DocumentValidation.isValidSize(file)) {
+    const limit = maxSize ?? DOCUMENT_CONSTANTS.MAX_FILE_SIZE;
+    if (!DocumentValidation.isValidSize(file, limit)) {
       return {
         valid: false,
-        error: `O arquivo deve ter no máximo ${DocumentValidation.formatFileSize(DOCUMENT_CONSTANTS.MAX_FILE_SIZE)}`
+        error: `O arquivo deve ter no máximo ${DocumentValidation.formatFileSize(limit)}`
       };
     }
 
